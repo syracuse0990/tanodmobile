@@ -1,4 +1,4 @@
-import 'package:dio/dio.dart';
+﻿import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +9,12 @@ import 'package:tanodmobile/backend/datasources/auth_remote_data_source.dart';
 import 'package:tanodmobile/backend/dio/api_client.dart';
 import 'package:tanodmobile/backend/dio/dio_factory.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/alert_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/booking_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/realtime_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/tps_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/tractor_provider.dart';
+import 'package:tanodmobile/frontend/shared/widgets/app_toast.dart';
 import 'package:tanodmobile/repository/contracts/auth_repository.dart';
 import 'package:tanodmobile/repository/implementations/auth_repository_impl.dart';
 import 'package:tanodmobile/services/connectivity/connectivity_service.dart';
@@ -50,6 +56,37 @@ class TanodMobileApp extends StatelessWidget {
               AuthProvider(authRepository: context.read<AuthRepository>())
                 ..bootstrap(),
         ),
+        ChangeNotifierProvider<TractorProvider>(
+          create: (context) =>
+              TractorProvider(apiClient: context.read<ApiClient>()),
+        ),
+        ChangeNotifierProvider<AlertProvider>(
+          create: (context) =>
+              AlertProvider(apiClient: context.read<ApiClient>()),
+        ),
+        ChangeNotifierProvider<BookingProvider>(
+          create: (context) =>
+              BookingProvider(apiClient: context.read<ApiClient>()),
+        ),
+        ChangeNotifierProvider<TpsProvider>(
+          create: (context) =>
+              TpsProvider(apiClient: context.read<ApiClient>()),
+        ),
+        ChangeNotifierProxyProvider<AuthProvider, RealtimeProvider>(
+          create: (context) => RealtimeProvider(
+            dio: context.read<Dio>(),
+            alertProvider: context.read<AlertProvider>(),
+          ),
+          update: (context, auth, realtime) {
+            final userId = auth.session?.userId;
+            if (auth.status == AuthStatus.authenticated && userId != null) {
+              realtime!.start(userId);
+            } else if (auth.status == AuthStatus.unauthenticated) {
+              realtime!.stop();
+            }
+            return realtime!;
+          },
+        ),
       ],
       child: const _RouterApp(),
     );
@@ -69,7 +106,10 @@ class _RouterAppState extends State<_RouterApp> {
   @override
   void initState() {
     super.initState();
-    _router = AppRouter.create(context.read<AuthProvider>());
+    _router = AppRouter.create(
+      context.read<AuthProvider>(),
+      navigatorKey: AppToast.navigatorKey,
+    );
   }
 
   @override

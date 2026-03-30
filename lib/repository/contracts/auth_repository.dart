@@ -18,5 +18,7 @@ abstract class AuthRepository {
 
   Future<AppSession> refreshSession(AppSession session);
 
+  Future<void> registerFcmToken();
+
   Future<void> signOut();
 }

@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+﻿import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:tanodmobile/frontend/modules/alerts/screens/alerts_screen.dart';
 import 'package:tanodmobile/frontend/modules/auth/screens/login_screen.dart';
@@ -7,13 +7,20 @@ import 'package:tanodmobile/frontend/modules/dashboard/screens/dashboard_shell.d
 import 'package:tanodmobile/frontend/modules/home/screens/home_screen.dart';
 import 'package:tanodmobile/frontend/modules/profile/screens/account_screen.dart';
 import 'package:tanodmobile/frontend/modules/splash/screens/splash_screen.dart';
+import 'package:tanodmobile/frontend/modules/tps/screens/tps_screen.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 
 class AppRouter {
   const AppRouter._();
 
-  static GoRouter create(AuthProvider authProvider) {
+  static GoRouter create(
+    AuthProvider authProvider, {
+    GlobalKey<NavigatorState>? navigatorKey,
+  }) {
+    final isTps = authProvider.session?.roles.contains('tps') ?? false;
+
     return GoRouter(
+      navigatorKey: navigatorKey,
       refreshListenable: authProvider,
       initialLocation: '/home',
       redirect: (BuildContext context, GoRouterState state) {
@@ -74,8 +81,9 @@ class AppRouter {
             StatefulShellBranch(
               routes: [
                 GoRoute(
-                  path: '/bookings',
-                  builder: (context, state) => const BookingsScreen(),
+                  path: isTps ? '/tps' : '/bookings',
+                  builder: (context, state) =>
+                      isTps ? const TpsScreen() : const BookingsScreen(),
                 ),
               ],
             ),

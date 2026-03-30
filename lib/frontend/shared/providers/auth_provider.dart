@@ -39,6 +39,10 @@ class AuthProvider extends ChangeNotifier {
         : AuthStatus.authenticated;
     notifyListeners();
 
+    if (_session != null) {
+      unawaited(_authRepository.registerFcmToken());
+    }
+
     if (_session == null) {
       unawaited(loadRegistrationRoles());
     }
@@ -52,6 +56,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       _session = await _authRepository.signIn(login: login, password: password);
       _status = AuthStatus.authenticated;
+      unawaited(_authRepository.registerFcmToken());
       return true;
     } on AppException catch (error) {
       _status = AuthStatus.error;
@@ -86,6 +91,7 @@ class AuthProvider extends ChangeNotifier {
         passwordConfirmation: passwordConfirmation,
       );
       _status = AuthStatus.authenticated;
+      unawaited(_authRepository.registerFcmToken());
       return true;
     } on AppException catch (error) {
       _status = AuthStatus.error;

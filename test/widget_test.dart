@@ -76,4 +76,7 @@ class _FakeAuthRepository implements AuthRepository {
   }) {
     throw UnimplementedError();
   }
+
+  @override
+  Future<void> registerFcmToken() async {}
 }

@@ -1,4 +1,4 @@
-package com.tanod.tanodmobile
+package com.leadsagri.tanod
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -102,6 +102,11 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<void> registerFcmToken() async {
+    await _remoteDataSource.registerFcmToken();
+  }
+
+  @override
   Future<void> signOut() async {
     await _remoteDataSource.signOut();
     await _localDataSource.clearSession();

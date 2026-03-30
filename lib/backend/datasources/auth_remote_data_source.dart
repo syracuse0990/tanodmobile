@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:tanodmobile/core/config/app_config.dart';
 import 'package:tanodmobile/backend/dio/api_client.dart';
 import 'package:tanodmobile/backend/endpoints/app_endpoints.dart';
@@ -111,6 +114,24 @@ class AuthRemoteDataSource {
       await _apiClient.post(AppEndpoints.logout);
     } on DioException {
       // A failed logout should not block local session cleanup.
+    }
+  }
+
+  /// Send the FCM token to the backend so push notifications can be delivered.
+  Future<void> registerFcmToken() async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null) return;
+
+      await _apiClient.put(
+        AppEndpoints.fcmToken,
+        data: {
+          'fcm_token': token,
+          'device_type': Platform.isIOS ? 'ios' : 'android',
+        },
+      );
+    } catch (_) {
+      // Non-critical — don't block the user flow.
     }
   }
 }
