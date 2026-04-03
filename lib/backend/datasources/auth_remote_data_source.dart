@@ -11,9 +11,12 @@ import 'package:tanodmobile/models/domain/registration_role.dart';
 import 'package:tanodmobile/models/local/app_session.dart';
 
 class AuthRemoteDataSource {
-  AuthRemoteDataSource({required ApiClient apiClient}) : _apiClient = apiClient;
+  AuthRemoteDataSource({required ApiClient apiClient, required Dio dio})
+    : _apiClient = apiClient,
+      _dio = dio;
 
   final ApiClient _apiClient;
+  final Dio _dio;
 
   Future<AppSession> signIn({
     required String login,
@@ -106,6 +109,101 @@ class AuthRemoteDataSource {
       throw AppException.fromDio(error);
     } catch (error) {
       throw AppException(error.toString());
+    }
+  }
+
+  Future<AppUser> updateProfile({
+    required Map<String, dynamic> fields,
+    File? photo,
+  }) async {
+    try {
+      final formMap = <String, dynamic>{
+        '_method': 'PUT',
+        ...fields,
+      };
+
+      if (photo != null) {
+        formMap['profile_photo'] = await MultipartFile.fromFile(
+          photo.path,
+          filename: photo.path.split(Platform.pathSeparator).last,
+        );
+      }
+
+      final formData = FormData.fromMap(formMap);
+
+      final response = await _dio.post(
+        AppEndpoints.profile,
+        data: formData,
+        options: Options(contentType: 'multipart/form-data'),
+      );
+
+      final body = response.data;
+      final userPayload =
+          body is Map<String, dynamic>
+              ? (body['data'] ?? body)
+              : body;
+
+      if (userPayload is Map<String, dynamic>) {
+        return AppUser.fromJson(userPayload);
+      }
+
+      if (userPayload is Map) {
+        return AppUser.fromJson(Map<String, dynamic>.from(userPayload));
+      }
+
+      throw const AppException('Could not parse profile update response.');
+    } on DioException catch (error) {
+      throw AppException.fromDio(error);
+    }
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+    required String newPasswordConfirmation,
+  }) async {
+    try {
+      await _apiClient.put(
+        AppEndpoints.password,
+        data: {
+          'current_password': currentPassword,
+          'password': newPassword,
+          'password_confirmation': newPasswordConfirmation,
+        },
+      );
+    } on DioException catch (error) {
+      throw AppException.fromDio(error);
+    }
+  }
+
+  Future<void> sendPhoneVerificationCode() async {
+    try {
+      await _apiClient.post(AppEndpoints.phoneSendCode);
+    } on DioException catch (error) {
+      throw AppException.fromDio(error);
+    }
+  }
+
+  Future<AppUser> verifyPhone({required String code}) async {
+    try {
+      final payload = await _apiClient.post(
+        AppEndpoints.phoneVerify,
+        data: {'code': code},
+      );
+
+      final userPayload = payload['data'] ?? payload;
+
+      if (userPayload is Map<String, dynamic>) {
+        return AppUser.fromJson(userPayload);
+      }
+
+      if (userPayload is Map) {
+        return AppUser.fromJson(Map<String, dynamic>.from(userPayload));
+      }
+
+      throw const AppException('Could not parse verification response.');
+    } on DioException catch (error) {
+      throw AppException.fromDio(error);
     }
   }
 

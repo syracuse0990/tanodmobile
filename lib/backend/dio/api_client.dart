@@ -32,6 +32,14 @@ class ApiClient {
     return _mapResponse(response);
   }
 
+  Future<Map<String, dynamic>> delete(
+    String path, {
+    Map<String, dynamic>? data,
+  }) async {
+    final response = await _dio.delete<dynamic>(path, data: data);
+    return _mapResponse(response);
+  }
+
   Map<String, dynamic> _mapResponse(Response<dynamic> response) {
     final body = response.data;
 

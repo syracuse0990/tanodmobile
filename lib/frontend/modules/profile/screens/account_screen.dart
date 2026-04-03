@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
+import 'package:tanodmobile/frontend/shared/widgets/elegant_dialog.dart';
 
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
@@ -43,17 +45,25 @@ class AccountScreen extends StatelessWidget {
                             color: Colors.white.withValues(alpha: 0.3),
                             width: 3,
                           ),
+                          image: user?.profilePhotoUrl != null
+                              ? DecorationImage(
+                                  image: NetworkImage(user!.profilePhotoUrl!),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
                         ),
-                        child: Center(
-                          child: Text(
-                            _initials(user?.name ?? 'U'),
-                            style: const TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
+                        child: user?.profilePhotoUrl != null
+                            ? null
+                            : Center(
+                                child: Text(
+                                  _initials(user?.name ?? 'U'),
+                                  style: const TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
                       ),
                       const SizedBox(height: 14),
                       Text(
@@ -125,36 +135,53 @@ class AccountScreen extends StatelessWidget {
                           _MenuItem(
                             icon: Icons.person_outline_rounded,
                             label: 'Edit Profile',
-                            onTap: () {},
+                            onTap: () => context.go('/account/edit-profile'),
                           ),
                           _MenuItem(
                             icon: Icons.lock_outline_rounded,
                             label: 'Change Password',
-                            onTap: () {},
+                            onTap: () => context.go('/account/change-password'),
                           ),
                           _MenuItem(
                             icon: Icons.phone_android_rounded,
                             label: 'Phone Number',
-                            subtitle: 'Not verified',
-                            onTap: () {},
+                            subtitle: user?.phoneVerifiedAt != null
+                                ? 'Verified'
+                                : 'Not verified',
+                            onTap: () =>
+                                context.go('/account/phone-verification'),
                           ),
                         ],
                       ),
 
                       const SizedBox(height: 20),
-                      const _SectionTitle(title: 'PREFERENCES'),
+                      const _SectionTitle(title: 'SERVICES'),
                       const SizedBox(height: 8),
                       _MenuGroup(
                         items: [
                           _MenuItem(
-                            icon: Icons.notifications_outlined,
-                            label: 'Notifications',
+                            icon: Icons.confirmation_num_outlined,
+                            label: 'Tickets',
+                            onTap: () => context.go('/account/tickets'),
+                          ),
+                          _MenuItem(
+                            icon: Icons.build_outlined,
+                            label: 'Maintenance',
                             onTap: () {},
                           ),
                           _MenuItem(
-                            icon: Icons.language_rounded,
-                            label: 'Language',
-                            subtitle: 'English',
+                            icon: Icons.fence_rounded,
+                            label: 'Geo Fences',
+                            onTap: () {},
+                          ),
+                          _MenuItem(
+                            icon: Icons.rate_review_outlined,
+                            label: 'Feedback',
+                            onTap: () {},
+                          ),
+                          _MenuItem(
+                            icon: Icons.assessment_outlined,
+                            label: 'Reports',
                             onTap: () {},
                           ),
                         ],
@@ -165,6 +192,12 @@ class AccountScreen extends StatelessWidget {
                       const SizedBox(height: 8),
                       _MenuGroup(
                         items: [
+                          _MenuItem(
+                            icon: Icons.language_rounded,
+                            label: 'Language',
+                            subtitle: 'English',
+                            onTap: () {},
+                          ),
                           _MenuItem(
                             icon: Icons.help_outline_rounded,
                             label: 'Help Center',
@@ -189,7 +222,17 @@ class AccountScreen extends StatelessWidget {
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
-                          onPressed: authProvider.signOut,
+                          onPressed: () {
+                            ElegantDialog.show(
+                              context,
+                              type: ElegantDialogType.confirmation,
+                              title: 'Sign Out',
+                              message:
+                                  'Are you sure you want to sign out of your account?',
+                              confirmText: 'Sign Out',
+                              onConfirm: authProvider.signOut,
+                            );
+                          },
                           icon: const Icon(Icons.logout_rounded, size: 20),
                           label: const Text('Sign Out'),
                           style: OutlinedButton.styleFrom(

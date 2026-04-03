@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:tanodmobile/core/errors/app_exception.dart';
@@ -34,6 +35,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     _session = await _authRepository.restoreSession();
+    await Future.delayed(const Duration(seconds: 3)); // minimum splash display
     _status = _session == null
         ? AuthStatus.unauthenticated
         : AuthStatus.authenticated;
@@ -143,6 +145,66 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
     } catch (_) {
       // Keep the last local state if refresh fails.
+    }
+  }
+
+  Future<AppUser> updateProfile({
+    required Map<String, dynamic> fields,
+    File? photo,
+  }) async {
+    final user = await _authRepository.updateProfile(
+      fields: fields,
+      photo: photo,
+    );
+
+    if (_session != null) {
+      _session = _session!.copyWith(
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        gender: user.gender,
+        profilePhotoUrl: user.profilePhotoUrl,
+        savedAt: DateTime.now(),
+      );
+      notifyListeners();
+    }
+
+    return user;
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+    required String newPasswordConfirmation,
+  }) async {
+    await _authRepository.changePassword(
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+      newPasswordConfirmation: newPasswordConfirmation,
+    );
+
+    if (_session != null) {
+      _session = _session!.copyWith(
+        mustChangePassword: false,
+        savedAt: DateTime.now(),
+      );
+      notifyListeners();
+    }
+  }
+
+  Future<void> sendPhoneVerificationCode() async {
+    await _authRepository.sendPhoneVerificationCode();
+  }
+
+  Future<void> verifyPhone({required String code}) async {
+    final user = await _authRepository.verifyPhone(code: code);
+
+    if (_session != null) {
+      _session = _session!.copyWith(
+        phoneVerifiedAt: user.phoneVerifiedAt,
+        savedAt: DateTime.now(),
+      );
+      notifyListeners();
     }
   }
 

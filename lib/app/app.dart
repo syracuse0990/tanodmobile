@@ -11,8 +11,10 @@ import 'package:tanodmobile/backend/dio/dio_factory.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/alert_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/booking_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/farmer_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/realtime_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tps_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/ticket_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tractor_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/app_toast.dart';
 import 'package:tanodmobile/repository/contracts/auth_repository.dart';
@@ -42,7 +44,10 @@ class TanodMobileApp extends StatelessWidget {
         ),
         Provider<AuthRemoteDataSource>(
           create: (context) =>
-              AuthRemoteDataSource(apiClient: context.read<ApiClient>()),
+              AuthRemoteDataSource(
+                apiClient: context.read<ApiClient>(),
+                dio: context.read<Dio>(),
+              ),
         ),
         Provider<AuthRepository>(
           create: (context) => AuthRepositoryImpl(
@@ -67,6 +72,16 @@ class TanodMobileApp extends StatelessWidget {
         ChangeNotifierProvider<BookingProvider>(
           create: (context) =>
               BookingProvider(apiClient: context.read<ApiClient>()),
+        ),
+        ChangeNotifierProvider<FarmerProvider>(
+          create: (context) =>
+              FarmerProvider(apiClient: context.read<ApiClient>()),
+        ),
+        ChangeNotifierProvider<TicketProvider>(
+          create: (context) => TicketProvider(
+            apiClient: context.read<ApiClient>(),
+            dio: context.read<Dio>(),
+          ),
         ),
         ChangeNotifierProvider<TpsProvider>(
           create: (context) =>

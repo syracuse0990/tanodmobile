@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:tanodmobile/backend/datasources/auth_local_data_source.dart';
 import 'package:tanodmobile/backend/datasources/auth_remote_data_source.dart';
 import 'package:tanodmobile/core/errors/app_exception.dart';
+import 'package:tanodmobile/models/domain/app_user.dart';
 import 'package:tanodmobile/models/domain/registration_role.dart';
 import 'package:tanodmobile/models/local/app_session.dart';
 import 'package:tanodmobile/repository/contracts/auth_repository.dart';
@@ -93,12 +96,118 @@ class AuthRepositoryImpl implements AuthRepository {
       name: user.name,
       email: user.email,
       roles: user.roles,
+      phone: user.phone,
+      gender: user.gender,
+      profilePhotoUrl: user.profilePhotoUrl,
+      mustChangePassword: user.mustChangePassword,
+      phoneVerifiedAt: user.phoneVerifiedAt,
       savedAt: DateTime.now(),
     );
 
     await _localDataSource.persistSession(refreshedSession);
 
     return refreshedSession;
+  }
+
+  @override
+  Future<AppUser> updateProfile({
+    required Map<String, dynamic> fields,
+    File? photo,
+  }) async {
+    final isOnline = await _connectivityService.isConnected();
+
+    if (!isOnline) {
+      throw const AppException(
+        'No internet connection. Connect to the Tanod API and try again.',
+      );
+    }
+
+    final user = await _remoteDataSource.updateProfile(
+      fields: fields,
+      photo: photo,
+    );
+
+    final currentSession = _localDataSource.getSession();
+    if (currentSession != null) {
+      final updated = currentSession.copyWith(
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        gender: user.gender,
+        profilePhotoUrl: user.profilePhotoUrl,
+        savedAt: DateTime.now(),
+      );
+      await _localDataSource.persistSession(updated);
+    }
+
+    return user;
+  }
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+    required String newPasswordConfirmation,
+  }) async {
+    final isOnline = await _connectivityService.isConnected();
+
+    if (!isOnline) {
+      throw const AppException(
+        'No internet connection. Connect to the Tanod API and try again.',
+      );
+    }
+
+    await _remoteDataSource.changePassword(
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+      newPasswordConfirmation: newPasswordConfirmation,
+    );
+
+    final currentSession = _localDataSource.getSession();
+    if (currentSession != null) {
+      final updated = currentSession.copyWith(
+        mustChangePassword: false,
+        savedAt: DateTime.now(),
+      );
+      await _localDataSource.persistSession(updated);
+    }
+  }
+
+  @override
+  Future<void> sendPhoneVerificationCode() async {
+    final isOnline = await _connectivityService.isConnected();
+
+    if (!isOnline) {
+      throw const AppException(
+        'No internet connection. Connect to the Tanod API and try again.',
+      );
+    }
+
+    await _remoteDataSource.sendPhoneVerificationCode();
+  }
+
+  @override
+  Future<AppUser> verifyPhone({required String code}) async {
+    final isOnline = await _connectivityService.isConnected();
+
+    if (!isOnline) {
+      throw const AppException(
+        'No internet connection. Connect to the Tanod API and try again.',
+      );
+    }
+
+    final user = await _remoteDataSource.verifyPhone(code: code);
+
+    final currentSession = _localDataSource.getSession();
+    if (currentSession != null) {
+      final updated = currentSession.copyWith(
+        phoneVerifiedAt: user.phoneVerifiedAt,
+        savedAt: DateTime.now(),
+      );
+      await _localDataSource.persistSession(updated);
+    }
+
+    return user;
   }
 
   @override

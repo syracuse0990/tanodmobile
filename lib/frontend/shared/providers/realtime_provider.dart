@@ -31,6 +31,28 @@ class RealtimeProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _connected = false;
   bool get connected => _connected;
 
+  /// Raw event stream for external listeners (e.g. ticket detail screen).
+  Stream<PusherEvent>? get events => _client?.events;
+
+  /// Subscribe to an additional private channel (e.g. ticket chat).
+  Future<void> subscribeToChannel(String channel) async {
+    await _client?.subscribe(channel);
+  }
+
+  /// Unsubscribe from an additional channel.
+  void unsubscribeFromChannel(String channel) {
+    _client?.unsubscribe(channel);
+  }
+
+  /// Send a client event on a channel (e.g. typing indicator).
+  void triggerClientEvent(
+    String channel,
+    String event,
+    Map<String, dynamic> data,
+  ) {
+    _client?.trigger(channel, event, data);
+  }
+
   /// Start listening for the given user. No-op if already started for this user.
   void start(int userId) {
     if (_userId == userId && _client != null) return;

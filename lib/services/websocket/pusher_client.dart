@@ -111,6 +111,17 @@ class PusherClient {
     _subscribedChannels.remove(channelName);
   }
 
+  /// Send a client event on a channel (Pusher `client-` prefix convention).
+  /// The server broadcasts it to all other subscribers of the channel.
+  void trigger(String channelName, String event, Map<String, dynamic> data) {
+    if (!_subscribedChannels.containsKey(channelName)) return;
+    _send({
+      'event': event,
+      'channel': channelName,
+      'data': data,
+    });
+  }
+
   // ─── Internal ──────────────────────────────────────────
 
   void _onMessage(dynamic raw) {

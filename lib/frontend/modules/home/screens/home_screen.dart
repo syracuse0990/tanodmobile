@@ -17,7 +17,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final MapController _mapController = MapController();
   bool _showSatellite = false;
   int _selectedMarkerIndex = -1;
@@ -25,6 +25,14 @@ class _HomeScreenState extends State<HomeScreen>
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
   late final TractorProvider _tractorProvider;
+
+  /// Smooth marker movement animation.
+  late final AnimationController _moveController;
+  final Map<int, LatLng> _prevPositions = {};
+  final Map<int, LatLng> _targetPositions = {};
+
+  /// Smooth camera animation for focused tractor.
+  AnimationController? _cameraAnimController;
 
   /// Track last known lat/lng of the focused tractor to detect movement.
   double? _lastFocusedLat;
@@ -49,6 +57,14 @@ class _HomeScreenState extends State<HomeScreen>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
+    _moveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+    _moveController.addListener(() {
+      if (mounted) setState(() {});
+    });
+
     // Start polling
     _tractorProvider.startPolling();
     _tractorProvider.addListener(_onTractorDataChanged);
@@ -59,12 +75,39 @@ class _HomeScreenState extends State<HomeScreen>
     _tractorProvider.removeListener(_onTractorDataChanged);
     WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
+    _moveController.dispose();
+    _cameraAnimController?.dispose();
     _mapController.dispose();
     super.dispose();
   }
 
-  /// When focused on a tractor, pan the map camera to follow its new position.
+  /// When tractor data changes, animate markers to new positions and
+  /// smoothly pan the camera if following a focused tractor.
   void _onTractorDataChanged() {
+    // --- Animate marker positions ---
+    final tractors = _tractorProvider.withLocation;
+    bool anyMoved = false;
+    for (final t in tractors) {
+      final newPos = LatLng(t.lat, t.lng);
+      final oldTarget = _targetPositions[t.id];
+      if (oldTarget != null &&
+          (oldTarget.latitude != newPos.latitude ||
+              oldTarget.longitude != newPos.longitude)) {
+        // Position changed – start from current interpolated position.
+        _prevPositions[t.id] = _getAnimatedPosition(t.id, oldTarget);
+        _targetPositions[t.id] = newPos;
+        anyMoved = true;
+      } else if (oldTarget == null) {
+        // First time seeing this tractor – no animation needed.
+        _prevPositions[t.id] = newPos;
+        _targetPositions[t.id] = newPos;
+      }
+    }
+    if (anyMoved) {
+      _moveController.forward(from: 0.0);
+    }
+
+    // --- Smooth camera follow for focused tractor ---
     final focusedId = _tractorProvider.focusedTractorId;
     if (focusedId == null) {
       _lastFocusedLat = null;
@@ -72,20 +115,56 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
 
-    final focused = _tractorProvider.withLocation
+    final focused = tractors
         .cast<TractorLocation?>()
         .firstWhere((t) => t?.id == focusedId, orElse: () => null);
     if (focused == null) return;
 
-    // Only pan if position actually changed.
     if (_lastFocusedLat != focused.lat || _lastFocusedLng != focused.lng) {
       _lastFocusedLat = focused.lat;
       _lastFocusedLng = focused.lng;
-      _mapController.move(
-        LatLng(focused.lat, focused.lng),
-        _mapController.camera.zoom,
-      );
+      _animateCamera(LatLng(focused.lat, focused.lng));
     }
+  }
+
+  /// Interpolate between previous and target position for a tractor.
+  LatLng _getAnimatedPosition(int tractorId, LatLng fallback) {
+    final prev = _prevPositions[tractorId];
+    final target = _targetPositions[tractorId];
+    if (prev == null || target == null) return fallback;
+    final t = Curves.easeOutCubic.transform(_moveController.value);
+    return LatLng(
+      prev.latitude + (target.latitude - prev.latitude) * t,
+      prev.longitude + (target.longitude - prev.longitude) * t,
+    );
+  }
+
+  /// Smoothly animate the map camera to [target] with optional [targetZoom].
+  void _animateCamera(LatLng target, {double? targetZoom}) {
+    _cameraAnimController?.dispose();
+    final start = _mapController.camera.center;
+    final startZoom = _mapController.camera.zoom;
+    final endZoom = targetZoom ?? startZoom;
+
+    _cameraAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    final curved = CurvedAnimation(
+      parent: _cameraAnimController!,
+      curve: Curves.easeOutCubic,
+    );
+    curved.addListener(() {
+      final v = curved.value;
+      _mapController.move(
+        LatLng(
+          start.latitude + (target.latitude - start.latitude) * v,
+          start.longitude + (target.longitude - start.longitude) * v,
+        ),
+        startZoom + (endZoom - startZoom) * v,
+      );
+    });
+    _cameraAnimController!.forward();
   }
 
   @override
@@ -110,7 +189,7 @@ class _HomeScreenState extends State<HomeScreen>
 
     // Focus on the tractor - zoom in and switch to 10s polling
     provider.focusTractor(tractor.id);
-    _mapController.move(LatLng(tractor.lat, tractor.lng), _focusZoom);
+    _animateCamera(LatLng(tractor.lat, tractor.lng), targetZoom: _focusZoom);
   }
 
   void _clearFocus() {
@@ -125,7 +204,10 @@ class _HomeScreenState extends State<HomeScreen>
     return [
       for (int i = 0; i < tractors.length; i++)
         Marker(
-          point: LatLng(tractors[i].lat, tractors[i].lng),
+          point: _getAnimatedPosition(
+            tractors[i].id,
+            LatLng(tractors[i].lat, tractors[i].lng),
+          ),
           width: 40,
           height: 40,
           child: GestureDetector(

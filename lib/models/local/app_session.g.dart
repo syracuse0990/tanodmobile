@@ -23,13 +23,18 @@ class AppSessionAdapter extends TypeAdapter<AppSession> {
       email: fields[3] as String,
       roles: (fields[4] as List).cast<String>(),
       savedAt: fields[5] as DateTime,
+      phone: fields[6] as String?,
+      gender: fields[7] as String?,
+      profilePhotoUrl: fields[8] as String?,
+      mustChangePassword: fields[9] == null ? false : fields[9] as bool,
+      phoneVerifiedAt: fields[10] as DateTime?,
     );
   }
 
   @override
   void write(BinaryWriter writer, AppSession obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(11)
       ..writeByte(0)
       ..write(obj.token)
       ..writeByte(1)
@@ -41,7 +46,17 @@ class AppSessionAdapter extends TypeAdapter<AppSession> {
       ..writeByte(4)
       ..write(obj.roles)
       ..writeByte(5)
-      ..write(obj.savedAt);
+      ..write(obj.savedAt)
+      ..writeByte(6)
+      ..write(obj.phone)
+      ..writeByte(7)
+      ..write(obj.gender)
+      ..writeByte(8)
+      ..write(obj.profilePhotoUrl)
+      ..writeByte(9)
+      ..write(obj.mustChangePassword)
+      ..writeByte(10)
+      ..write(obj.phoneVerifiedAt);
   }
 
   @override

@@ -12,6 +12,11 @@ class AppSession extends HiveObject {
     required this.email,
     required this.roles,
     required this.savedAt,
+    this.phone,
+    this.gender,
+    this.profilePhotoUrl,
+    this.mustChangePassword = false,
+    this.phoneVerifiedAt,
   });
 
   @HiveField(0)
@@ -32,6 +37,21 @@ class AppSession extends HiveObject {
   @HiveField(5)
   final DateTime savedAt;
 
+  @HiveField(6)
+  final String? phone;
+
+  @HiveField(7)
+  final String? gender;
+
+  @HiveField(8)
+  final String? profilePhotoUrl;
+
+  @HiveField(9, defaultValue: false)
+  final bool mustChangePassword;
+
+  @HiveField(10)
+  final DateTime? phoneVerifiedAt;
+
   factory AppSession.fromJson(Map<String, dynamic> json) {
     final token =
         json['token']?.toString() ?? json['access_token']?.toString() ?? '';
@@ -45,11 +65,26 @@ class AppSession extends HiveObject {
       email: userModel.email,
       roles: userModel.roles,
       savedAt: DateTime.now(),
+      phone: userModel.phone,
+      gender: userModel.gender,
+      profilePhotoUrl: userModel.profilePhotoUrl,
+      mustChangePassword: userModel.mustChangePassword,
+      phoneVerifiedAt: userModel.phoneVerifiedAt,
     );
   }
 
   AppUser toUser() {
-    return AppUser(id: userId, name: name, email: email, roles: roles);
+    return AppUser(
+      id: userId,
+      name: name,
+      email: email,
+      roles: roles,
+      phone: phone,
+      gender: gender,
+      profilePhotoUrl: profilePhotoUrl,
+      mustChangePassword: mustChangePassword,
+      phoneVerifiedAt: phoneVerifiedAt,
+    );
   }
 
   AppSession copyWith({
@@ -59,6 +94,11 @@ class AppSession extends HiveObject {
     String? email,
     List<String>? roles,
     DateTime? savedAt,
+    String? phone,
+    String? gender,
+    String? profilePhotoUrl,
+    bool? mustChangePassword,
+    DateTime? phoneVerifiedAt,
   }) {
     return AppSession(
       token: token ?? this.token,
@@ -67,6 +107,11 @@ class AppSession extends HiveObject {
       email: email ?? this.email,
       roles: roles ?? this.roles,
       savedAt: savedAt ?? this.savedAt,
+      phone: phone ?? this.phone,
+      gender: gender ?? this.gender,
+      profilePhotoUrl: profilePhotoUrl ?? this.profilePhotoUrl,
+      mustChangePassword: mustChangePassword ?? this.mustChangePassword,
+      phoneVerifiedAt: phoneVerifiedAt ?? this.phoneVerifiedAt,
     );
   }
 

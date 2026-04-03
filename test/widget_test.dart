@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -5,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:tanodmobile/frontend/modules/auth/screens/login_screen.dart';
 import 'package:tanodmobile/frontend/modules/splash/screens/splash_screen.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
+import 'package:tanodmobile/models/domain/app_user.dart';
 import 'package:tanodmobile/models/domain/registration_role.dart';
 import 'package:tanodmobile/models/local/app_session.dart';
 import 'package:tanodmobile/repository/contracts/auth_repository.dart';
@@ -79,4 +82,31 @@ class _FakeAuthRepository implements AuthRepository {
 
   @override
   Future<void> registerFcmToken() async {}
+
+  @override
+  Future<AppUser> updateProfile({
+    required Map<String, dynamic> fields,
+    File? photo,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+    required String newPasswordConfirmation,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> sendPhoneVerificationCode() {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<AppUser> verifyPhone({required String code}) {
+    throw UnimplementedError();
+  }
 }

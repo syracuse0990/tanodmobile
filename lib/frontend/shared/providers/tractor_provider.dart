@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:tanodmobile/backend/dio/api_client.dart';
 import 'package:tanodmobile/backend/endpoints/app_endpoints.dart';
 import 'package:tanodmobile/models/domain/tractor_location.dart';
@@ -22,6 +23,7 @@ class TractorProvider extends ChangeNotifier {
   int? _focusedTractorId;
   int _secondsUntilPoll = 0;
   bool _homeVisible = true;
+  DateTime? _nextPollAt;
 
   List<TractorLocation> get tractors => _tractors;
   List<TractorLocation> get withLocation =>
@@ -234,13 +236,32 @@ class TractorProvider extends ChangeNotifier {
   }
 
   /// Start polling. Safe to call multiple times.
+  /// Uses wall-clock timestamps so the countdown survives app backgrounding.
   void startPolling() {
     _pollTimer?.cancel();
     _countdownTimer?.cancel();
-    fetch();
-    _startCountdown();
+
+    final now = DateTime.now();
+    final bool overdue = _nextPollAt != null && _nextPollAt!.isBefore(now);
+
+    // Fetch immediately on first start or if we're overdue from background.
+    if (_nextPollAt == null || overdue) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (_pollTimer == null) return; // stopped before callback ran
+        fetch();
+      });
+    }
+
+    _nextPollAt = now.add(_activeInterval);
+
     _pollTimer = Timer.periodic(_activeInterval, (_) {
+      _nextPollAt = DateTime.now().add(_activeInterval);
       fetch();
+    });
+
+    // Defer countdown start to avoid notifyListeners() during build phase.
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (_pollTimer == null) return;
       _startCountdown();
     });
   }
@@ -251,6 +272,7 @@ class TractorProvider extends ChangeNotifier {
     _pollTimer = null;
     _countdownTimer?.cancel();
     _countdownTimer = null;
+    // Keep _nextPollAt so we know whether we're overdue on resume.
     _secondsUntilPoll = 0;
     notifyListeners();
   }
@@ -261,17 +283,32 @@ class TractorProvider extends ChangeNotifier {
     }
   }
 
+  /// Countdown driven by wall-clock difference — never drifts or stalls.
   void _startCountdown() {
     _countdownTimer?.cancel();
-    _secondsUntilPoll = _activeInterval.inSeconds;
-    notifyListeners();
+
+    // Immediately compute current value.
+    _updateCountdownValue();
 
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_secondsUntilPoll > 0) {
-        _secondsUntilPoll--;
+      _updateCountdownValue();
+    });
+  }
+
+  void _updateCountdownValue() {
+    if (_nextPollAt == null) {
+      if (_secondsUntilPoll != 0) {
+        _secondsUntilPoll = 0;
         notifyListeners();
       }
-    });
+      return;
+    }
+    final remaining = _nextPollAt!.difference(DateTime.now()).inSeconds;
+    final clamped = remaining.clamp(0, _activeInterval.inSeconds);
+    if (clamped != _secondsUntilPoll) {
+      _secondsUntilPoll = clamped;
+      notifyListeners();
+    }
   }
 
   @override

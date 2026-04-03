@@ -1491,7 +1491,10 @@ class _BookingsScreenState extends State<BookingsScreen>
       builder: (context, provider, _) {
         return Scaffold(
           backgroundColor: const Color(0xFFF5F7F6),
-          body: NestedScrollView(
+          body: RefreshIndicator(
+            color: AppColors.forest,
+            onRefresh: () => provider.fetchBookings(),
+            child: NestedScrollView(
             headerSliverBuilder: (context, innerBoxIsScrolled) {
               return [
                 SliverAppBar(
@@ -1667,6 +1670,7 @@ class _BookingsScreenState extends State<BookingsScreen>
                 _buildListingTab(provider),
               ],
             ),
+          ),
           ),
         );
       },

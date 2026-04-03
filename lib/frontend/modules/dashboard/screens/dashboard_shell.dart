@@ -5,21 +5,60 @@ import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tractor_provider.dart';
+import 'package:tanodmobile/frontend/shared/widgets/force_change_password_dialog.dart';
 
-class DashboardShell extends StatelessWidget {
+class DashboardShell extends StatefulWidget {
   const DashboardShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
+
+  @override
+  State<DashboardShell> createState() => _DashboardShellState();
+}
+
+class _DashboardShellState extends State<DashboardShell> {
+  bool _hasShownPasswordDialog = false;
+
+  StatefulNavigationShell get navigationShell => widget.navigationShell;
 
   bool _isTps(BuildContext context) {
     final roles = context.read<AuthProvider>().session?.roles ?? [];
     return roles.contains('tps');
   }
 
+  bool _isFca(BuildContext context) {
+    final roles = context.read<AuthProvider>().session?.roles ?? [];
+    return roles.contains('fca');
+  }
+
+  /// Maps a GNav tab index to the router branch index.
+  /// Non-FCA users skip branch 3 (Farmers), so tab 3 → branch 4.
+  int _tabToBranch(int tabIndex, bool isFca) {
+    if (isFca || tabIndex < 3) return tabIndex;
+    return tabIndex + 1; // skip farmers branch
+  }
+
+  /// Maps a router branch index to the GNav tab index.
+  int _branchToTab(int branchIndex, bool isFca) {
+    if (isFca || branchIndex < 3) return branchIndex;
+    return branchIndex - 1; // farmers branch hidden
+  }
+
   @override
   Widget build(BuildContext context) {
     final isTps = _isTps(context);
+    final isFca = _isFca(context);
     final tractorProvider = context.read<TractorProvider>();
+
+    // Show forced password change dialog for newly created users
+    if (!_hasShownPasswordDialog) {
+      _hasShownPasswordDialog = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ForceChangePasswordDialog.showIfRequired(context);
+        }
+      });
+    }
 
     return Scaffold(
       body: navigationShell,
@@ -38,10 +77,11 @@ class DashboardShell extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: GNav(
-              selectedIndex: navigationShell.currentIndex,
+              selectedIndex: _branchToTab(navigationShell.currentIndex, isFca),
               onTabChange: (index) {
-                tractorProvider.setHomeVisible(index == 0);
-                navigationShell.goBranch(index);
+                final branchIndex = _tabToBranch(index, isFca);
+                tractorProvider.setHomeVisible(branchIndex == 0);
+                navigationShell.goBranch(branchIndex);
               },
               gap: 8,
               activeColor: AppColors.forest,
@@ -84,6 +124,17 @@ class DashboardShell extends StatelessWidget {
                     color: AppColors.forest,
                   ),
                 ),
+                if (isFca)
+                  const GButton(
+                    icon: Icons.people_rounded,
+                    text: 'Farmers',
+                    iconActiveColor: AppColors.forest,
+                    textStyle: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.forest,
+                    ),
+                  ),
                 const GButton(
                   icon: Icons.person_rounded,
                   text: 'Account',

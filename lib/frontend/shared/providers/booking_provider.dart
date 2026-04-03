@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:tanodmobile/backend/dio/api_client.dart';
 import 'package:tanodmobile/backend/endpoints/app_endpoints.dart';
 import 'package:tanodmobile/models/domain/booking.dart';
@@ -9,6 +10,17 @@ class BookingProvider extends ChangeNotifier {
   BookingProvider({required ApiClient apiClient}) : _apiClient = apiClient;
 
   final ApiClient _apiClient;
+
+  /// Safe wrapper that defers notifyListeners when called during the build phase.
+  void _safeNotify() {
+    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
+    } else {
+      notifyListeners();
+    }
+  }
 
   List<Booking> _bookings = [];
   bool _loading = false;
@@ -73,7 +85,7 @@ class BookingProvider extends ChangeNotifier {
     _bookings = [];
     _currentPage = 1;
     _lastPage = 1;
-    notifyListeners();
+    _safeNotify();
     fetchBookings();
   }
 
@@ -82,7 +94,7 @@ class BookingProvider extends ChangeNotifier {
   Future<void> fetchBookings() async {
     _loading = true;
     _error = null;
-    notifyListeners();
+    _safeNotify();
 
     try {
       final params = <String, dynamic>{'per_page': '30', 'page': '1'};
@@ -105,7 +117,7 @@ class BookingProvider extends ChangeNotifier {
       debugPrint('BookingProvider.fetchBookings error: $e');
     } finally {
       _loading = false;
-      notifyListeners();
+      _safeNotify();
     }
   }
 
@@ -113,7 +125,7 @@ class BookingProvider extends ChangeNotifier {
     if (!hasMore || _loading) return;
 
     _loading = true;
-    notifyListeners();
+    _safeNotify();
 
     try {
       final nextPage = _currentPage + 1;
@@ -140,7 +152,7 @@ class BookingProvider extends ChangeNotifier {
       debugPrint('BookingProvider.fetchMore error: $e');
     } finally {
       _loading = false;
-      notifyListeners();
+      _safeNotify();
     }
   }
 
@@ -148,7 +160,7 @@ class BookingProvider extends ChangeNotifier {
 
   Future<void> fetchTractors() async {
     _loadingTractors = true;
-    notifyListeners();
+    _safeNotify();
 
     try {
       final response = await _apiClient.get(
@@ -161,7 +173,7 @@ class BookingProvider extends ChangeNotifier {
       debugPrint('BookingProvider.fetchTractors error: $e');
     } finally {
       _loadingTractors = false;
-      notifyListeners();
+      _safeNotify();
     }
   }
 
@@ -173,7 +185,7 @@ class BookingProvider extends ChangeNotifier {
       final dataList = response['data'] as List<dynamic>? ??
           (response is List ? response as List<dynamic> : []);
       _slots = dataList.whereType<Map<String, dynamic>>().toList();
-      notifyListeners();
+      _safeNotify();
     } catch (e) {
       debugPrint('BookingProvider.fetchSlots error: $e');
     }
@@ -183,7 +195,7 @@ class BookingProvider extends ChangeNotifier {
 
   Future<void> fetchFarmers() async {
     _loadingFarmers = true;
-    notifyListeners();
+    _safeNotify();
 
     try {
       final response = await _apiClient.get(AppEndpoints.myFarmers);
@@ -195,7 +207,7 @@ class BookingProvider extends ChangeNotifier {
       debugPrint('BookingProvider.fetchFarmers error: $e');
     } finally {
       _loadingFarmers = false;
-      notifyListeners();
+      _safeNotify();
     }
   }
 
@@ -264,7 +276,7 @@ class BookingProvider extends ChangeNotifier {
           farmerName: old.farmerName,
           createdAt: old.createdAt,
         );
-        notifyListeners();
+        _safeNotify();
       }
       return true;
     } catch (e) {

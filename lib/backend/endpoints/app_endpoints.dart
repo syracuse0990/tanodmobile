@@ -6,6 +6,8 @@ class AppEndpoints {
   static const String registrationRoles = '/register/roles';
   static const String logout = '/logout';
   static const String me = '/me';
+  static const String profile = '/profile';
+  static const String password = '/password';
   static const String tractors = '/tractors';
   static const String devices = '/devices';
   static const String devicesShare = '/devices/share';
@@ -18,6 +20,9 @@ class AppEndpoints {
   static const String notifications = '/notifications';
   static const String alerts = '/alerts';
   static const String fcmToken = '/fcm-token';
+  static const String phoneSendCode = '/phone/send-code';
+  static const String phoneVerify = '/phone/verify';
+  static const String tickets = '/tickets';
 
   // TPS endpoints
   static const String tpsDashboard = '/tps/dashboard';

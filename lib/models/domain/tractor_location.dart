@@ -26,11 +26,16 @@ class TractorLocation {
   final String? heartbeatAt;
   final int? deviceId;
 
-  /// Online but speed is 0 (or null).
-  bool get isIdle => isOnline && (speed == null || speed == 0);
+  /// Minimum speed (km/h) to consider a tractor as actually moving.
+  /// Filters out GPS drift noise which commonly reports 2–10 km/h on
+  /// stationary devices.
+  static const double _movingThreshold = 3.0;
 
-  /// Online and moving.
-  bool get isMoving => isOnline && speed != null && speed! > 0;
+  /// Online but speed is below moving threshold.
+  bool get isIdle => isOnline && (speed == null || speed! < _movingThreshold);
+
+  /// Online and moving above the GPS noise threshold.
+  bool get isMoving => isOnline && speed != null && speed! >= _movingThreshold;
 
   String get label => noPlate;
   String get subtitle => '$brand $model';

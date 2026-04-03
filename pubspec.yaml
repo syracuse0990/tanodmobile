@@ -54,6 +54,10 @@ dependencies:
   web_socket_channel: ^3.0.3
   flutter_dotenv: ^6.0.0
   table_calendar: ^3.2.0
+  google_maps_flutter: ^2.14.2
+  google_maps_flutter_android: ^2.19.5
+  google_maps_flutter_platform_interface: ^2.15.0
+  image_picker: ^1.2.1
 
 dev_dependencies:
   flutter_test:
