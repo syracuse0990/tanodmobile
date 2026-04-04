@@ -1,5 +1,6 @@
 ﻿import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/router/app_router.dart';
@@ -8,18 +9,26 @@ import 'package:tanodmobile/backend/datasources/auth_local_data_source.dart';
 import 'package:tanodmobile/backend/datasources/auth_remote_data_source.dart';
 import 'package:tanodmobile/backend/dio/api_client.dart';
 import 'package:tanodmobile/backend/dio/dio_factory.dart';
+import 'package:tanodmobile/core/locale/app_localizations.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/alert_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/booking_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/farmer_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/locale_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/realtime_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tps_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/ticket_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tractor_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/maintenance_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/pms_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/geofence_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/feedback_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/report_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/app_toast.dart';
 import 'package:tanodmobile/repository/contracts/auth_repository.dart';
 import 'package:tanodmobile/repository/implementations/auth_repository_impl.dart';
 import 'package:tanodmobile/services/connectivity/connectivity_service.dart';
+import 'package:tanodmobile/services/notifications/local_notification_service.dart';
 import 'package:tanodmobile/services/storage/hive_service.dart';
 
 class TanodMobileApp extends StatelessWidget {
@@ -31,6 +40,10 @@ class TanodMobileApp extends StatelessWidget {
       providers: [
         Provider<HiveService>(create: (_) => HiveService()),
         Provider<ConnectivityService>(create: (_) => ConnectivityService()),
+        ChangeNotifierProvider<LocaleProvider>(
+          create: (context) =>
+              LocaleProvider(hiveService: context.read<HiveService>()),
+        ),
         Provider<Dio>(
           create: (context) =>
               DioFactory.create(hiveService: context.read<HiveService>()),
@@ -43,11 +56,10 @@ class TanodMobileApp extends StatelessWidget {
               AuthLocalDataSource(hiveService: context.read<HiveService>()),
         ),
         Provider<AuthRemoteDataSource>(
-          create: (context) =>
-              AuthRemoteDataSource(
-                apiClient: context.read<ApiClient>(),
-                dio: context.read<Dio>(),
-              ),
+          create: (context) => AuthRemoteDataSource(
+            apiClient: context.read<ApiClient>(),
+            dio: context.read<Dio>(),
+          ),
         ),
         Provider<AuthRepository>(
           create: (context) => AuthRepositoryImpl(
@@ -87,10 +99,33 @@ class TanodMobileApp extends StatelessWidget {
           create: (context) =>
               TpsProvider(apiClient: context.read<ApiClient>()),
         ),
+        ChangeNotifierProvider<MaintenanceProvider>(
+          create: (context) =>
+              MaintenanceProvider(apiClient: context.read<ApiClient>()),
+        ),
+        ChangeNotifierProvider<PmsProvider>(
+          create: (context) => PmsProvider(
+            apiClient: context.read<ApiClient>(),
+            dio: context.read<Dio>(),
+          ),
+        ),
+        ChangeNotifierProvider<GeoFenceProvider>(
+          create: (context) =>
+              GeoFenceProvider(apiClient: context.read<ApiClient>()),
+        ),
+        ChangeNotifierProvider<FeedbackProvider>(
+          create: (context) =>
+              FeedbackProvider(apiClient: context.read<ApiClient>()),
+        ),
+        ChangeNotifierProvider<ReportProvider>(
+          create: (context) =>
+              ReportProvider(apiClient: context.read<ApiClient>()),
+        ),
         ChangeNotifierProxyProvider<AuthProvider, RealtimeProvider>(
           create: (context) => RealtimeProvider(
             dio: context.read<Dio>(),
             alertProvider: context.read<AlertProvider>(),
+            feedbackProvider: context.read<FeedbackProvider>(),
           ),
           update: (context, auth, realtime) {
             final userId = auth.session?.userId;
@@ -116,15 +151,42 @@ class _RouterApp extends StatefulWidget {
 }
 
 class _RouterAppState extends State<_RouterApp> {
-  late final GoRouter _router;
+  late GoRouter _router;
+  AuthStatus? _lastAuthStatus;
 
   @override
   void initState() {
     super.initState();
-    _router = AppRouter.create(
+    _router = _createRouter();
+
+    // Navigate to ticket when a notification is tapped.
+    LocalNotificationService.instance.onNotificationTapped =
+        _handleNotificationTap;
+
+    // Consume any pending FCM payload from a terminated-app tap.
+    final pending = LocalNotificationService.instance.pendingFcmPayload;
+    if (pending != null) {
+      LocalNotificationService.instance.pendingFcmPayload = null;
+      // Delay to let the router finish initial navigation.
+      Future.delayed(
+        const Duration(milliseconds: 500),
+        () => _handleNotificationTap(pending),
+      );
+    }
+  }
+
+  GoRouter _createRouter() {
+    return AppRouter.create(
       context.read<AuthProvider>(),
       navigatorKey: AppToast.navigatorKey,
     );
+  }
+
+  void _handleNotificationTap(Map<String, dynamic> payload) {
+    final ticketId = payload['ticket_id'];
+    if (ticketId != null) {
+      _router.go('/account/tickets/$ticketId');
+    }
   }
 
   @override
@@ -135,10 +197,36 @@ class _RouterAppState extends State<_RouterApp> {
 
   @override
   Widget build(BuildContext context) {
+    // Eagerly watch RealtimeProvider so the ChangeNotifierProxyProvider
+    // triggers its update callback (which calls start()) as soon as
+    // AuthProvider emits authenticated. Without this read, the WebSocket
+    // connection only starts when a widget on the tickets page reads it.
+    context.watch<RealtimeProvider>();
+
+    // Rebuild the router when a new session starts so role-dependent
+    // branches (e.g. TPS vs Bookings) and StatefulShellRoute GlobalKeys
+    // are recreated for the new user.
+    final authStatus = context.watch<AuthProvider>().status;
+    if (authStatus == AuthStatus.authenticated &&
+        _lastAuthStatus != null &&
+        _lastAuthStatus != AuthStatus.authenticated) {
+      _router.dispose();
+      _router = _createRouter();
+    }
+    _lastAuthStatus = authStatus;
+
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
-      title: 'Tanod Mobile',
+      title: 'Tanod Tractor',
       theme: AppTheme.light(),
+      locale: context.watch<LocaleProvider>().locale,
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       routerConfig: _router,
     );
   }

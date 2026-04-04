@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
+import 'package:tanodmobile/core/locale/app_localizations.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/locale_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/elegant_dialog.dart';
+import 'package:tanodmobile/frontend/shared/widgets/language_picker.dart';
 
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
@@ -12,6 +15,7 @@ class AccountScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
     final user = authProvider.currentUser;
+    final localeProvider = context.watch<LocaleProvider>();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
@@ -128,26 +132,26 @@ class AccountScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Account section
-                      const _SectionTitle(title: 'ACCOUNT'),
+                      _SectionTitle(title: context.tr('section_account')),
                       const SizedBox(height: 8),
                       _MenuGroup(
                         items: [
                           _MenuItem(
                             icon: Icons.person_outline_rounded,
-                            label: 'Edit Profile',
+                            label: context.tr('edit_profile'),
                             onTap: () => context.go('/account/edit-profile'),
                           ),
                           _MenuItem(
                             icon: Icons.lock_outline_rounded,
-                            label: 'Change Password',
+                            label: context.tr('change_password'),
                             onTap: () => context.go('/account/change-password'),
                           ),
                           _MenuItem(
                             icon: Icons.phone_android_rounded,
-                            label: 'Phone Number',
+                            label: context.tr('phone_number'),
                             subtitle: user?.phoneVerifiedAt != null
-                                ? 'Verified'
-                                : 'Not verified',
+                                ? context.tr('verified')
+                                : context.tr('not_verified'),
                             onTap: () =>
                                 context.go('/account/phone-verification'),
                           ),
@@ -155,65 +159,145 @@ class AccountScreen extends StatelessWidget {
                       ),
 
                       const SizedBox(height: 20),
-                      const _SectionTitle(title: 'SERVICES'),
+                      _SectionTitle(title: context.tr('section_services')),
                       const SizedBox(height: 8),
                       _MenuGroup(
                         items: [
                           _MenuItem(
                             icon: Icons.confirmation_num_outlined,
-                            label: 'Tickets',
+                            label: context.tr('tickets'),
                             onTap: () => context.go('/account/tickets'),
                           ),
-                          _MenuItem(
-                            icon: Icons.build_outlined,
-                            label: 'Maintenance',
-                            onTap: () {},
-                          ),
-                          _MenuItem(
-                            icon: Icons.fence_rounded,
-                            label: 'Geo Fences',
-                            onTap: () {},
-                          ),
+                          if (user != null &&
+                              (user.roles.contains('fca') ||
+                                  user.roles.contains('tps')))
+                            _MenuItem(
+                              icon: Icons.build_outlined,
+                              label: context.tr('maintenance'),
+                              onTap: () =>
+                                  context.go('/account/maintenance'),
+                            ),
+                          if (user != null &&
+                              user.roles.contains('fca'))
+                            _MenuItem(
+                              icon: Icons.fence_rounded,
+                              label: context.tr('geo_fences'),
+                              onTap: () =>
+                                  context.go('/account/geofences'),
+                            ),
                           _MenuItem(
                             icon: Icons.rate_review_outlined,
-                            label: 'Feedback',
-                            onTap: () {},
+                            label: context.tr('feedback'),
+                            onTap: () =>
+                                context.go('/account/feedback'),
                           ),
                           _MenuItem(
                             icon: Icons.assessment_outlined,
-                            label: 'Reports',
-                            onTap: () {},
+                            label: context.tr('reports'),
+                            onTap: () =>
+                                context.go('/account/reports'),
                           ),
                         ],
                       ),
 
                       const SizedBox(height: 20),
-                      const _SectionTitle(title: 'SUPPORT'),
+                      _SectionTitle(title: context.tr('section_support')),
                       const SizedBox(height: 8),
                       _MenuGroup(
                         items: [
                           _MenuItem(
                             icon: Icons.language_rounded,
-                            label: 'Language',
-                            subtitle: 'English',
-                            onTap: () {},
+                            label: context.tr('language'),
+                            subtitle: localeProvider.displayName,
+                            onTap: () => showLanguagePicker(context),
                           ),
                           _MenuItem(
                             icon: Icons.help_outline_rounded,
-                            label: 'Help Center',
-                            onTap: () {},
+                            label: context.tr('help_center'),
+                            onTap: () => context.go('/account/help-center'),
                           ),
                           _MenuItem(
                             icon: Icons.info_outline_rounded,
-                            label: 'About TanodTractor',
-                            onTap: () {},
+                            label: context.tr('about_tanod'),
+                            onTap: () => context.go('/account/about'),
                           ),
                           _MenuItem(
                             icon: Icons.description_outlined,
-                            label: 'Terms & Privacy',
-                            onTap: () {},
+                            label: context.tr('terms_privacy'),
+                            onTap: () => context.go('/account/terms-privacy'),
                           ),
                         ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Danger zone section
+                      _SectionTitle(title: context.tr('delete_account_title').toUpperCase()),
+                      const SizedBox(height: 8),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: AppColors.danger.withValues(alpha: 0.1),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.ink.withValues(alpha: 0.04),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () =>
+                                context.go('/account/delete-account'),
+                            borderRadius: BorderRadius.circular(16),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.danger
+                                          .withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Icon(
+                                      Icons.delete_outline_rounded,
+                                      size: 20,
+                                      color: AppColors.danger,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Text(
+                                      context.tr('delete_account'),
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.danger,
+                                      ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.chevron_right_rounded,
+                                    color:
+                                        AppColors.danger.withValues(alpha: 0.5),
+                                    size: 20,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
 
                       const SizedBox(height: 24),
@@ -226,15 +310,14 @@ class AccountScreen extends StatelessWidget {
                             ElegantDialog.show(
                               context,
                               type: ElegantDialogType.confirmation,
-                              title: 'Sign Out',
-                              message:
-                                  'Are you sure you want to sign out of your account?',
-                              confirmText: 'Sign Out',
+                              title: context.tr('sign_out'),
+                              message: context.tr('sign_out_message'),
+                              confirmText: context.tr('sign_out'),
                               onConfirm: authProvider.signOut,
                             );
                           },
                           icon: const Icon(Icons.logout_rounded, size: 20),
-                          label: const Text('Sign Out'),
+                          label: Text(context.tr('sign_out')),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppColors.danger,
                             side: BorderSide(
@@ -256,7 +339,7 @@ class AccountScreen extends StatelessWidget {
 
                       Center(
                         child: Text(
-                          'TanodTractor v1.0.0',
+                          context.tr('app_version'),
                           style: TextStyle(
                             fontSize: 12,
                             color: AppColors.mutedInk.withValues(alpha: 0.5),

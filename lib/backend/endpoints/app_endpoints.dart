@@ -24,6 +24,26 @@ class AppEndpoints {
   static const String phoneVerify = '/phone/verify';
   static const String tickets = '/tickets';
 
+  // Maintenance / PMS endpoints
+  static const String maintenances = '/maintenances';
+  static const String maintenancesChecklist = '/maintenances/checklist-items';
+
+  // Geofence endpoints
+  static const String geofences = '/geofences';
+  static const String geofenceDevices = '/geofences/devices';
+
+  // Feedback endpoints
+  static const String feedbacks = '/feedbacks';
+  static const String feedbackTractors = '/feedbacks/tractors';
+
+  // Reports
+  static const String reports = '/reports';
+
+  // Account deletion endpoints
+  static const String accountRequestDeletion = '/account/request-deletion';
+  static const String accountCancelDeletion = '/account/cancel-deletion';
+  static const String accountDeletionStatus = '/account/deletion-status';
+
   // TPS endpoints
   static const String tpsDashboard = '/tps/dashboard';
   static const String tpsTickets = '/tps/tickets';

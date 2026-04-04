@@ -38,5 +38,11 @@ abstract class AuthRepository {
 
   Future<void> registerFcmToken();
 
+  Future<void> requestAccountDeletion({required String password});
+
+  Future<void> cancelAccountDeletion();
+
+  Future<Map<String, dynamic>> fetchAccountDeletionStatus();
+
   Future<void> signOut();
 }

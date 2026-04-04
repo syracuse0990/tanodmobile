@@ -216,6 +216,45 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<void> requestAccountDeletion({required String password}) async {
+    final isOnline = await _connectivityService.isConnected();
+
+    if (!isOnline) {
+      throw const AppException(
+        'No internet connection. Connect to the Tanod API and try again.',
+      );
+    }
+
+    await _remoteDataSource.requestAccountDeletion(password: password);
+  }
+
+  @override
+  Future<void> cancelAccountDeletion() async {
+    final isOnline = await _connectivityService.isConnected();
+
+    if (!isOnline) {
+      throw const AppException(
+        'No internet connection. Connect to the Tanod API and try again.',
+      );
+    }
+
+    await _remoteDataSource.cancelAccountDeletion();
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchAccountDeletionStatus() async {
+    final isOnline = await _connectivityService.isConnected();
+
+    if (!isOnline) {
+      throw const AppException(
+        'No internet connection. Connect to the Tanod API and try again.',
+      );
+    }
+
+    return _remoteDataSource.fetchAccountDeletionStatus();
+  }
+
+  @override
   Future<void> signOut() async {
     await _remoteDataSource.signOut();
     await _localDataSource.clearSession();

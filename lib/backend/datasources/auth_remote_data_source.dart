@@ -232,4 +232,31 @@ class AuthRemoteDataSource {
       // Non-critical — don't block the user flow.
     }
   }
+
+  Future<void> requestAccountDeletion({required String password}) async {
+    try {
+      await _apiClient.post(
+        AppEndpoints.accountRequestDeletion,
+        data: {'password': password},
+      );
+    } on DioException catch (error) {
+      throw AppException.fromDio(error);
+    }
+  }
+
+  Future<void> cancelAccountDeletion() async {
+    try {
+      await _apiClient.post(AppEndpoints.accountCancelDeletion);
+    } on DioException catch (error) {
+      throw AppException.fromDio(error);
+    }
+  }
+
+  Future<Map<String, dynamic>> fetchAccountDeletionStatus() async {
+    try {
+      return await _apiClient.get(AppEndpoints.accountDeletionStatus);
+    } on DioException catch (error) {
+      throw AppException.fromDio(error);
+    }
+  }
 }

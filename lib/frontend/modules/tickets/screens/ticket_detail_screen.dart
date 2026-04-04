@@ -31,6 +31,10 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   String? _typingUserRole;
   Timer? _typingClearTimer;
 
+  // Unread chat badge
+  int _unreadCount = 0;
+  bool _chatOpen = false;
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +57,10 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       final commentData = event.data['comment'] as Map<String, dynamic>?;
       if (commentData != null && mounted) {
         context.read<TicketProvider>().appendRealtimeComment(commentData);
+        // Increment unread count when chat is not open
+        if (!_chatOpen) {
+          setState(() => _unreadCount++);
+        }
       }
     } else if (event.event == 'client-typing') {
       if (!mounted) return;
@@ -92,10 +100,36 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     );
   }
 
+  void _openChat() {
+    setState(() {
+      _unreadCount = 0;
+      _chatOpen = true;
+    });
+
+    final provider = context.read<TicketProvider>();
+    final ticket = provider.selectedTicket;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _ChatSheet(
+        ticketId: widget.ticketId,
+        channelName: _channelName,
+        comments: ticket?.comments ?? [],
+        typingUserName: _typingUserName,
+        typingUserRole: _typingUserRole,
+      ),
+    ).whenComplete(() {
+      if (mounted) setState(() => _chatOpen = false);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<TicketProvider>();
     final ticket = provider.selectedTicket;
+    final commentCount = ticket?.comments?.length ?? 0;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
@@ -109,8 +143,72 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           onPressed: () => context.go('/account/tickets'),
         ),
       ),
-      bottomNavigationBar: ticket != null && ticket.isResolvable
-          ? _ResolveBottomBar(onResolve: _showResolveSheet)
+      floatingActionButton: ticket != null
+          ? Stack(
+              clipBehavior: Clip.none,
+              children: [
+                FloatingActionButton(
+                  onPressed: _openChat,
+                  backgroundColor: AppColors.forest,
+                  foregroundColor: Colors.white,
+                  child: const Icon(Icons.chat_rounded, size: 24),
+                ),
+                // Unread badge
+                if (_unreadCount > 0)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      constraints: const BoxConstraints(
+                        minWidth: 22,
+                        minHeight: 22,
+                      ),
+                      decoration: const BoxDecoration(
+                        color: AppColors.danger,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          _unreadCount > 99 ? '99+' : '$_unreadCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                // Comment count label
+                if (_unreadCount == 0 && commentCount > 0)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      constraints: const BoxConstraints(
+                        minWidth: 22,
+                        minHeight: 22,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.forest.withValues(alpha: 0.85),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          commentCount > 99 ? '99+' : '$commentCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            )
           : null,
       body: provider.loadingDetail
           ? const Center(
@@ -211,6 +309,32 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                             label: 'Created',
                             value: ticket.timeAgo,
                           ),
+                          if (ticket.isResolvable) ...[
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 50,
+                              child: ElevatedButton.icon(
+                                onPressed: _showResolveSheet,
+                                icon: const Icon(
+                                  Icons.check_circle_outline_rounded,
+                                  size: 20,
+                                ),
+                                label: const Text('Resolve Ticket'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.success,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  textStyle: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -303,49 +427,63 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                       ],
                     ],
 
-                    // ─── Chat Section ───
+                    // ─── Discussion hint ───
                     const SizedBox(height: 16),
-                    _SectionHeader(title: 'Discussion'),
-                    const SizedBox(height: 8),
-
-                    if (ticket.comments != null && ticket.comments!.isNotEmpty)
-                      ...ticket.comments!.map((c) {
-                        final currentUserId = context
-                            .read<AuthProvider>()
-                            .currentUser
-                            ?.id;
-                        final isMe = c.userId == currentUserId;
-                        return _ChatBubble(comment: c, isMe: isMe);
-                      })
-                    else
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Center(
-                          child: Text(
-                            'No messages yet. Start the conversation.',
-                            style: TextStyle(
-                              fontSize: 13,
+                    _DetailCard(
+                      child: InkWell(
+                        onTap: _openChat,
+                        borderRadius: BorderRadius.circular(14),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: AppColors.forest.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.chat_rounded,
+                                size: 20,
+                                color: AppColors.forest,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Discussion',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.ink,
+                                    ),
+                                  ),
+                                  Text(
+                                    commentCount == 0
+                                        ? 'No messages yet'
+                                        : '$commentCount message${commentCount == 1 ? '' : 's'}',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: AppColors.mutedInk,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right_rounded,
                               color: AppColors.mutedInk,
                             ),
-                          ),
+                          ],
                         ),
                       ),
-
-                    // Typing indicator
-                    if (_typingUserName != null)
-                      _TypingIndicator(
-                        userName: _typingUserName!,
-                        userRole: _typingUserRole,
-                      ),
-
-                    // Inline chat input
-                    const SizedBox(height: 8),
-                    _ChatInput(
-                      ticketId: widget.ticketId,
-                      channelName: _channelName,
                     ),
 
-                    const SizedBox(height: 24),
+                    // Bottom spacer for FAB
+                    const SizedBox(height: 80),
                   ],
                 ),
               ),
@@ -363,53 +501,157 @@ String _formatCommentTime(DateTime dt) {
   return '${dt.day}/${dt.month}/${dt.year}';
 }
 
-// ─── Resolve-only Bottom Bar ─────────────────────
+// ─── Chat Bottom Sheet ──────────────────────────
 
-class _ResolveBottomBar extends StatelessWidget {
-  const _ResolveBottomBar({required this.onResolve});
+class _ChatSheet extends StatelessWidget {
+  const _ChatSheet({
+    required this.ticketId,
+    required this.channelName,
+    required this.comments,
+    this.typingUserName,
+    this.typingUserRole,
+  });
 
-  final VoidCallback onResolve;
+  final int ticketId;
+  final String channelName;
+  final List<TicketComment> comments;
+  final String? typingUserName;
+  final String? typingUserRole;
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 8,
-              offset: const Offset(0, -2),
+    final ticket = context.watch<TicketProvider>().selectedTicket;
+    final currentComments = ticket?.comments ?? comments;
+    final bottomInsets = MediaQuery.of(context).viewInsets.bottom;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: const BoxDecoration(
+        color: Color(0xFFF5F7F6),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          // ─── Handle bar + header ───
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-          ],
-        ),
-        padding: EdgeInsets.fromLTRB(
-          16,
-          10,
-          16,
-          MediaQuery.of(context).viewInsets.bottom + 10,
-        ),
-        child: SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: ElevatedButton.icon(
-            onPressed: onResolve,
-            icon: const Icon(Icons.check_circle_outline_rounded, size: 20),
-            label: const Text('Resolve Ticket'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.success,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              textStyle: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
+            child: Column(
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.chat_rounded,
+                      size: 20,
+                      color: AppColors.forest,
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Discussion',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${currentComments.length} message${currentComments.length == 1 ? '' : 's'}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.mutedInk,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-        ),
+
+          // ─── Messages ───
+          Expanded(
+            child: currentComments.isNotEmpty
+                ? ListView.builder(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    reverse: true,
+                    itemCount: currentComments.length,
+                    itemBuilder: (context, index) {
+                      final c = currentComments[
+                          currentComments.length - 1 - index];
+                      final currentUserId =
+                          context.read<AuthProvider>().currentUser?.id;
+                      final isMe = c.userId == currentUserId;
+                      return _ChatBubble(comment: c, isMe: isMe);
+                    },
+                  )
+                : Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          size: 48,
+                          color: AppColors.mutedInk.withValues(alpha: 0.3),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No messages yet.\nStart the conversation!',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: AppColors.mutedInk,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+
+          // ─── Typing indicator ───
+          if (typingUserName != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: _TypingIndicator(
+                userName: typingUserName!,
+                userRole: typingUserRole,
+              ),
+            ),
+
+          // ─── Chat input ───
+          Padding(
+            padding: EdgeInsets.fromLTRB(12, 8, 12, 8 + bottomInsets),
+            child: _ChatInput(
+              ticketId: ticketId,
+              channelName: channelName,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -109,4 +109,19 @@ class _FakeAuthRepository implements AuthRepository {
   Future<AppUser> verifyPhone({required String code}) {
     throw UnimplementedError();
   }
+
+  @override
+  Future<void> requestAccountDeletion({required String password}) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> cancelAccountDeletion() {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchAccountDeletionStatus() async {
+    return {'deletion_requested': false};
+  }
 }

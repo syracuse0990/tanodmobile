@@ -215,4 +215,20 @@ class AuthProvider extends ChangeNotifier {
     _status = AuthStatus.unauthenticated;
     notifyListeners();
   }
+
+  Future<void> requestAccountDeletion({required String password}) async {
+    await _authRepository.requestAccountDeletion(password: password);
+  }
+
+  Future<void> cancelAccountDeletion() async {
+    await _authRepository.cancelAccountDeletion();
+  }
+
+  Future<Map<String, dynamic>> fetchAccountDeletionStatus() async {
+    return _authRepository.fetchAccountDeletionStatus();
+  }
+
+  Future<void> deleteAccountAndSignOut({required String password}) async {
+    await _authRepository.requestAccountDeletion(password: password);
+  }
 }

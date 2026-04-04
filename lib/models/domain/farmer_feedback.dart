@@ -2,6 +2,7 @@
 class FarmerFeedbackItem {
   const FarmerFeedbackItem({
     required this.id,
+    this.tractorId,
     this.rating,
     this.feedback,
     this.category,
@@ -9,6 +10,8 @@ class FarmerFeedbackItem {
     this.conclusion,
     this.adminResponse,
     this.tractorLabel,
+    this.tractorBrand,
+    this.tractorModel,
     this.submitterName,
     this.bookingPurpose,
     this.bookingDate,
@@ -16,6 +19,7 @@ class FarmerFeedbackItem {
   });
 
   final int id;
+  final int? tractorId;
   final int? rating;
   final String? feedback;
   final String? category;
@@ -23,6 +27,8 @@ class FarmerFeedbackItem {
   final String? conclusion;
   final String? adminResponse;
   final String? tractorLabel;
+  final String? tractorBrand;
+  final String? tractorModel;
   final String? submitterName;
   final String? bookingPurpose;
   final String? bookingDate;
@@ -45,6 +51,7 @@ class FarmerFeedbackItem {
 
     return FarmerFeedbackItem(
       id: json['id'] as int,
+      tractorId: tractor?['id'] as int?,
       rating: json['rating'] as int?,
       feedback: json['feedback']?.toString(),
       category: json['category']?.toString(),
@@ -52,10 +59,43 @@ class FarmerFeedbackItem {
       conclusion: json['conclusion']?.toString(),
       adminResponse: json['admin_response']?.toString(),
       tractorLabel: tractor?['no_plate']?.toString(),
+      tractorBrand: tractor?['brand']?.toString(),
+      tractorModel: tractor?['model']?.toString(),
       submitterName: submitter?['name']?.toString(),
       bookingPurpose: booking?['purpose']?.toString(),
       bookingDate: booking?['booking_date']?.toString(),
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
+    );
+  }
+}
+
+/// Lightweight tractor for the "select tractor" feedback form.
+class FeedbackTractorOption {
+  const FeedbackTractorOption({
+    required this.id,
+    required this.noPlate,
+    this.brand,
+    this.model,
+  });
+
+  final int id;
+  final String noPlate;
+  final String? brand;
+  final String? model;
+
+  String get label {
+    final parts = <String>[noPlate];
+    if (brand != null && brand!.isNotEmpty) parts.add(brand!);
+    if (model != null && model!.isNotEmpty) parts.add(model!);
+    return parts.join(' · ');
+  }
+
+  factory FeedbackTractorOption.fromJson(Map<String, dynamic> json) {
+    return FeedbackTractorOption(
+      id: json['id'] as int,
+      noPlate: json['no_plate']?.toString() ?? '',
+      brand: json['brand']?.toString(),
+      model: json['model']?.toString(),
     );
   }
 }

@@ -13,9 +13,14 @@ class HiveService {
     if (!Hive.isBoxOpen(HiveBoxes.session)) {
       await Hive.openBox<AppSession>(HiveBoxes.session);
     }
+
+    if (!Hive.isBoxOpen(HiveBoxes.preferences)) {
+      await Hive.openBox<String>(HiveBoxes.preferences);
+    }
   }
 
   Box<AppSession> get _sessionBox => Hive.box<AppSession>(HiveBoxes.session);
+  Box<String> get _preferencesBox => Hive.box<String>(HiveBoxes.preferences);
 
   AppSession? getSession() {
     return _sessionBox.get(HiveBoxes.sessionKey);
@@ -27,5 +32,15 @@ class HiveService {
 
   Future<void> clearSession() async {
     await _sessionBox.delete(HiveBoxes.sessionKey);
+  }
+
+  // ─── Locale Preference ───
+
+  String getLocale() {
+    return _preferencesBox.get(HiveBoxes.localeKey, defaultValue: 'en')!;
+  }
+
+  Future<void> saveLocale(String localeCode) async {
+    await _preferencesBox.put(HiveBoxes.localeKey, localeCode);
   }
 }

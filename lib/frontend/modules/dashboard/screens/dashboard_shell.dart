@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_nav_bar/google_nav_bar.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
+import 'package:tanodmobile/core/locale/app_localizations.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tractor_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/force_change_password_dialog.dart';
@@ -92,21 +93,21 @@ class _DashboardShellState extends State<DashboardShell> {
               color: AppColors.mutedInk,
               tabBorderRadius: 16,
               tabs: [
-                const GButton(
+                GButton(
                   icon: Icons.home_rounded,
-                  text: 'Home',
+                  text: context.tr('nav_home'),
                   iconActiveColor: AppColors.forest,
-                  textStyle: TextStyle(
+                  textStyle: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: AppColors.forest,
                   ),
                 ),
-                const GButton(
+                GButton(
                   icon: Icons.notifications_active_rounded,
-                  text: 'Alerts',
+                  text: context.tr('nav_alerts'),
                   iconActiveColor: AppColors.forest,
-                  textStyle: TextStyle(
+                  textStyle: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: AppColors.forest,
@@ -116,7 +117,9 @@ class _DashboardShellState extends State<DashboardShell> {
                   icon: isTps
                       ? Icons.build_circle_rounded
                       : Icons.calendar_month_rounded,
-                  text: isTps ? 'TPS' : 'Booking',
+                  text: isTps
+                      ? context.tr('nav_tps')
+                      : context.tr('nav_booking'),
                   iconActiveColor: AppColors.forest,
                   textStyle: const TextStyle(
                     fontSize: 13,
@@ -125,21 +128,21 @@ class _DashboardShellState extends State<DashboardShell> {
                   ),
                 ),
                 if (isFca)
-                  const GButton(
+                  GButton(
                     icon: Icons.people_rounded,
-                    text: 'Farmers',
+                    text: context.tr('nav_farmers'),
                     iconActiveColor: AppColors.forest,
-                    textStyle: TextStyle(
+                    textStyle: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: AppColors.forest,
                     ),
                   ),
-                const GButton(
+                GButton(
                   icon: Icons.person_rounded,
-                  text: 'Account',
+                  text: context.tr('nav_account'),
                   iconActiveColor: AppColors.forest,
-                  textStyle: TextStyle(
+                  textStyle: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: AppColors.forest,

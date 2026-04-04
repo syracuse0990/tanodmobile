@@ -35,6 +35,7 @@ class PusherClient {
   Timer? _pingTimer;
   Timer? _reconnectTimer;
   bool _intentionalDisconnect = false;
+  Completer<void>? _connectionCompleter;
 
   final _eventController = StreamController<PusherEvent>.broadcast();
   final Map<String, bool> _subscribedChannels = {};
@@ -49,8 +50,11 @@ class PusherClient {
   bool get isConnected => _socketId != null;
 
   /// Connect to the WebSocket server.
+  /// Waits until the Pusher `connection_established` event is received
+  /// so that [socketId] is available immediately after this returns.
   Future<void> connect() async {
     _intentionalDisconnect = false;
+    _connectionCompleter = Completer<void>();
     final scheme = useTls ? 'wss' : 'ws';
     final uri = Uri.parse('$scheme://$host:$port/app/$appKey');
 
@@ -63,8 +67,17 @@ class PusherClient {
         onError: _onError,
         onDone: _onDone,
       );
+
+      // Wait for pusher:connection_established (sets _socketId).
+      await _connectionCompleter!.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('PusherClient: connection_established timed out');
+        },
+      );
     } catch (e) {
       debugPrint('PusherClient: connection failed: $e');
+      _connectionCompleter?.completeError(e);
       _scheduleReconnect();
     }
   }
@@ -78,12 +91,13 @@ class PusherClient {
   /// Subscribe to a private channel.
   Future<void> subscribe(String channelName) async {
     if (_socketId == null) {
-      // Queue subscription for after connection.
+      debugPrint('PusherClient: queuing subscription for $channelName (no socketId yet)');
       _subscribedChannels[channelName] = false;
       return;
     }
 
     try {
+      debugPrint('PusherClient: subscribing to $channelName (socketId=$_socketId)');
       final authData = await authCallback(_socketId!, channelName);
 
       _send({
@@ -97,8 +111,11 @@ class PusherClient {
       });
 
       _subscribedChannels[channelName] = true;
+      debugPrint('PusherClient: subscribe message sent for $channelName');
     } catch (e) {
-      debugPrint('PusherClient: subscribe failed for $channelName: $e');
+      debugPrint('PusherClient: subscribe FAILED for $channelName: $e');
+      // Mark as not subscribed so retry can pick it up.
+      _subscribedChannels[channelName] = false;
     }
   }
 
@@ -135,6 +152,11 @@ class PusherClient {
           _socketId = data['socket_id'] as String?;
           debugPrint('PusherClient: connected (socketId=$_socketId)');
           _startPing();
+          // Complete the connection future so connect() can return.
+          if (_connectionCompleter != null &&
+              !_connectionCompleter!.isCompleted) {
+            _connectionCompleter!.complete();
+          }
           _resubscribeAll();
           break;
 
@@ -145,7 +167,7 @@ class PusherClient {
         case 'pusher_internal:subscription_succeeded':
           final ch = msg['channel'] as String? ?? '';
           _subscribedChannels[ch] = true;
-          debugPrint('PusherClient: subscribed to $ch');
+          debugPrint('PusherClient: subscription confirmed for $ch');
           break;
 
         case 'pusher:error':
@@ -161,6 +183,8 @@ class PusherClient {
               data = jsonDecode(data);
             } catch (_) {}
           }
+
+          debugPrint('PusherClient: event=$event channel=$channel');
 
           _eventController.add(PusherEvent(
             event: event,
@@ -198,9 +222,11 @@ class PusherClient {
     });
   }
 
-  void _resubscribeAll() {
-    for (final channel in _subscribedChannels.keys.toList()) {
-      subscribe(channel);
+  Future<void> _resubscribeAll() async {
+    final channels = _subscribedChannels.keys.toList();
+    debugPrint('PusherClient: resubscribing to ${channels.length} channel(s): $channels');
+    for (final channel in channels) {
+      await subscribe(channel);
     }
   }
 
@@ -215,6 +241,10 @@ class PusherClient {
   void _cleanup() {
     _pingTimer?.cancel();
     _reconnectTimer?.cancel();
+    if (_connectionCompleter != null && !_connectionCompleter!.isCompleted) {
+      _connectionCompleter!.completeError('Disconnected');
+    }
+    _connectionCompleter = null;
     _socketId = null;
     _subscribedChannels.clear();
     _channel?.sink.close();
