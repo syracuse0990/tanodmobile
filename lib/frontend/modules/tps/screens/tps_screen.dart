@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
+import 'package:tanodmobile/core/locale/app_localizations.dart';
+import 'package:tanodmobile/frontend/shared/providers/maintenance_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tps_provider.dart';
 import 'package:tanodmobile/models/domain/distribution.dart';
 import 'package:tanodmobile/models/domain/farmer_feedback.dart';
+import 'package:tanodmobile/models/domain/maintenance_tractor.dart';
 import 'package:tanodmobile/models/domain/ticket.dart';
 
 class TpsScreen extends StatefulWidget {
@@ -20,8 +24,9 @@ class _TpsScreenState extends State<TpsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     context.read<TpsProvider>().loadAll();
+    context.read<MaintenanceProvider>().fetchTractors();
   }
 
   @override
@@ -36,7 +41,32 @@ class _TpsScreenState extends State<TpsScreen>
       builder: (context, provider, _) {
         return Scaffold(
           backgroundColor: const Color(0xFFF5F7F6),
-          body: NestedScrollView(
+          floatingActionButton: AnimatedBuilder(
+            animation: _tabController,
+            builder: (context, child) {
+              final index = _tabController.index;
+              final showFab = index == 4;
+              return AnimatedScale(
+                scale: showFab ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: showFab
+                    ? FloatingActionButton.extended(
+                        onPressed: () {
+                          context.go('/tps/distribute');
+                        },
+                        backgroundColor: AppColors.forest,
+                        foregroundColor: Colors.white,
+                        icon: const Icon(Icons.add_rounded, size: 20),
+                        label: Text(context.tr('distribute_tractor')),
+                      )
+                    : const SizedBox.shrink(),
+              );
+            },
+          ),
+          body: RefreshIndicator(
+            onRefresh: () => provider.loadAll(),
+            color: AppColors.forest,
+            child: NestedScrollView(
             headerSliverBuilder: (context, innerBoxIsScrolled) {
               return [
                 SliverAppBar(
@@ -98,6 +128,7 @@ class _TpsScreenState extends State<TpsScreen>
                               Tab(text: 'Tickets'),
                               Tab(text: 'Feedbacks'),
                               Tab(text: 'Tractors'),
+                              Tab(text: 'Maintenance'),
                               Tab(text: 'Distributions'),
                             ],
                           ),
@@ -114,9 +145,11 @@ class _TpsScreenState extends State<TpsScreen>
                 _TicketsTab(provider: provider),
                 _FeedbacksTab(provider: provider),
                 _TractorsTab(provider: provider),
+                const _MaintenanceTab(),
                 _DistributionsTab(provider: provider),
               ],
             ),
+          ),
           ),
         );
       },
@@ -263,7 +296,13 @@ class _TicketsTab extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         itemCount: provider.tickets.length,
         separatorBuilder: (_, __) => const SizedBox(height: 10),
-        itemBuilder: (_, i) => _TicketCard(ticket: provider.tickets[i]),
+        itemBuilder: (_, i) {
+          final ticket = provider.tickets[i];
+          return GestureDetector(
+            onTap: () => context.go('/tps/tickets/${ticket.id}'),
+            child: _TicketCard(ticket: ticket),
+          );
+        },
       ),
     );
   }
@@ -616,6 +655,252 @@ class _TractorsTab extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+// ─── Maintenance Tab ────────────────────────────
+
+class _MaintenanceTab extends StatelessWidget {
+  const _MaintenanceTab();
+
+  void _showPmsActions(BuildContext ctx, MaintenanceTractor tractor) {
+    showModalBottomSheet(
+      context: ctx,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 12, bottom: 4),
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.mutedInk.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                tractor.label,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink,
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading:
+                  const Icon(Icons.history_rounded, color: AppColors.forest),
+              title: const Text('PMS History'),
+              subtitle: const Text('View past PMS records'),
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                ctx.push('/account/maintenance/history', extra: tractor);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.checklist_rounded,
+                  color: AppColors.forest),
+              title: const Text('Record PMS'),
+              subtitle: const Text('Perform PMS checklist'),
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                ctx.push('/account/maintenance/record', extra: tractor);
+              },
+            ),
+            const SizedBox(height: 8),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = context.watch<MaintenanceProvider>();
+    final tractors = List<MaintenanceTractor>.from(provider.tractors)
+      ..sort((a, b) {
+        const order = {'due': 0, 'upcoming': 1, 'ok': 2};
+        final cmp =
+            (order[a.pmsStatus] ?? 2).compareTo(order[b.pmsStatus] ?? 2);
+        if (cmp != 0) return cmp;
+        return a.totalRunningHours.compareTo(b.totalRunningHours);
+      });
+
+    if (provider.loading && tractors.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.forest),
+      );
+    }
+
+    if (tractors.isEmpty) {
+      return _buildEmpty(Icons.build_circle_outlined, 'No maintenance data');
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => provider.fetchTractors(),
+      color: AppColors.forest,
+      child: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        itemCount: tractors.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemBuilder: (_, i) {
+          final tractor = tractors[i];
+          return GestureDetector(
+            onTap: () => _showPmsActions(context, tractor),
+            child: _MaintenanceCard(tractor: tractor),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _MaintenanceCard extends StatelessWidget {
+  const _MaintenanceCard({required this.tractor});
+  final MaintenanceTractor tractor;
+
+  @override
+  Widget build(BuildContext context) {
+    final (Color badgeBg, Color badgeFg, String badgeText) =
+        switch (tractor.pmsStatus) {
+      'due' => (const Color(0xFFFFEBEE), AppColors.danger, 'PMS DUE'),
+      'upcoming' => (
+        const Color(0xFFFFF3E0),
+        const Color(0xFFE65100),
+        'UPCOMING',
+      ),
+      _ => (const Color(0xFFE8F5E9), AppColors.forest, 'OK'),
+    };
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ink.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        border: tractor.isPmsDue
+            ? Border.all(
+                color: AppColors.danger.withValues(alpha: 0.4), width: 1.5)
+            : tractor.isPmsUpcoming
+                ? Border.all(
+                    color: const Color(0xFFE65100).withValues(alpha: 0.3),
+                    width: 1)
+                : null,
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.forest.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: tractor.imageUrl != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.network(
+                          tractor.imageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.agriculture_rounded,
+                            color: AppColors.forest,
+                            size: 24,
+                          ),
+                        ),
+                      )
+                    : const Icon(
+                        Icons.agriculture_rounded,
+                        color: AppColors.forest,
+                        size: 24,
+                      ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tractor.label,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (tractor.brandModel.isNotEmpty)
+                      Text(
+                        tractor.brandModel,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.mutedInk),
+                      ),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: badgeBg,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  badgeText,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: badgeFg,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _InfoChip(
+                icon: Icons.schedule_rounded,
+                text:
+                    '${tractor.totalRunningHours.toStringAsFixed(1)}h running',
+              ),
+              const SizedBox(width: 12),
+              _InfoChip(
+                icon: Icons.straighten_rounded,
+                text: '${tractor.totalDistance.toStringAsFixed(1)} km',
+              ),
+            ],
+          ),
+          if (tractor.assigneeName != null) ...[
+            const SizedBox(height: 8),
+            _InfoChip(
+              icon: Icons.person_outline_rounded,
+              text: tractor.assigneeName!,
+            ),
+          ],
+        ],
       ),
     );
   }

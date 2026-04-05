@@ -96,8 +96,10 @@ class TanodMobileApp extends StatelessWidget {
           ),
         ),
         ChangeNotifierProvider<TpsProvider>(
-          create: (context) =>
-              TpsProvider(apiClient: context.read<ApiClient>()),
+          create: (context) => TpsProvider(
+            apiClient: context.read<ApiClient>(),
+            dio: context.read<Dio>(),
+          ),
         ),
         ChangeNotifierProvider<MaintenanceProvider>(
           create: (context) =>

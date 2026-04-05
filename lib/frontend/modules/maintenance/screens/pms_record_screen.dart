@@ -153,7 +153,7 @@ class _PmsRecordScreenState extends State<PmsRecordScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: SizedBox(
-                      height: 44,
+                      height: 53,
                       child: ElevatedButton(
                         onPressed: () => Navigator.pop(ctx, controller.text),
                         style: ElevatedButton.styleFrom(
@@ -176,7 +176,8 @@ class _PmsRecordScreenState extends State<PmsRecordScreen> {
         ),
       ),
     );
-    controller.dispose();
+    // Defer disposal — dialog widgets may still be alive during exit animation
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
     if (result != null && mounted) {
       setState(() {
         _checklist[index] = _checklist[index].copyWith(

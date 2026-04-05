@@ -27,8 +27,8 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   String _channelName = '';
 
   // Typing indicator state
-  String? _typingUserName;
-  String? _typingUserRole;
+  final _typingUserName = ValueNotifier<String?>(null);
+  final _typingUserRole = ValueNotifier<String?>(null);
   Timer? _typingClearTimer;
 
   // Unread chat badge
@@ -64,13 +64,11 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       }
     } else if (event.event == 'client-typing') {
       if (!mounted) return;
-      setState(() {
-        _typingUserName = event.data['name'] as String?;
-        _typingUserRole = event.data['role'] as String?;
-      });
+      _typingUserName.value = event.data['name'] as String?;
+      _typingUserRole.value = event.data['role'] as String?;
       _typingClearTimer?.cancel();
       _typingClearTimer = Timer(const Duration(seconds: 3), () {
-        if (mounted) setState(() => _typingUserName = null);
+        if (mounted) _typingUserName.value = null;
       });
     }
   }
@@ -79,6 +77,8 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   void dispose() {
     _eventSub?.cancel();
     _typingClearTimer?.cancel();
+    _typingUserName.dispose();
+    _typingUserRole.dispose();
     // Unsubscribe from the ticket channel
     context.read<RealtimeProvider>().unsubscribeFromChannel(_channelName);
     super.dispose();
@@ -508,15 +508,15 @@ class _ChatSheet extends StatelessWidget {
     required this.ticketId,
     required this.channelName,
     required this.comments,
-    this.typingUserName,
-    this.typingUserRole,
+    required this.typingUserName,
+    required this.typingUserRole,
   });
 
   final int ticketId;
   final String channelName;
   final List<TicketComment> comments;
-  final String? typingUserName;
-  final String? typingUserRole;
+  final ValueNotifier<String?> typingUserName;
+  final ValueNotifier<String?> typingUserRole;
 
   @override
   Widget build(BuildContext context) {
@@ -634,14 +634,19 @@ class _ChatSheet extends StatelessWidget {
           ),
 
           // ─── Typing indicator ───
-          if (typingUserName != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: _TypingIndicator(
-                userName: typingUserName!,
-                userRole: typingUserRole,
-              ),
-            ),
+          ValueListenableBuilder<String?>(
+            valueListenable: typingUserName,
+            builder: (context, name, _) {
+              if (name == null) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: _TypingIndicator(
+                  userName: name,
+                  userRole: typingUserRole.value,
+                ),
+              );
+            },
+          ),
 
           // ─── Chat input ───
           Padding(

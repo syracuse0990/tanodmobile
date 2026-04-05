@@ -163,14 +163,14 @@ class AccountScreen extends StatelessWidget {
                       const SizedBox(height: 8),
                       _MenuGroup(
                         items: [
-                          _MenuItem(
-                            icon: Icons.confirmation_num_outlined,
-                            label: context.tr('tickets'),
-                            onTap: () => context.go('/account/tickets'),
-                          ),
+                          if (user == null || !user.roles.contains('tps'))
+                            _MenuItem(
+                              icon: Icons.confirmation_num_outlined,
+                              label: context.tr('tickets'),
+                              onTap: () => context.go('/account/tickets'),
+                            ),
                           if (user != null &&
-                              (user.roles.contains('fca') ||
-                                  user.roles.contains('tps')))
+                              user.roles.contains('fca'))
                             _MenuItem(
                               icon: Icons.build_outlined,
                               label: context.tr('maintenance'),
@@ -185,12 +185,13 @@ class AccountScreen extends StatelessWidget {
                               onTap: () =>
                                   context.go('/account/geofences'),
                             ),
-                          _MenuItem(
-                            icon: Icons.rate_review_outlined,
-                            label: context.tr('feedback'),
-                            onTap: () =>
-                                context.go('/account/feedback'),
-                          ),
+                          if (user == null || !user.roles.contains('tps'))
+                            _MenuItem(
+                              icon: Icons.rate_review_outlined,
+                              label: context.tr('feedback'),
+                              onTap: () =>
+                                  context.go('/account/feedback'),
+                            ),
                           _MenuItem(
                             icon: Icons.assessment_outlined,
                             label: context.tr('reports'),

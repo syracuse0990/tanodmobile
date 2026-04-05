@@ -1,14 +1,21 @@
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:tanodmobile/backend/dio/api_client.dart';
 import 'package:tanodmobile/backend/endpoints/app_endpoints.dart';
+import 'package:tanodmobile/core/errors/app_exception.dart';
 import 'package:tanodmobile/models/domain/distribution.dart';
 import 'package:tanodmobile/models/domain/farmer_feedback.dart';
 import 'package:tanodmobile/models/domain/ticket.dart';
 
 class TpsProvider extends ChangeNotifier {
-  TpsProvider({required ApiClient apiClient}) : _apiClient = apiClient;
+  TpsProvider({required ApiClient apiClient, required Dio dio})
+    : _apiClient = apiClient,
+      _dio = dio;
 
   final ApiClient _apiClient;
+  final Dio _dio;
 
   // Dashboard stats
   int tractorsCount = 0;
@@ -210,6 +217,230 @@ class TpsProvider extends ChangeNotifier {
     }
   }
 
+  // ─── Selected Ticket Detail ─────────────────────
+
+  Ticket? _selectedTicket;
+  bool _loadingDetail = false;
+
+  Ticket? get selectedTicket => _selectedTicket;
+  bool get loadingDetail => _loadingDetail;
+
+  Future<void> fetchTicketDetail(int ticketId) async {
+    _loadingDetail = true;
+    notifyListeners();
+
+    try {
+      final response = await _apiClient.get(
+        '${AppEndpoints.tpsTickets}/$ticketId',
+      );
+
+      final data = response['data'] as Map<String, dynamic>?;
+      if (data != null) {
+        _selectedTicket = Ticket.fromJson(data);
+      }
+    } catch (e) {
+      debugPrint('TpsProvider.fetchTicketDetail error: $e');
+    } finally {
+      _loadingDetail = false;
+      notifyListeners();
+    }
+  }
+
+  // ─── Ticket Form Data ─────────────────────────
+
+  List<Map<String, dynamic>> _ticketTractors = [];
+  bool _loadingTicketFormData = false;
+
+  List<Map<String, dynamic>> get ticketTractors => _ticketTractors;
+  bool get loadingTicketFormData => _loadingTicketFormData;
+
+  Future<void> fetchTicketFormData() async {
+    _loadingTicketFormData = true;
+    notifyListeners();
+
+    try {
+      final response = await _apiClient.get(AppEndpoints.tpsTicketFormData);
+      final tractorList = response['tractors'] as List<dynamic>? ?? [];
+      _ticketTractors =
+          tractorList.whereType<Map<String, dynamic>>().toList();
+    } catch (e) {
+      debugPrint('TpsProvider.fetchTicketFormData error: $e');
+    } finally {
+      _loadingTicketFormData = false;
+      notifyListeners();
+    }
+  }
+
+  // ─── Create Ticket (multipart) ─────────────────
+
+  Future<bool> createTicket({
+    required String subject,
+    required String description,
+    required String priority,
+    String? category,
+    int? tractorId,
+    File? photo,
+  }) async {
+    try {
+      final formMap = <String, dynamic>{
+        'subject': subject,
+        'description': description,
+        'priority': priority,
+        if (category != null) 'category': category,
+        if (tractorId != null) 'tractor_id': tractorId,
+      };
+
+      if (photo != null) {
+        formMap['photo'] = await MultipartFile.fromFile(
+          photo.path,
+          filename: photo.path.split(Platform.pathSeparator).last,
+        );
+      }
+
+      final formData = FormData.fromMap(formMap);
+
+      await _dio.post(
+        AppEndpoints.tickets,
+        data: formData,
+        options: Options(contentType: 'multipart/form-data'),
+      );
+
+      await fetchTickets();
+      return true;
+    } catch (e) {
+      debugPrint('TpsProvider.createTicket error: $e');
+      return false;
+    }
+  }
+
+  // ─── Resolve Ticket (multipart) ────────────────
+
+  Future<bool> resolveTicket({
+    required int ticketId,
+    String? resolutionNotes,
+    File? resolutionPhoto,
+  }) async {
+    try {
+      final formMap = <String, dynamic>{
+        if (resolutionNotes != null) 'resolution_notes': resolutionNotes,
+      };
+
+      if (resolutionPhoto != null) {
+        formMap['resolution_photo'] = await MultipartFile.fromFile(
+          resolutionPhoto.path,
+          filename:
+              resolutionPhoto.path.split(Platform.pathSeparator).last,
+        );
+      }
+
+      final formData = FormData.fromMap(formMap);
+
+      await _dio.post(
+        '${AppEndpoints.tickets}/$ticketId/resolve',
+        data: formData,
+        options: Options(contentType: 'multipart/form-data'),
+      );
+
+      await fetchTicketDetail(ticketId);
+      return true;
+    } catch (e) {
+      debugPrint('TpsProvider.resolveTicket error: $e');
+      return false;
+    }
+  }
+
+  // ─── Close Ticket ──────────────────────────────
+
+  Future<bool> closeTicket(int ticketId) async {
+    try {
+      await _apiClient.post('${AppEndpoints.tickets}/$ticketId/close');
+      await fetchTicketDetail(ticketId);
+      return true;
+    } catch (e) {
+      debugPrint('TpsProvider.closeTicket error: $e');
+      return false;
+    }
+  }
+
+  // ─── Request Assistance ────────────────────────
+
+  Future<bool> requestAssistance({
+    required int ticketId,
+    required String message,
+  }) async {
+    try {
+      await _apiClient.post(
+        '${AppEndpoints.tpsTickets}/$ticketId/request-assistance',
+        data: {'message': message},
+      );
+      return true;
+    } catch (e) {
+      debugPrint('TpsProvider.requestAssistance error: $e');
+      return false;
+    }
+  }
+
+  // ─── Add Comment ───────────────────────────────
+
+  Future<bool> addComment({
+    required int ticketId,
+    String? body,
+    File? attachment,
+  }) async {
+    try {
+      if (attachment != null) {
+        final formMap = <String, dynamic>{
+          if (body != null && body.isNotEmpty) 'body': body,
+          'attachment': await MultipartFile.fromFile(
+            attachment.path,
+            filename: attachment.path.split(Platform.pathSeparator).last,
+          ),
+        };
+
+        final formData = FormData.fromMap(formMap);
+
+        final response = await _dio.post(
+          '${AppEndpoints.tickets}/$ticketId/comment',
+          data: formData,
+          options: Options(contentType: 'multipart/form-data'),
+        );
+
+        final data =
+            (response.data as Map<String, dynamic>?)?['data']
+                as Map<String, dynamic>?;
+        if (data != null && _selectedTicket != null) {
+          final comment = TicketComment.fromJson(data);
+          _selectedTicket = _selectedTicket!.copyWithNewComment(comment);
+          notifyListeners();
+        }
+      } else {
+        final response = await _apiClient.post(
+          '${AppEndpoints.tickets}/$ticketId/comment',
+          data: {'body': body},
+        );
+
+        final data = response['data'] as Map<String, dynamic>?;
+        if (data != null && _selectedTicket != null) {
+          final comment = TicketComment.fromJson(data);
+          _selectedTicket = _selectedTicket!.copyWithNewComment(comment);
+          notifyListeners();
+        }
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('TpsProvider.addComment error: $e');
+      return false;
+    }
+  }
+
+  void appendRealtimeComment(Map<String, dynamic> commentData) {
+    if (_selectedTicket == null) return;
+    final comment = TicketComment.fromJson(commentData);
+    _selectedTicket = _selectedTicket!.copyWithNewComment(comment);
+    notifyListeners();
+  }
+
   // ─── Load all data ─────────────────────────────
 
   Future<void> loadAll() async {
@@ -220,5 +451,27 @@ class TpsProvider extends ChangeNotifier {
       fetchTractors(),
       fetchDistributions(),
     ]);
+  }
+
+  // ─── Distribution Form Data ────────────────────
+
+  Future<Map<String, dynamic>> fetchDistributionFormData() async {
+    try {
+      return await _apiClient.get(AppEndpoints.tpsDistributionFormData);
+    } on DioException catch (error) {
+      throw AppException.fromDio(error);
+    }
+  }
+
+  Future<void> storeDistribution({
+    required Map<String, dynamic> data,
+  }) async {
+    try {
+      await _apiClient.post(AppEndpoints.tpsDistributions, data: data);
+      // Refresh distributions and dashboard after successful creation
+      await Future.wait([fetchDistributions(), fetchDashboard()]);
+    } on DioException catch (error) {
+      throw AppException.fromDio(error);
+    }
   }
 }

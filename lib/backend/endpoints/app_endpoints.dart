@@ -47,8 +47,10 @@ class AppEndpoints {
   // TPS endpoints
   static const String tpsDashboard = '/tps/dashboard';
   static const String tpsTickets = '/tps/tickets';
+  static const String tpsTicketFormData = '/tps/tickets/form-data';
   static const String tpsMaintenances = '/tps/maintenances';
   static const String tpsFeedbacks = '/tps/feedbacks';
   static const String tpsTractors = '/tps/tractors';
   static const String tpsDistributions = '/tps/distributions';
+  static const String tpsDistributionFormData = '/tps/distributions/form-data';
 }

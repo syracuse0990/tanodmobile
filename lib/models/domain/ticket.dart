@@ -95,8 +95,8 @@ class Ticket {
 
   factory Ticket.fromJson(Map<String, dynamic> json) {
     final tractor = json['tractor'] as Map<String, dynamic>?;
-    final submitter = json['submitted_by'] as Map<String, dynamic>?;
-    final resolver = json['resolved_by'] as Map<String, dynamic>?;
+    final submitter = json['submitter'] as Map<String, dynamic>?;
+    final resolver = json['resolver'] as Map<String, dynamic>?;
     final rawAssignees = json['assignees'] as List<dynamic>?;
     final rawComments = json['comments'] as List<dynamic>?;
 

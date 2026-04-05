@@ -30,6 +30,8 @@ import 'package:tanodmobile/frontend/modules/profile/screens/terms_privacy_scree
 import 'package:tanodmobile/frontend/modules/profile/screens/delete_account_screen.dart';
 import 'package:tanodmobile/frontend/modules/reports/screens/reports_screen.dart';
 import 'package:tanodmobile/frontend/modules/tps/screens/tps_screen.dart';
+import 'package:tanodmobile/frontend/modules/tps/screens/distribute_tractor_screen.dart';
+import 'package:tanodmobile/frontend/modules/tps/screens/tps_ticket_detail_screen.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/models/domain/maintenance_tractor.dart';
 
@@ -107,6 +109,23 @@ class AppRouter {
                   path: isTps ? '/tps' : '/bookings',
                   builder: (context, state) =>
                       isTps ? const TpsScreen() : const BookingsScreen(),
+                  routes: isTps
+                      ? [
+                          GoRoute(
+                            path: 'distribute',
+                            builder: (context, state) =>
+                                const DistributeTractorScreen(),
+                          ),
+                          GoRoute(
+                            path: 'tickets/:id',
+                            builder: (context, state) {
+                              final id =
+                                  int.parse(state.pathParameters['id']!);
+                              return TpsTicketDetailScreen(ticketId: id);
+                            },
+                          ),
+                        ]
+                      : [],
                 ),
               ],
             ),

@@ -66,17 +66,16 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
                 ctx.push('/account/maintenance/history', extra: tractor);
               },
             ),
-            if (!isTps)
-              ListTile(
-                leading: const Icon(Icons.checklist_rounded,
-                    color: AppColors.forest),
-                title: const Text('Record PMS'),
-                subtitle: const Text('Self-service PMS checklist'),
-                onTap: () {
-                  Navigator.pop(sheetCtx);
-                  ctx.push('/account/maintenance/record', extra: tractor);
-                },
-              ),
+            ListTile(
+              leading: const Icon(Icons.checklist_rounded,
+                  color: AppColors.forest),
+              title: const Text('Record PMS'),
+              subtitle: Text(isTps ? 'Perform PMS checklist' : 'Self-service PMS checklist'),
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                ctx.push('/account/maintenance/record', extra: tractor);
+              },
+            ),
             if (!isTps)
               ListTile(
                 leading: const Icon(Icons.support_agent_rounded,

@@ -289,16 +289,18 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
                 const SizedBox(height: 32),
 
                 // OTP input
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(6, (index) {
-                    return Container(
-                      width: 48,
-                      height: 56,
-                      margin: EdgeInsets.only(
-                        right: index < 5 ? 8 : 0,
-                        left: index == 3 ? 8 : 0,
-                      ),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(6, (index) {
+                      return Container(
+                        width: 48,
+                        height: 56,
+                        margin: EdgeInsets.only(
+                          right: index < 5 ? 8 : 0,
+                          left: index == 3 ? 8 : 0,
+                        ),
                       child: TextFormField(
                         controller: _codeControllers[index],
                         focusNode: _codeFocusNodes[index],
@@ -346,6 +348,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
                       ),
                     );
                   }),
+                ),
                 ),
 
                 const SizedBox(height: 28),
