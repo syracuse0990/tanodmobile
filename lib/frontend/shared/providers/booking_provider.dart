@@ -230,13 +230,13 @@ class BookingProvider extends ChangeNotifier {
         'tractor_id': tractorId,
         'booking_date': bookingDate,
         'purpose': purpose,
-        if (farmerId != null) 'farmer_id': farmerId,
-        if (startDate != null) 'start_date': startDate,
-        if (endDate != null) 'end_date': endDate,
-        if (startTime != null) 'start_time': startTime,
-        if (endTime != null) 'end_time': endTime,
-        if (farmAreaHectares != null) 'farm_area_hectares': farmAreaHectares,
-        if (notes != null) 'notes': notes,
+        'farmer_id': ?farmerId,
+        'start_date': ?startDate,
+        'end_date': ?endDate,
+        'start_time': ?startTime,
+        'end_time': ?endTime,
+        'farm_area_hectares': ?farmAreaHectares,
+        'notes': ?notes,
       });
       await fetchBookings();
       return true;
@@ -301,15 +301,15 @@ class BookingProvider extends ChangeNotifier {
   }) async {
     try {
       await _apiClient.put('${AppEndpoints.bookings}/$bookingId', data: {
-        if (tractorId != null) 'tractor_id': tractorId,
-        if (bookingDate != null) 'booking_date': bookingDate,
-        if (startDate != null) 'start_date': startDate,
-        if (endDate != null) 'end_date': endDate,
-        if (startTime != null) 'start_time': startTime,
-        if (endTime != null) 'end_time': endTime,
-        if (purpose != null) 'purpose': purpose,
-        if (farmAreaHectares != null) 'farm_area_hectares': farmAreaHectares,
-        if (notes != null) 'notes': notes,
+        'tractor_id': ?tractorId,
+        'booking_date': ?bookingDate,
+        'start_date': ?startDate,
+        'end_date': ?endDate,
+        'start_time': ?startTime,
+        'end_time': ?endTime,
+        'purpose': ?purpose,
+        'farm_area_hectares': ?farmAreaHectares,
+        'notes': ?notes,
       });
       await fetchBookings();
       return true;

@@ -89,7 +89,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       child: ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
                         itemCount: provider.sections.length,
-                        separatorBuilder: (_, __) =>
+                        separatorBuilder: (_, _) =>
                             const SizedBox(height: 16),
                         itemBuilder: (context, index) {
                           return _ReportCard(

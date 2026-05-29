@@ -24,6 +24,9 @@ class TractorProvider extends ChangeNotifier {
   int _secondsUntilPoll = 0;
   bool _homeVisible = true;
   DateTime? _nextPollAt;
+  int _pollSessionId = 0;
+  int _latestAllRequestId = 0;
+  int _latestFocusedRequestId = 0;
 
   List<TractorLocation> get tractors => _tractors;
   List<TractorLocation> get withLocation =>
@@ -51,8 +54,9 @@ class TractorProvider extends ChangeNotifier {
   Duration get _activeInterval =>
       isFocused ? _focusedInterval : _defaultInterval;
 
-  /// Focus on a single tractor – switches to 5s polling.
+  /// Focus on a single tractor – switches to 10s polling.
   void focusTractor(int tractorId) {
+    _pollSessionId += 1;
     _focusedTractorId = tractorId;
     notifyListeners();
     _restartPolling();
@@ -60,6 +64,7 @@ class TractorProvider extends ChangeNotifier {
 
   /// Clear focus – returns to 20s polling.
   void clearFocus() {
+    _pollSessionId += 1;
     _focusedTractorId = null;
     notifyListeners();
     _restartPolling();
@@ -77,6 +82,9 @@ class TractorProvider extends ChangeNotifier {
 
   /// Fetch all tractors + all live locations (20s polling).
   Future<void> _fetchAll() async {
+    final requestId = ++_latestAllRequestId;
+    final sessionId = _pollSessionId;
+
     _loading = _tractors.isEmpty;
     _error = null;
     notifyListeners();
@@ -94,6 +102,13 @@ class TractorProvider extends ChangeNotifier {
       final tractorResponse = results[0];
       final liveResponse = results[1];
 
+      if (
+          requestId != _latestAllRequestId ||
+          sessionId != _pollSessionId ||
+          isFocused) {
+        return;
+      }
+
       final dataList = tractorResponse['data'] as List<dynamic>? ?? [];
       final liveList = liveResponse['locations'] as List<dynamic>? ?? [];
 
@@ -109,17 +124,31 @@ class TractorProvider extends ChangeNotifier {
       _tractors = _mergeTractorsWithLive(dataList, liveByDeviceId);
       _error = null;
     } catch (e) {
+      if (
+          requestId != _latestAllRequestId ||
+          sessionId != _pollSessionId ||
+          isFocused) {
+        return;
+      }
+
       _error = 'Failed to load tractors';
       debugPrint('TractorProvider._fetchAll error: $e');
     } finally {
-      _loading = false;
-      notifyListeners();
+      if (
+          requestId == _latestAllRequestId &&
+          sessionId == _pollSessionId &&
+          !isFocused) {
+        _loading = false;
+        notifyListeners();
+      }
     }
   }
 
   /// Fetch only the focused tractor's real-time location (10s polling).
   /// Uses the direct follow endpoint — no cache on the server.
   Future<void> _fetchFocused() async {
+    final requestId = ++_latestFocusedRequestId;
+    final sessionId = _pollSessionId;
     final focusedId = _focusedTractorId;
     if (focusedId == null) return;
 
@@ -136,32 +165,42 @@ class TractorProvider extends ChangeNotifier {
       );
 
       final live = response['location'] as Map<String, dynamic>?;
-      if (live == null) return;
+
+      if (
+          requestId != _latestFocusedRequestId ||
+          sessionId != _pollSessionId ||
+          _focusedTractorId != focusedId) {
+        return;
+      }
 
       // Update only the focused tractor in the list.
       _tractors = _tractors.map((t) {
         if (t.id != focusedId) return t;
 
-        return TractorLocation(
-          id: t.id,
-          noPlate: t.noPlate,
-          brand: t.brand,
-          model: t.model,
-          isOnline: (live['status'] as int?) == 1,
-          lat: (live['lat'] as num?)?.toDouble() ?? t.lat,
-          lng: (live['lng'] as num?)?.toDouble() ?? t.lng,
-          speed: (live['speed'] as num?)?.toDouble(),
-          direction: (live['direction'] as num?)?.toDouble(),
-          heartbeatAt: live['heartbeat_at']?.toString(),
-          deviceId: t.deviceId,
+        return _mergeLiveIntoTractor(
+          t,
+          live,
+          keepLastKnownLocationOnMissing: true,
         );
       }).toList(growable: false);
 
       _error = null;
     } catch (e) {
+      if (
+          requestId != _latestFocusedRequestId ||
+          sessionId != _pollSessionId ||
+          _focusedTractorId != focusedId) {
+        return;
+      }
+
       debugPrint('TractorProvider._fetchFocused error: $e');
     } finally {
-      notifyListeners();
+      if (
+          requestId == _latestFocusedRequestId &&
+          sessionId == _pollSessionId &&
+          _focusedTractorId == focusedId) {
+        notifyListeners();
+      }
     }
   }
 
@@ -171,28 +210,57 @@ class TractorProvider extends ChangeNotifier {
     Map<int, Map<String, dynamic>> liveByDeviceId,
   ) {
     return dataList.whereType<Map<String, dynamic>>().map((json) {
-      final tractor = TractorLocation.fromTractorJson(json);
+      final tractor = TractorLocation.fromTractorJson(
+        json,
+        includeDeviceLocation: false,
+      );
 
       // Merge live GPS if available for this tractor's device.
       final live = tractor.deviceId != null
           ? liveByDeviceId[tractor.deviceId]
           : null;
-      if (live == null) return tractor;
 
+      return _mergeLiveIntoTractor(tractor, live);
+    }).toList(growable: false);
+  }
+
+  TractorLocation _mergeLiveIntoTractor(
+    TractorLocation tractor,
+    Map<String, dynamic>? live, {
+    bool keepLastKnownLocationOnMissing = false,
+  }) {
+    if (live == null) {
       return TractorLocation(
         id: tractor.id,
         noPlate: tractor.noPlate,
         brand: tractor.brand,
         model: tractor.model,
-        isOnline: (live['status'] as int?) == 1,
-        lat: (live['lat'] as num?)?.toDouble() ?? tractor.lat,
-        lng: (live['lng'] as num?)?.toDouble() ?? tractor.lng,
-        speed: (live['speed'] as num?)?.toDouble(),
-        direction: (live['direction'] as num?)?.toDouble(),
-        heartbeatAt: live['heartbeat_at']?.toString(),
+        isOnline: false,
+        lat: keepLastKnownLocationOnMissing ? tractor.lat : 0,
+        lng: keepLastKnownLocationOnMissing ? tractor.lng : 0,
+        speed: null,
+        direction: null,
+        heartbeatAt:
+            keepLastKnownLocationOnMissing ? tractor.heartbeatAt : null,
         deviceId: tractor.deviceId,
+        imei: tractor.imei,
       );
-    }).toList(growable: false);
+    }
+
+    return TractorLocation(
+      id: tractor.id,
+      noPlate: tractor.noPlate,
+      brand: tractor.brand,
+      model: tractor.model,
+      isOnline: (live['status'] as int?) == 1,
+      lat: (live['lat'] as num?)?.toDouble() ?? tractor.lat,
+      lng: (live['lng'] as num?)?.toDouble() ?? tractor.lng,
+      speed: (live['speed'] as num?)?.toDouble(),
+      direction: (live['direction'] as num?)?.toDouble(),
+      heartbeatAt: live['heartbeat_at']?.toString(),
+      deviceId: tractor.deviceId,
+      imei: tractor.imei,
+    );
   }
 
   /// Create a share link for a device.
@@ -268,6 +336,7 @@ class TractorProvider extends ChangeNotifier {
 
   /// Stop polling (e.g. when screen is not visible).
   void stopPolling() {
+    _pollSessionId += 1;
     _pollTimer?.cancel();
     _pollTimer = null;
     _countdownTimer?.cancel();

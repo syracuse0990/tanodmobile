@@ -113,7 +113,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                       child: ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
                         itemCount: provider.feedbacks.length,
-                        separatorBuilder: (_, __) =>
+                        separatorBuilder: (_, _) =>
                             const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           return _FeedbackCard(

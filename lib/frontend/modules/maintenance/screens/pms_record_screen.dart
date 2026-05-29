@@ -449,7 +449,7 @@ class _PmsRecordScreenState extends State<PmsRecordScreen> {
                             child: ListView.separated(
                               scrollDirection: Axis.horizontal,
                               itemCount: _photos.length,
-                              separatorBuilder: (_, __) =>
+                              separatorBuilder: (_, _) =>
                                   const SizedBox(width: 10),
                               itemBuilder: (_, i) => _PhotoThumbnail(
                                 file: _photos[i],

@@ -245,7 +245,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   sliver: SliverList.separated(
                     itemCount: alerts.length + (provider.hasMore ? 1 : 0),
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       if (index >= alerts.length) {
                         return const Padding(

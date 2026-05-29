@@ -20,7 +20,7 @@ class _HomeScreenState extends State<HomeScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final MapController _mapController = MapController();
   bool _showSatellite = false;
-  int _selectedMarkerIndex = -1;
+  int? _selectedTractorId;
 
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
@@ -177,11 +177,10 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  void _onMarkerTap(int index, List<TractorLocation> tractors) {
-    final tractor = tractors[index];
+  void _onMarkerTap(TractorLocation tractor) {
     final provider = context.read<TractorProvider>();
 
-    setState(() => _selectedMarkerIndex = index);
+    setState(() => _selectedTractorId = tractor.id);
 
     // Track initial position so the listener can detect movement.
     _lastFocusedLat = tractor.lat;
@@ -194,10 +193,15 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _clearFocus() {
     final provider = context.read<TractorProvider>();
-    setState(() => _selectedMarkerIndex = -1);
+    setState(() => _selectedTractorId = null);
     _lastFocusedLat = null;
     _lastFocusedLng = null;
     provider.clearFocus();
+  }
+
+  void _clearFocusAndRecenter() {
+    _clearFocus();
+    _recenter();
   }
 
   List<Marker> _buildMarkers(List<TractorLocation> tractors) {
@@ -211,11 +215,11 @@ class _HomeScreenState extends State<HomeScreen>
           width: 40,
           height: 40,
           child: GestureDetector(
-            onTap: () => _onMarkerTap(i, tractors),
+            onTap: () => _onMarkerTap(tractors[i]),
             child: _TractorMapMarker(
               isOnline: tractors[i].isOnline,
               isIdle: tractors[i].isIdle,
-              isSelected: _selectedMarkerIndex == i,
+              isSelected: _selectedTractorId == tractors[i].id,
               pulseAnimation: _pulseAnimation,
             ),
           ),
@@ -224,7 +228,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _recenter() {
-    _mapController.move(_phCenter, _initialZoom);
+    _animateCamera(_phCenter, targetZoom: _initialZoom);
   }
 
   void _zoomIn() {
@@ -294,17 +298,12 @@ class _HomeScreenState extends State<HomeScreen>
     final idleCount = tractorProvider.idleCount;
     final offlineCount = tractorProvider.offlineCount;
 
-    // Reset selected index if out of bounds after data refresh
-    if (_selectedMarkerIndex >= visibleTractors.length) {
-      _selectedMarkerIndex = -1;
-    }
-
     // Find selected tractor for FAB actions
     final TractorLocation? selectedTractor =
-        _selectedMarkerIndex >= 0 &&
-            _selectedMarkerIndex < visibleTractors.length
-        ? visibleTractors[_selectedMarkerIndex]
-        : null;
+        tractorProvider.tractors.cast<TractorLocation?>().firstWhere(
+          (tractor) => tractor?.id == _selectedTractorId,
+          orElse: () => null,
+        );
 
     return Scaffold(
       body: Stack(
@@ -318,7 +317,7 @@ class _HomeScreenState extends State<HomeScreen>
                 initialZoom: _initialZoom,
                 minZoom: 4,
                 maxZoom: 18,
-                onTap: (_, __) => _clearFocus(),
+                onTap: (_, _) => _clearFocus(),
               ),
               children: [
                 TileLayer(
@@ -422,7 +421,7 @@ class _HomeScreenState extends State<HomeScreen>
               right: 20,
               child: _TractorDetailCard(
                 tractor: selectedTractor,
-                onClose: _clearFocus,
+                onClose: _clearFocusAndRecenter,
                 onShare: () => _shareLocation(selectedTractor),
                 onTrackHistory: () => _viewTrackHistory(selectedTractor),
               ),
@@ -448,7 +447,7 @@ class _HomeScreenState extends State<HomeScreen>
               onTrackHistory: selectedTractor != null
                   ? () => _viewTrackHistory(selectedTractor)
                   : null,
-              onClearFocus: _clearFocus,
+              onClearFocus: _clearFocusAndRecenter,
             ),
           ),
         ],
@@ -462,6 +461,21 @@ Color _tractorColor(TractorLocation t) {
   if (t.isMoving) return AppColors.success;
   if (t.isIdle) return AppColors.warning;
   return AppColors.danger;
+}
+
+String _tractorAssetForState({
+  required bool isOnline,
+  required bool isIdle,
+}) {
+  if (!isOnline) {
+    return 'assets/images/red_tractor.png';
+  }
+
+  if (isIdle) {
+    return 'assets/images/yellow_tractor.png';
+  }
+
+  return 'assets/images/green_tractor.png';
 }
 
 // ─── Animated tractor marker ───
@@ -488,6 +502,10 @@ class _TractorMapMarker extends StatelessWidget {
     } else {
       color = AppColors.success;
     }
+    final assetPath = _tractorAssetForState(
+      isOnline: isOnline,
+      isIdle: isIdle,
+    );
 
     return AnimatedBuilder(
       animation: pulseAnimation,
@@ -510,8 +528,8 @@ class _TractorMapMarker extends StatelessWidget {
             // Selection glow
             if (isSelected)
               Container(
-                width: 32,
-                height: 32,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2.5),
@@ -523,14 +541,11 @@ class _TractorMapMarker extends StatelessWidget {
                   ],
                 ),
               ),
-            // Core marker
+            // Tractor marker image from the web Fleet tracker assets
             Container(
-              width: 18,
-              height: 18,
+              width: isSelected ? 34 : 30,
+              height: isSelected ? 34 : 30,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: color,
-                border: Border.all(color: Colors.white, width: 2.5),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.25),
@@ -539,10 +554,10 @@ class _TractorMapMarker extends StatelessWidget {
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.agriculture_rounded,
-                size: 10,
-                color: Colors.white,
+              child: Image.asset(
+                assetPath,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
               ),
             ),
           ],
@@ -611,6 +626,15 @@ class _TractorDetailCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _tractorColor(tractor);
+    final assetPath = _tractorAssetForState(
+      isOnline: tractor.isOnline,
+      isIdle: tractor.isIdle,
+    );
+    final imei = tractor.imei;
+    final imeiLabel = imei != null && imei.trim().isNotEmpty
+        ? imei
+        : 'Unavailable';
+    final lastOnlineLabel = tractor.isOnline ? 'Last update' : 'Last online';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -637,7 +661,12 @@ class _TractorDetailCard extends StatelessWidget {
                   color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(Icons.agriculture_rounded, color: color),
+                padding: const EdgeInsets.all(6),
+                child: Image.asset(
+                  assetPath,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -695,6 +724,48 @@ class _TractorDetailCard extends StatelessWidget {
                         Flexible(
                           child: Text(
                             '${tractor.lat.toStringAsFixed(4)}, ${tractor.lng.toStringAsFixed(4)}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.mutedInk,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.access_time_rounded,
+                          size: 13,
+                          color: AppColors.mutedInk,
+                        ),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Text(
+                            '$lastOnlineLabel ${tractor.lastOnlineLabel}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.mutedInk,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.numbers_rounded,
+                          size: 13,
+                          color: AppColors.mutedInk,
+                        ),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Text(
+                            'IMEI $imeiLabel',
                             style: const TextStyle(
                               fontSize: 11,
                               color: AppColors.mutedInk,
@@ -932,6 +1003,10 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet>
   @override
   Widget build(BuildContext context) {
     final hasTrack = _trackPoints.length >= 2;
+    final playbackAssetPath = _tractorAssetForState(
+      isOnline: widget.tractor.isOnline,
+      isIdle: widget.tractor.isIdle,
+    );
 
     return Container(
       height: MediaQuery.sizeOf(context).height * 0.7,
@@ -986,7 +1061,7 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet>
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 20),
               itemCount: _periods.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
               itemBuilder: (context, index) {
                 final period = _periods[index];
                 final isActive = _selectedPeriod == period['value'];
@@ -1108,29 +1183,22 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet>
                             if (hasTrack && _playController.value > 0)
                               Marker(
                                 point: _interpolatedPosition(),
-                                width: 32,
-                                height: 32,
+                                width: 38,
+                                height: 38,
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: AppColors.pine,
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 2.5,
-                                    ),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: AppColors.pine.withValues(
-                                          alpha: 0.4,
-                                        ),
+                                        color: AppColors.pine.withValues(alpha: 0.35),
                                         blurRadius: 8,
+                                        offset: const Offset(0, 2),
                                       ),
                                     ],
                                   ),
-                                  child: const Icon(
-                                    Icons.agriculture_rounded,
-                                    size: 16,
-                                    color: Colors.white,
+                                  child: Image.asset(
+                                    playbackAssetPath,
+                                    fit: BoxFit.contain,
+                                    filterQuality: FilterQuality.high,
                                   ),
                                 ),
                               ),

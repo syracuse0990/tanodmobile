@@ -298,7 +298,7 @@ class _SplashScreenState extends State<SplashScreen>
                                   'assets/images/philmech.png',
                                   height: 30,
                                   fit: BoxFit.contain,
-                                  errorBuilder: (_, __, ___) =>
+                                  errorBuilder: (_, _, _) =>
                                       const SizedBox(height: 30, width: 30),
                                 ),
                                 const SizedBox(width: 6),
@@ -347,7 +347,7 @@ class _SplashScreenState extends State<SplashScreen>
                                   'assets/images/leads_agri.png',
                                   height: 30,
                                   fit: BoxFit.contain,
-                                  errorBuilder: (_, __, ___) =>
+                                  errorBuilder: (_, _, _) =>
                                       const SizedBox(height: 30, width: 30),
                                 ),
                                 const SizedBox(width: 6),

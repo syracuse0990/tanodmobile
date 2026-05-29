@@ -66,7 +66,7 @@ class _PmsHistoryScreenState extends State<PmsHistoryScreen> {
                       : ListView.separated(
                           padding: const EdgeInsets.all(16),
                           itemCount: provider.records.length,
-                          separatorBuilder: (_, __) =>
+                          separatorBuilder: (_, _) =>
                               const SizedBox(height: 12),
                           itemBuilder: (_, i) => _RecordCard(
                             record: provider.records[i],
@@ -608,7 +608,7 @@ class _CompletePmsSheetState extends State<_CompletePmsSheet> {
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         itemCount: _photos.length,
-                        separatorBuilder: (_, __) =>
+                        separatorBuilder: (_, _) =>
                             const SizedBox(width: 8),
                         itemBuilder: (_, i) => Stack(
                           children: [

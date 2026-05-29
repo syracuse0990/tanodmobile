@@ -12,6 +12,7 @@ class TractorLocation {
     this.direction,
     this.heartbeatAt,
     this.deviceId,
+    this.imei,
   });
 
   final int id;
@@ -25,6 +26,7 @@ class TractorLocation {
   final double? direction;
   final String? heartbeatAt;
   final int? deviceId;
+  final String? imei;
 
   /// Minimum speed (km/h) to consider a tractor as actually moving.
   /// Filters out GPS drift noise which commonly reports 2–10 km/h on
@@ -46,22 +48,65 @@ class TractorLocation {
           ? 'Idle'
           : 'Offline';
 
-  factory TractorLocation.fromTractorJson(Map<String, dynamic> json) {
+  DateTime? get lastHeartbeatAt {
+    final rawHeartbeatAt = heartbeatAt;
+    if (rawHeartbeatAt == null || rawHeartbeatAt.isEmpty) {
+      return null;
+    }
+
+    final parsed = DateTime.tryParse(rawHeartbeatAt);
+    if (parsed == null) {
+      return null;
+    }
+
+    return parsed.isUtc ? parsed.toLocal() : parsed;
+  }
+
+  String get lastOnlineLabel {
+    final lastSeenAt = lastHeartbeatAt;
+    if (lastSeenAt == null) {
+      return 'Unavailable';
+    }
+
+    final diff = DateTime.now().difference(lastSeenAt);
+    if (diff.isNegative || diff.inMinutes < 1) {
+      return 'Just now';
+    }
+    if (diff.inMinutes < 60) {
+      return '${diff.inMinutes}m ago';
+    }
+    if (diff.inHours < 24) {
+      return '${diff.inHours}h ago';
+    }
+    if (diff.inDays < 7) {
+      return '${diff.inDays}d ago';
+    }
+
+    return '${lastSeenAt.day}/${lastSeenAt.month}/${lastSeenAt.year}';
+  }
+
+  factory TractorLocation.fromTractorJson(
+    Map<String, dynamic> json, {
+    bool includeDeviceLocation = true,
+  }) {
     final device = json['device'] as Map<String, dynamic>?;
-    final location = device?['location'] as Map<String, dynamic>?;
+    final location = includeDeviceLocation
+        ? (device?['location'] as Map<String, dynamic>?)
+        : null;
 
     return TractorLocation(
       id: json['id'] as int,
       noPlate: json['no_plate']?.toString() ?? '',
       brand: json['brand']?.toString() ?? '',
       model: json['model']?.toString() ?? '',
-      isOnline: device?['online'] == true,
+      isOnline: includeDeviceLocation && device?['online'] == true,
       lat: _parseDouble(location?['lat']) ?? 0,
       lng: _parseDouble(location?['lng']) ?? 0,
       speed: _parseDouble(location?['speed']),
       direction: _parseDouble(location?['direction']),
       heartbeatAt: location?['heartbeat_at']?.toString(),
       deviceId: device?['id'] as int?,
+      imei: json['imei']?.toString() ?? device?['imei']?.toString(),
     );
   }
 

@@ -180,7 +180,7 @@ class _TpsTicketDetailScreenState extends State<TpsTicketDetailScreen> {
               child: Image.network(
                 imageUrl,
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Container(
+                errorBuilder: (_, _, _) => Container(
                   height: 200,
                   color: Colors.grey.shade200,
                   child: const Center(
@@ -505,7 +505,7 @@ class _TpsTicketDetailScreenState extends State<TpsTicketDetailScreen> {
                                 width: double.infinity,
                                 height: 220,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
+                                errorBuilder: (_, _, _) => Container(
                                   height: 120,
                                   color: Colors.grey.shade200,
                                   child: const Center(
@@ -571,7 +571,7 @@ class _TpsTicketDetailScreenState extends State<TpsTicketDetailScreen> {
                                   width: double.infinity,
                                   height: 220,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
+                                  errorBuilder: (_, _, _) => Container(
                                     height: 120,
                                     color: Colors.grey.shade200,
                                     child: const Center(
@@ -1555,7 +1555,7 @@ class _TypingIndicatorState extends State<_TypingIndicator>
         children: [
           AnimatedBuilder(
             animation: _anim,
-            builder: (_, __) => Row(
+            builder: (_, _) => Row(
               mainAxisSize: MainAxisSize.min,
               children: List.generate(3, (i) {
                 final shift = i * 0.25;
@@ -1627,7 +1627,7 @@ class _ChatBubble extends StatelessWidget {
               child: Image.network(
                 comment.attachmentUrl!,
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Container(
+                errorBuilder: (_, _, _) => Container(
                   height: 200,
                   color: Colors.grey.shade200,
                   child: const Center(
@@ -1713,7 +1713,7 @@ class _ChatBubble extends StatelessWidget {
                             width: 200,
                             height: 150,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Container(
+                            errorBuilder: (_, _, _) => Container(
                               width: 200,
                               height: 80,
                               color: Colors.grey.shade200,

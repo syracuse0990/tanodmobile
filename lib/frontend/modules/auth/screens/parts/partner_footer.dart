@@ -31,7 +31,7 @@ class PartnerFooter extends StatelessWidget {
                       'assets/images/philmech.png',
                       height: 32,
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) =>
+                      errorBuilder: (_, _, _) =>
                           const SizedBox(height: 32, width: 32),
                     ),
                     const SizedBox(width: 6),
@@ -76,7 +76,7 @@ class PartnerFooter extends StatelessWidget {
                       'assets/images/leads_agri.png',
                       height: 32,
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) =>
+                      errorBuilder: (_, _, _) =>
                           const SizedBox(height: 32, width: 32),
                     ),
                     const SizedBox(width: 6),

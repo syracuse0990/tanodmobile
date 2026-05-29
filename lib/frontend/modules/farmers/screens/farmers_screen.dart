@@ -446,7 +446,7 @@ class _FarmersScreenState extends State<FarmersScreen> {
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
                   sliver: SliverList.separated(
                     itemCount: farmers.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final farmer = farmers[index];
                       return _FarmerCard(

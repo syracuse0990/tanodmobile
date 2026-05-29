@@ -13,13 +13,13 @@ import 'package:tanodmobile/models/local/app_session.dart';
 import 'package:tanodmobile/repository/contracts/auth_repository.dart';
 
 void main() {
-  testWidgets('Splash screen renders Tanod branding', (
+  testWidgets('Splash screen renders current branding copy', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const MaterialApp(home: SplashScreen()));
 
-    expect(find.text('Tanod Mobile'), findsOneWidget);
-    expect(find.text('Operations at a glance.'), findsOneWidget);
+    expect(find.text('Kasama ng magsasaka,'), findsOneWidget);
+    expect(find.text('tuwing ani at araro.'), findsOneWidget);
   });
 
   testWidgets('Login screen renders without overflow', (

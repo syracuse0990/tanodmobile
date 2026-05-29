@@ -286,8 +286,8 @@ class TpsProvider extends ChangeNotifier {
         'subject': subject,
         'description': description,
         'priority': priority,
-        if (category != null) 'category': category,
-        if (tractorId != null) 'tractor_id': tractorId,
+        'category': ?category,
+        'tractor_id': ?tractorId,
       };
 
       if (photo != null) {
@@ -322,7 +322,7 @@ class TpsProvider extends ChangeNotifier {
   }) async {
     try {
       final formMap = <String, dynamic>{
-        if (resolutionNotes != null) 'resolution_notes': resolutionNotes,
+        'resolution_notes': ?resolutionNotes,
       };
 
       if (resolutionPhoto != null) {

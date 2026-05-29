@@ -123,7 +123,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
                                   16, 12, 16, 100),
                               itemCount: provider.tickets.length +
                                   (provider.hasMore ? 1 : 0),
-                              separatorBuilder: (_, __) =>
+                              separatorBuilder: (_, _) =>
                                   const SizedBox(height: 10),
                               itemBuilder: (context, index) {
                                 if (index >= provider.tickets.length) {

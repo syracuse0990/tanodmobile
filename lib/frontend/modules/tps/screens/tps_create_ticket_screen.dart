@@ -192,7 +192,7 @@ class _TpsCreateTicketScreenState extends State<TpsCreateTicketScreen> {
               const _FieldLabel(label: 'Tractor'),
               const SizedBox(height: 6),
               DropdownButtonFormField<int>(
-                value: _selectedTractorId,
+                initialValue: _selectedTractorId,
                 decoration: _inputDecoration('Select a tractor (optional)'),
                 isExpanded: true,
                 items: [
@@ -227,7 +227,7 @@ class _TpsCreateTicketScreenState extends State<TpsCreateTicketScreen> {
                         const _FieldLabel(label: 'Category'),
                         const SizedBox(height: 6),
                         DropdownButtonFormField<String>(
-                          value: _selectedCategory,
+                          initialValue: _selectedCategory,
                           decoration: _inputDecoration('Category'),
                           isExpanded: true,
                           items: [
@@ -259,7 +259,7 @@ class _TpsCreateTicketScreenState extends State<TpsCreateTicketScreen> {
                         const _FieldLabel(label: 'Priority'),
                         const SizedBox(height: 6),
                         DropdownButtonFormField<String>(
-                          value: _selectedPriority,
+                          initialValue: _selectedPriority,
                           decoration: _inputDecoration('Priority'),
                           isExpanded: true,
                           items: _priorities

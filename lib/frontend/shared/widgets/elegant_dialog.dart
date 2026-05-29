@@ -42,7 +42,7 @@ class ElegantDialog extends StatefulWidget {
       barrierLabel: 'Dismiss',
       barrierColor: Colors.black54,
       transitionDuration: const Duration(milliseconds: 250),
-      pageBuilder: (_, __, ___) => ElegantDialog(
+      pageBuilder: (_, _, _) => ElegantDialog(
         type: type,
         title: title,
         message: message,

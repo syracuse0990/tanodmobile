@@ -295,7 +295,7 @@ class _TicketsTab extends StatelessWidget {
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: provider.tickets.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (_, i) {
           final ticket = provider.tickets[i];
           return GestureDetector(
@@ -455,7 +455,7 @@ class _FeedbacksTab extends StatelessWidget {
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: provider.feedbacks.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (_, i) =>
             _FeedbackCard(feedback: provider.feedbacks[i]),
       ),
@@ -577,7 +577,7 @@ class _TractorsTab extends StatelessWidget {
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: provider.tractors.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (_, i) {
           final t = provider.tractors[i];
           final plate = t['no_plate']?.toString() ?? 'N/A';
@@ -754,7 +754,7 @@ class _MaintenanceTab extends StatelessWidget {
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: tractors.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (_, i) {
           final tractor = tractors[i];
           return GestureDetector(
@@ -823,7 +823,7 @@ class _MaintenanceCard extends StatelessWidget {
                         child: Image.network(
                           tractor.imageUrl!,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Icon(
+                          errorBuilder: (_, _, _) => const Icon(
                             Icons.agriculture_rounded,
                             color: AppColors.forest,
                             size: 24,
@@ -931,7 +931,7 @@ class _DistributionsTab extends StatelessWidget {
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: provider.distributions.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (_, i) =>
             _DistributionCard(distribution: provider.distributions[i]),
       ),

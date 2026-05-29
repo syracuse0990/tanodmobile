@@ -318,7 +318,7 @@ class _TractorCard extends StatelessWidget {
                           child: Image.network(
                             tractor.imageUrl!,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Icon(
+                            errorBuilder: (_, _, _) => const Icon(
                               Icons.agriculture_rounded,
                               color: AppColors.forest,
                               size: 24,
