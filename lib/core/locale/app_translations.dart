@@ -18,6 +18,7 @@ class AppTranslations {
     'nav_alerts': 'Alerts',
     'nav_booking': 'Booking',
     'nav_tps': 'TPS',
+    'nav_chat': 'Chat',
     'nav_farmers': 'Farmers',
     'nav_account': 'Account',
 
@@ -33,6 +34,7 @@ class AppTranslations {
     'verified': 'Verified',
     'not_verified': 'Not verified',
     'tickets': 'Tickets',
+    'my_farmers': 'My Farmers',
     'maintenance': 'Maintenance',
     'geo_fences': 'Geo Fences',
     'feedback': 'Feedback',
@@ -124,8 +126,7 @@ class AppTranslations {
     'help_tickets_desc':
         'Report issues or request assistance through the ticket system.',
     'help_call_title': 'Call Support',
-    'help_call_desc':
-        'Reach our support team directly for urgent concerns.',
+    'help_call_desc': 'Reach our support team directly for urgent concerns.',
     'help_hours_title': 'Operating Hours',
     'help_hours_desc': 'Monday – Friday, 8:00 AM – 5:00 PM (PHT)',
 
@@ -180,8 +181,7 @@ class AppTranslations {
     'tp_tab_terms': 'Terms of Service',
     'tp_tab_privacy': 'Privacy Policy',
     'tp_effective_date': 'Effective: April 1, 2026',
-    'tp_contact_footer':
-        'Questions? Email us at support@tanodtractor.com',
+    'tp_contact_footer': 'Questions? Email us at support@tanodtractor.com',
 
     // Terms of Service
     'tos_1_title': 'Acceptance of Terms',
@@ -255,6 +255,7 @@ class AppTranslations {
     'nav_alerts': 'Alerto',
     'nav_booking': 'Booking',
     'nav_tps': 'TPS',
+    'nav_chat': 'Chat',
     'nav_farmers': 'Magsasaka',
     'nav_account': 'Account',
 
@@ -270,6 +271,7 @@ class AppTranslations {
     'verified': 'Na-verify',
     'not_verified': 'Hindi na-verify',
     'tickets': 'Mga Ticket',
+    'my_farmers': 'Aking Magsasaka',
     'maintenance': 'Maintenance',
     'geo_fences': 'Geo Fences',
     'feedback': 'Feedback',
@@ -294,7 +296,8 @@ class AppTranslations {
         'Ang iyong account ay iiskedyul para tanggalin pagkatapos ng 7 araw na grace period. Sa panahong ito, maaari ka pa ring mag-sign in at kanselahin ang request.',
     'delete_account_notify_body':
         'Isang confirmation email at SMS ang ipapadala para ipaalam sa iyo ang naka-iskedyul na pagtanggal.',
-    'delete_account_password_label': 'Ilagay ang iyong password para kumpirmahin',
+    'delete_account_password_label':
+        'Ilagay ang iyong password para kumpirmahin',
     'delete_account_password_hint': 'Kasalukuyang password',
     'delete_account_confirm': 'Tanggalin ang Aking Account',
     'delete_account_cancel': 'Kanselahin ang Pagtanggal',
@@ -329,7 +332,8 @@ class AppTranslations {
     'success': 'Tagumpay',
 
     // Help Center
-    'help_center_subtitle': 'Humingi ng tulong at makipag-ugnayan sa iyong support team',
+    'help_center_subtitle':
+        'Humingi ng tulong at makipag-ugnayan sa iyong support team',
     'your_fca': 'Iyong FCA Coordinator',
     'assigned_tps': 'Mga Nakatalagang TPS Technician',
     'system_support': 'System Support',

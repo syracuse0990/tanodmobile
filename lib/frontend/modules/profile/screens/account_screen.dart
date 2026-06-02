@@ -169,34 +169,34 @@ class AccountScreen extends StatelessWidget {
                               label: context.tr('tickets'),
                               onTap: () => context.go('/account/tickets'),
                             ),
-                          if (user != null &&
-                              user.roles.contains('fca'))
+                          if (user != null && user.roles.contains('fca'))
+                            _MenuItem(
+                              icon: Icons.people_outline_rounded,
+                              label: context.tr('my_farmers'),
+                              onTap: () => context.go('/account/farmers'),
+                            ),
+                          if (user != null && user.roles.contains('fca'))
                             _MenuItem(
                               icon: Icons.build_outlined,
                               label: context.tr('maintenance'),
-                              onTap: () =>
-                                  context.go('/account/maintenance'),
+                              onTap: () => context.go('/account/maintenance'),
                             ),
-                          if (user != null &&
-                              user.roles.contains('fca'))
+                          if (user != null && user.roles.contains('fca'))
                             _MenuItem(
                               icon: Icons.fence_rounded,
                               label: context.tr('geo_fences'),
-                              onTap: () =>
-                                  context.go('/account/geofences'),
+                              onTap: () => context.go('/account/geofences'),
                             ),
                           if (user == null || !user.roles.contains('tps'))
                             _MenuItem(
                               icon: Icons.rate_review_outlined,
                               label: context.tr('feedback'),
-                              onTap: () =>
-                                  context.go('/account/feedback'),
+                              onTap: () => context.go('/account/feedback'),
                             ),
                           _MenuItem(
                             icon: Icons.assessment_outlined,
                             label: context.tr('reports'),
-                            onTap: () =>
-                                context.go('/account/reports'),
+                            onTap: () => context.go('/account/reports'),
                           ),
                         ],
                       ),
@@ -233,7 +233,9 @@ class AccountScreen extends StatelessWidget {
                       const SizedBox(height: 24),
 
                       // Danger zone section
-                      _SectionTitle(title: context.tr('delete_account_title').toUpperCase()),
+                      _SectionTitle(
+                        title: context.tr('delete_account_title').toUpperCase(),
+                      ),
                       const SizedBox(height: 8),
                       Container(
                         decoration: BoxDecoration(
@@ -253,8 +255,7 @@ class AccountScreen extends StatelessWidget {
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            onTap: () =>
-                                context.go('/account/delete-account'),
+                            onTap: () => context.go('/account/delete-account'),
                             borderRadius: BorderRadius.circular(16),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
@@ -267,8 +268,9 @@ class AccountScreen extends StatelessWidget {
                                     width: 36,
                                     height: 36,
                                     decoration: BoxDecoration(
-                                      color: AppColors.danger
-                                          .withValues(alpha: 0.08),
+                                      color: AppColors.danger.withValues(
+                                        alpha: 0.08,
+                                      ),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: const Icon(
@@ -290,8 +292,9 @@ class AccountScreen extends StatelessWidget {
                                   ),
                                   Icon(
                                     Icons.chevron_right_rounded,
-                                    color:
-                                        AppColors.danger.withValues(alpha: 0.5),
+                                    color: AppColors.danger.withValues(
+                                      alpha: 0.5,
+                                    ),
                                     size: 20,
                                   ),
                                 ],

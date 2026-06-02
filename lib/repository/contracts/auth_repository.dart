@@ -7,6 +7,18 @@ import 'package:tanodmobile/models/local/app_session.dart';
 abstract class AuthRepository {
   Future<AppSession?> restoreSession();
 
+  Future<void> persistSession(AppSession session);
+
+  Future<AppSession?> restoreOfflineTpsSession();
+
+  Future<void> saveOfflineTpsSession(AppSession session);
+
+  Future<void> clearOfflineTpsSession();
+
+  Future<bool> getOfflineModeEnabled();
+
+  Future<void> setOfflineModeEnabled(bool enabled);
+
   Future<AppSession> signIn({required String login, required String password});
 
   Future<AppSession> signUp({

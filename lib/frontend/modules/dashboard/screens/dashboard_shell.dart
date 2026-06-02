@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/core/locale/app_localizations.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/chat_unread_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tractor_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/force_change_password_dialog.dart';
 
@@ -33,23 +34,31 @@ class _DashboardShellState extends State<DashboardShell> {
   }
 
   /// Maps a GNav tab index to the router branch index.
-  /// Non-FCA users skip branch 3 (Farmers), so tab 3 → branch 4.
-  int _tabToBranch(int tabIndex, bool isFca) {
-    if (isFca || tabIndex < 3) return tabIndex;
-    return tabIndex + 1; // skip farmers branch
+  /// The farmers module lives under Account for FCA users, so it is hidden
+  /// from the bottom navigation while keeping the legacy branch index intact.
+  List<int> _visibleBranchIndices({required bool showChat}) {
+    return [0, 1, 2, if (showChat) 3, 5];
   }
 
-  /// Maps a router branch index to the GNav tab index.
-  int _branchToTab(int branchIndex, bool isFca) {
-    if (isFca || branchIndex < 3) return branchIndex;
-    return branchIndex - 1; // farmers branch hidden
+  int _tabToBranch(int tabIndex, List<int> visibleBranches) {
+    return visibleBranches[tabIndex];
+  }
+
+  int _branchToTab(int branchIndex, List<int> visibleBranches) {
+    final tabIndex = visibleBranches.indexOf(branchIndex);
+    return tabIndex >= 0 ? tabIndex : visibleBranches.length - 1;
   }
 
   @override
   Widget build(BuildContext context) {
     final isTps = _isTps(context);
     final isFca = _isFca(context);
+    final showChat = isTps || isFca;
+    final visibleBranches = _visibleBranchIndices(showChat: showChat);
     final tractorProvider = context.read<TractorProvider>();
+    final chatUnreadCount = context
+        .watch<ChatUnreadProvider>()
+        .totalUnreadCount;
 
     // Show forced password change dialog for newly created users
     if (!_hasShownPasswordDialog) {
@@ -78,9 +87,12 @@ class _DashboardShellState extends State<DashboardShell> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: GNav(
-              selectedIndex: _branchToTab(navigationShell.currentIndex, isFca),
+              selectedIndex: _branchToTab(
+                navigationShell.currentIndex,
+                visibleBranches,
+              ),
               onTabChange: (index) {
-                final branchIndex = _tabToBranch(index, isFca);
+                final branchIndex = _tabToBranch(index, visibleBranches);
                 tractorProvider.setHomeVisible(branchIndex == 0);
                 navigationShell.goBranch(branchIndex);
               },
@@ -127,10 +139,15 @@ class _DashboardShellState extends State<DashboardShell> {
                     color: AppColors.forest,
                   ),
                 ),
-                if (isFca)
+                if (showChat)
                   GButton(
-                    icon: Icons.people_rounded,
-                    text: context.tr('nav_farmers'),
+                    icon: Icons.forum_rounded,
+                    text: context.tr('nav_chat'),
+                    leading: _BottomNavIcon(
+                      icon: Icons.forum_rounded,
+                      unreadCount: chatUnreadCount,
+                      active: navigationShell.currentIndex == 3,
+                    ),
                     iconActiveColor: AppColors.forest,
                     textStyle: const TextStyle(
                       fontSize: 13,
@@ -153,6 +170,52 @@ class _DashboardShellState extends State<DashboardShell> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _BottomNavIcon extends StatelessWidget {
+  const _BottomNavIcon({
+    required this.icon,
+    required this.unreadCount,
+    required this.active,
+  });
+
+  final IconData icon;
+  final int unreadCount;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconColor = active ? AppColors.forest : AppColors.mutedInk;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(icon, color: iconColor, size: 22),
+        if (unreadCount > 0)
+          Positioned(
+            right: -7,
+            top: -7,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+              decoration: const BoxDecoration(
+                color: AppColors.danger,
+                borderRadius: BorderRadius.all(Radius.circular(999)),
+              ),
+              child: Text(
+                unreadCount > 99 ? '99+' : '$unreadCount',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

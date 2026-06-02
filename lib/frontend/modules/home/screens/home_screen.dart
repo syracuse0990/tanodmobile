@@ -1,10 +1,14 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/modules/home/screens/parts/map_fab_controls.dart';
+import 'package:tanodmobile/frontend/modules/home/screens/parts/tractor_map_action_sheets.dart';
+import 'package:tanodmobile/frontend/modules/home/screens/parts/tractor_insight_sheet.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tractor_provider.dart';
 import 'package:tanodmobile/models/domain/tractor_location.dart';
@@ -19,7 +23,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final MapController _mapController = MapController();
+  final TextEditingController _searchController = TextEditingController();
   bool _showSatellite = false;
+  bool _isMapReady = false;
   int? _selectedTractorId;
 
   late final AnimationController _pulseController;
@@ -33,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// Smooth camera animation for focused tractor.
   AnimationController? _cameraAnimController;
+  Timer? _searchDebounce;
 
   /// Track last known lat/lng of the focused tractor to detect movement.
   double? _lastFocusedLat;
@@ -42,12 +49,16 @@ class _HomeScreenState extends State<HomeScreen>
   static const _phCenter = LatLng(12.8797, 121.7740);
   static const _initialZoom = 5.8;
   static const _focusZoom = 15.0;
+  static const _clusterGridSize = 90.0;
+  static const _clusterBreakoutZoom = 14.5;
+  static const _clusterThreshold = 120;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _tractorProvider = context.read<TractorProvider>();
+    _searchController.text = _tractorProvider.searchQuery;
 
     _pulseController = AnimationController(
       vsync: this,
@@ -74,6 +85,8 @@ class _HomeScreenState extends State<HomeScreen>
   void dispose() {
     _tractorProvider.removeListener(_onTractorDataChanged);
     WidgetsBinding.instance.removeObserver(this);
+    _searchDebounce?.cancel();
+    _searchController.dispose();
     _pulseController.dispose();
     _moveController.dispose();
     _cameraAnimController?.dispose();
@@ -141,6 +154,10 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// Smoothly animate the map camera to [target] with optional [targetZoom].
   void _animateCamera(LatLng target, {double? targetZoom}) {
+    if (!_isMapReady) {
+      return;
+    }
+
     _cameraAnimController?.dispose();
     final start = _mapController.camera.center;
     final startZoom = _mapController.camera.zoom;
@@ -205,26 +222,150 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   List<Marker> _buildMarkers(List<TractorLocation> tractors) {
-    return [
-      for (int i = 0; i < tractors.length; i++)
-        Marker(
-          point: _getAnimatedPosition(
-            tractors[i].id,
-            LatLng(tractors[i].lat, tractors[i].lng),
-          ),
-          width: 40,
-          height: 40,
-          child: GestureDetector(
-            onTap: () => _onMarkerTap(tractors[i]),
-            child: _TractorMapMarker(
-              isOnline: tractors[i].isOnline,
-              isIdle: tractors[i].isIdle,
-              isSelected: _selectedTractorId == tractors[i].id,
-              pulseAnimation: _pulseAnimation,
+    final hasSearchQuery = _tractorProvider.searchQuery.isNotEmpty;
+    final currentZoom = _isMapReady ? _mapController.camera.zoom : _initialZoom;
+    final shouldCluster =
+      _isMapReady &&
+        _selectedTractorId == null &&
+        !_tractorProvider.isFocused &&
+        !hasSearchQuery &&
+        tractors.length > _clusterThreshold &&
+        currentZoom < _clusterBreakoutZoom;
+
+    if (!shouldCluster) {
+      return [
+        for (int i = 0; i < tractors.length; i++)
+          Marker(
+            point: _getAnimatedPosition(
+              tractors[i].id,
+              LatLng(tractors[i].lat, tractors[i].lng),
+            ),
+            width: 40,
+            height: 40,
+            child: GestureDetector(
+              onTap: () => _onMarkerTap(tractors[i]),
+              child: _TractorMapMarker(
+                isOnline: tractors[i].isOnline,
+                isIdle: tractors[i].isIdle,
+                isSelected: _selectedTractorId == tractors[i].id,
+                pulseAnimation: _pulseAnimation,
+              ),
             ),
           ),
-        ),
+      ];
+    }
+
+    final clusters = _clusterTractors(tractors, currentZoom);
+
+    return [
+      for (final cluster in clusters)
+        if (cluster.tractors.length == 1)
+          Marker(
+            point: _getAnimatedPosition(
+              cluster.tractors.first.id,
+              LatLng(
+                cluster.tractors.first.lat,
+                cluster.tractors.first.lng,
+              ),
+            ),
+            width: 40,
+            height: 40,
+            child: GestureDetector(
+              onTap: () => _onMarkerTap(cluster.tractors.first),
+              child: _TractorMapMarker(
+                isOnline: cluster.tractors.first.isOnline,
+                isIdle: cluster.tractors.first.isIdle,
+                isSelected:
+                    _selectedTractorId == cluster.tractors.first.id,
+                pulseAnimation: _pulseAnimation,
+              ),
+            ),
+          )
+        else
+          Marker(
+            point: cluster.center,
+            width: _clusterMarkerSize(cluster.tractors.length),
+            height: _clusterMarkerSize(cluster.tractors.length),
+            child: GestureDetector(
+              onTap: () => _zoomToCluster(cluster),
+              child: _ClusterMapMarker(count: cluster.tractors.length),
+            ),
+          ),
     ];
+  }
+
+  List<_TractorCluster> _clusterTractors(
+    List<TractorLocation> tractors,
+    double zoom,
+  ) {
+    final scale = 256.0 * math.pow(2, zoom).toDouble();
+    final clusterMap = <String, List<TractorLocation>>{};
+
+    for (final tractor in tractors) {
+      final lat = tractor.lat;
+      final lng = tractor.lng;
+      final sinLat = math.sin((lat * math.pi) / 180);
+      final x = ((lng + 180) / 360) * scale;
+      final y =
+          (0.5 - math.log((1 + sinLat) / (1 - sinLat)) / (4 * math.pi)) *
+          scale;
+      final key =
+          '${(x / _clusterGridSize).floor()}:${(y / _clusterGridSize).floor()}';
+
+      (clusterMap[key] ??= <TractorLocation>[]).add(tractor);
+    }
+
+    return clusterMap.values.map((clusterTractors) {
+      if (clusterTractors.length == 1) {
+        final tractor = clusterTractors.first;
+        return _TractorCluster(
+          center: LatLng(tractor.lat, tractor.lng),
+          tractors: clusterTractors,
+        );
+      }
+
+      final totalLat = clusterTractors.fold<double>(
+        0,
+        (sum, tractor) => sum + tractor.lat,
+      );
+      final totalLng = clusterTractors.fold<double>(
+        0,
+        (sum, tractor) => sum + tractor.lng,
+      );
+
+      return _TractorCluster(
+        center: LatLng(
+          totalLat / clusterTractors.length,
+          totalLng / clusterTractors.length,
+        ),
+        tractors: clusterTractors,
+      );
+    }).toList(growable: false);
+  }
+
+  double _clusterMarkerSize(int count) {
+    if (count >= 500) {
+      return 60;
+    }
+    if (count >= 100) {
+      return 52;
+    }
+    if (count >= 25) {
+      return 44;
+    }
+    return 36;
+  }
+
+  void _zoomToCluster(_TractorCluster cluster) {
+    if (!_isMapReady) {
+      return;
+    }
+
+    final nextZoom = math.min(
+      _mapController.camera.zoom + 2,
+      _clusterBreakoutZoom,
+    );
+    _animateCamera(cluster.center, targetZoom: nextZoom);
   }
 
   void _recenter() {
@@ -232,61 +373,154 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _zoomIn() {
-    _mapController.move(
+    if (!_isMapReady) {
+      return;
+    }
+
+    _animateCamera(
       _mapController.camera.center,
-      _mapController.camera.zoom + 1,
+      targetZoom: math.min(_mapController.camera.zoom + 1, 18),
     );
   }
 
   void _zoomOut() {
-    _mapController.move(
+    if (!_isMapReady) {
+      return;
+    }
+
+    _animateCamera(
       _mapController.camera.center,
-      _mapController.camera.zoom - 1,
+      targetZoom: math.max(_mapController.camera.zoom - 1, 4),
     );
   }
 
-  Future<void> _shareLocation(TractorLocation tractor) async {
-    if (tractor.deviceId == null) return;
+  Future<void> _showTractorInsight(
+    TractorLocation tractor,
+    TractorInsightTab initialTab,
+  ) {
+    return showTractorInsightSheet(
+      context,
+      tractor: tractor,
+      initialTab: initialTab,
+    );
+  }
 
-    final provider = context.read<TractorProvider>();
-    final result = await provider.createShare(tractor.deviceId!);
+  Future<void> _showShareLocationSheet(TractorLocation tractor) {
+    return showTractorShareLocationSheet(
+      context,
+      tractor: tractor,
+      provider: _tractorProvider,
+    );
+  }
 
-    if (!mounted) return;
+  Future<void> _showTrackHistorySheet(TractorLocation tractor) {
+    return showTractorTrackHistorySheet(
+      context,
+      tractor: tractor,
+      provider: _tractorProvider,
+    );
+  }
 
-    if (result != null && result['success'] == true) {
-      final url = result['url'] as String;
-      await Clipboard.setData(ClipboardData(text: url));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Share link copied!\n$url'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: AppColors.success,
-          ),
-        );
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to create share link'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: AppColors.danger,
-          ),
-        );
-      }
+  Future<void> _applySearchQuery(
+    String value, {
+    bool recenterToOverview = false,
+  }) async {
+    final shouldClearFocus = _selectedTractorId != null;
+    if (shouldClearFocus) {
+      setState(() {
+        _selectedTractorId = null;
+      });
+      _lastFocusedLat = null;
+      _lastFocusedLng = null;
+    }
+
+    final normalized = value.trim();
+    await _tractorProvider.setSearchQuery(
+      normalized,
+      clearFocus: shouldClearFocus,
+    );
+
+    if (!mounted || _tractorProvider.searchQuery != normalized) {
+      return;
+    }
+
+    if (recenterToOverview) {
+      _recenter();
+      return;
+    }
+
+    if (normalized.isNotEmpty) {
+      _fitVisibleSearchResults();
     }
   }
 
-  void _viewTrackHistory(TractorLocation tractor) {
-    if (tractor.deviceId == null) return;
+  void _fitVisibleSearchResults() {
+    final tractors = _tractorProvider.withLocation;
+    if (tractors.isEmpty || !mounted || !_isMapReady) {
+      return;
+    }
 
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _TrackHistorySheet(tractor: tractor),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _tractorProvider.searchQuery.isEmpty) {
+        return;
+      }
+
+      final visibleTractors = _tractorProvider.withLocation;
+      if (visibleTractors.isEmpty) {
+        return;
+      }
+
+      if (visibleTractors.length == 1) {
+        final onlyMatch = visibleTractors.first;
+        _animateCamera(
+          LatLng(onlyMatch.lat, onlyMatch.lng),
+          targetZoom: _focusZoom,
+        );
+        return;
+      }
+
+      final points = visibleTractors
+          .map((tractor) => LatLng(tractor.lat, tractor.lng))
+          .toList(growable: false);
+      final bounds = LatLngBounds.fromPoints(points);
+      _mapController.fitCamera(
+        CameraFit.bounds(
+          bounds: bounds,
+          padding: const EdgeInsets.fromLTRB(40, 160, 40, 120),
+        ),
+      );
+    });
+  }
+
+  void _onSearchChanged(String value) {
+    if (mounted) {
+      setState(() {});
+    }
+
+    _searchDebounce?.cancel();
+
+    if (value.trim().isEmpty) {
+      unawaited(_applySearchQuery('', recenterToOverview: true));
+      return;
+    }
+
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) {
+        return;
+      }
+
+      unawaited(_applySearchQuery(value));
+    });
+  }
+
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+
+    setState(() {
+      _searchController.clear();
+    });
+
+    unawaited(_applySearchQuery('', recenterToOverview: true));
   }
 
   @override
@@ -294,9 +528,21 @@ class _HomeScreenState extends State<HomeScreen>
     final user = context.watch<AuthProvider>().currentUser;
     final tractorProvider = context.watch<TractorProvider>();
     final visibleTractors = tractorProvider.withLocation;
-    final onlineCount = tractorProvider.onlineCount;
+    final movingCount = tractorProvider.movingCount;
     final idleCount = tractorProvider.idleCount;
     final offlineCount = tractorProvider.offlineCount;
+    final hasSearchQuery = _searchController.text.trim().isNotEmpty;
+    final appliedSearchQuery = tractorProvider.searchQuery;
+    final hasAppliedSearchQuery = appliedSearchQuery.isNotEmpty;
+    final showNoSearchMatches =
+      hasAppliedSearchQuery &&
+      !tractorProvider.loading &&
+      tractorProvider.tractors.isEmpty;
+    final showNoSearchLocations =
+      hasAppliedSearchQuery &&
+      !tractorProvider.loading &&
+      tractorProvider.tractors.isNotEmpty &&
+      visibleTractors.isEmpty;
 
     // Find selected tractor for FAB actions
     final TractorLocation? selectedTractor =
@@ -317,6 +563,20 @@ class _HomeScreenState extends State<HomeScreen>
                 initialZoom: _initialZoom,
                 minZoom: 4,
                 maxZoom: 18,
+                onMapReady: () {
+                  if (!mounted || _isMapReady) {
+                    return;
+                  }
+
+                  setState(() {
+                    _isMapReady = true;
+                  });
+                },
+                onPositionChanged: (_, hasGesture) {
+                  if (mounted) {
+                    setState(() {});
+                  }
+                },
                 onTap: (_, _) => _clearFocus(),
               ),
               children: [
@@ -336,6 +596,24 @@ class _HomeScreenState extends State<HomeScreen>
           if (tractorProvider.loading)
             const Center(
               child: CircularProgressIndicator(color: AppColors.success),
+            ),
+
+          if (showNoSearchMatches || showNoSearchLocations)
+            Positioned(
+              left: 20,
+              right: 20,
+              top: MediaQuery.paddingOf(context).top + 118,
+              child: _SearchFeedbackCard(
+                icon: showNoSearchMatches
+                    ? Icons.search_off_rounded
+                    : Icons.location_off_rounded,
+                title: showNoSearchMatches
+                    ? 'No tractors matched your search'
+                    : 'Matches found without live location',
+                message: showNoSearchMatches
+                    ? 'Try another tractor name, IMEI, or FCA name for "$appliedSearchQuery".'
+                    : 'The tractors matching "$appliedSearchQuery" do not have live coordinates yet.',
+              ),
             ),
 
           // ─── Top Header ───
@@ -362,51 +640,119 @@ class _HomeScreenState extends State<HomeScreen>
                   ],
                 ),
               ),
-              child: Row(
+              child: Column(
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Fleet Tracker',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: _showSatellite
-                                ? Colors.white
-                                : AppColors.ink,
-                          ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Fleet Tracker',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                                color: _showSatellite
+                                    ? Colors.white
+                                    : AppColors.ink,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Hi, ${user?.name ?? 'Farmer'}',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: _showSatellite
+                                    ? Colors.white70
+                                    : AppColors.mutedInk,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Hi, ${user?.name ?? 'Farmer'}',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: _showSatellite
-                                ? Colors.white70
-                                : AppColors.mutedInk,
-                          ),
-                        ),
-                      ],
+                      ),
+                      _StatusChip(
+                        label: '$movingCount',
+                        color: AppColors.success,
+                        dark: _showSatellite,
+                      ),
+                      const SizedBox(width: 6),
+                      _StatusChip(
+                        label: '$idleCount',
+                        color: AppColors.warning,
+                        dark: _showSatellite,
+                      ),
+                      const SizedBox(width: 6),
+                      _StatusChip(
+                        label: '$offlineCount',
+                        color: AppColors.danger,
+                        dark: _showSatellite,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: _showSatellite
+                          ? Colors.white.withValues(alpha: 0.14)
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: _showSatellite
+                            ? Colors.white.withValues(alpha: 0.12)
+                            : AppColors.ink.withValues(alpha: 0.06),
+                      ),
+                      boxShadow: _showSatellite
+                          ? null
+                          : [
+                              BoxShadow(
+                                color: AppColors.ink.withValues(alpha: 0.06),
+                                blurRadius: 14,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
                     ),
-                  ),
-                  _StatusChip(
-                    label: '$onlineCount',
-                    color: AppColors.success,
-                    dark: _showSatellite,
-                  ),
-                  const SizedBox(width: 6),
-                  _StatusChip(
-                    label: '$idleCount',
-                    color: AppColors.warning,
-                    dark: _showSatellite,
-                  ),
-                  const SizedBox(width: 6),
-                  _StatusChip(
-                    label: '$offlineCount',
-                    color: AppColors.danger,
-                    dark: _showSatellite,
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: _onSearchChanged,
+                      textInputAction: TextInputAction.search,
+                      style: TextStyle(
+                        color: _showSatellite ? Colors.white : AppColors.ink,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Search tractor, IMEI, or FCA name',
+                        hintStyle: TextStyle(
+                          color: _showSatellite
+                              ? Colors.white70
+                              : AppColors.mutedInk,
+                          fontSize: 13,
+                        ),
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          color: _showSatellite
+                              ? Colors.white70
+                              : AppColors.mutedInk,
+                        ),
+                        suffixIcon: hasSearchQuery
+                            ? IconButton(
+                                onPressed: _clearSearch,
+                                icon: Icon(
+                                  Icons.close_rounded,
+                                  color: _showSatellite
+                                      ? Colors.white70
+                                      : AppColors.mutedInk,
+                                ),
+                              )
+                            : null,
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 15,
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -422,8 +768,14 @@ class _HomeScreenState extends State<HomeScreen>
               child: _TractorDetailCard(
                 tractor: selectedTractor,
                 onClose: _clearFocusAndRecenter,
-                onShare: () => _shareLocation(selectedTractor),
-                onTrackHistory: () => _viewTrackHistory(selectedTractor),
+                onShowFcaDetails: () => _showTractorInsight(
+                  selectedTractor,
+                  TractorInsightTab.fcaDetails,
+                ),
+                onShowPmsHistory: () => _showTractorInsight(
+                  selectedTractor,
+                  TractorInsightTab.pmsHistory,
+                ),
               ),
             ),
 
@@ -442,10 +794,10 @@ class _HomeScreenState extends State<HomeScreen>
               secondsUntilPoll: tractorProvider.secondsUntilPoll,
               showTractorActions: selectedTractor != null,
               onShareLocation: selectedTractor != null
-                  ? () => _shareLocation(selectedTractor)
+                  ? () => _showShareLocationSheet(selectedTractor)
                   : null,
-              onTrackHistory: selectedTractor != null
-                  ? () => _viewTrackHistory(selectedTractor)
+              onViewTrackHistory: selectedTractor != null
+                  ? () => _showTrackHistorySheet(selectedTractor)
                   : null,
               onClearFocus: _clearFocusAndRecenter,
             ),
@@ -454,6 +806,13 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
   }
+}
+
+class _TractorCluster {
+  const _TractorCluster({required this.center, required this.tractors});
+
+  final LatLng center;
+  final List<TractorLocation> tractors;
 }
 
 // ─── Helper to resolve tractor marker color ───
@@ -567,6 +926,120 @@ class _TractorMapMarker extends StatelessWidget {
   }
 }
 
+class _ClusterMapMarker extends StatelessWidget {
+  const _ClusterMapMarker({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = count >= 500
+        ? 60.0
+        : count >= 100
+        ? 52.0
+        : count >= 25
+        ? 44.0
+        : 36.0;
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFF6D6AF8),
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF6D6AF8).withValues(alpha: 0.35),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        count > 999 ? '999+' : '$count',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: count >= 100 ? 13 : 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchFeedbackCard extends StatelessWidget {
+  const _SearchFeedbackCard({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ink.withValues(alpha: 0.1),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.canvas,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: AppColors.pine),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    message,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      height: 1.35,
+                      color: AppColors.mutedInk,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _StatusChip extends StatelessWidget {
   const _StatusChip({
     required this.label,
@@ -614,14 +1087,14 @@ class _TractorDetailCard extends StatelessWidget {
   const _TractorDetailCard({
     required this.tractor,
     required this.onClose,
-    required this.onShare,
-    required this.onTrackHistory,
+    required this.onShowFcaDetails,
+    required this.onShowPmsHistory,
   });
 
   final TractorLocation tractor;
   final VoidCallback onClose;
-  final VoidCallback onShare;
-  final VoidCallback onTrackHistory;
+  final VoidCallback onShowFcaDetails;
+  final VoidCallback onShowPmsHistory;
 
   @override
   Widget build(BuildContext context) {
@@ -795,17 +1268,17 @@ class _TractorDetailCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _CardAction(
-                  icon: Icons.share_location_rounded,
-                  label: 'Share Location',
-                  onTap: onShare,
+                  icon: Icons.badge_rounded,
+                  label: 'FCA Details',
+                  onTap: onShowFcaDetails,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _CardAction(
-                  icon: Icons.route_rounded,
-                  label: 'Track History',
-                  onTap: onTrackHistory,
+                  icon: Icons.history_rounded,
+                  label: 'PMS History',
+                  onTap: onShowPmsHistory,
                 ),
               ),
             ],
@@ -853,473 +1326,6 @@ class _CardAction extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ─── Track History Bottom Sheet ───
-class _TrackHistorySheet extends StatefulWidget {
-  const _TrackHistorySheet({required this.tractor});
-
-  final TractorLocation tractor;
-
-  @override
-  State<_TrackHistorySheet> createState() => _TrackHistorySheetState();
-}
-
-class _TrackHistorySheetState extends State<_TrackHistorySheet>
-    with SingleTickerProviderStateMixin {
-  String _selectedPeriod = 'today';
-  bool _loading = false;
-  List<LatLng> _trackPoints = [];
-  String? _error;
-
-  // Playback
-  late final AnimationController _playController;
-  double _playbackSpeed = 1.0;
-  bool get _isPlaying => _playController.isAnimating;
-  final MapController _trackMapController = MapController();
-
-  final List<Map<String, String>> _periods = [
-    {'value': 'today', 'label': 'Today'},
-    {'value': 'yesterday', 'label': 'Yesterday'},
-    {'value': '3days', 'label': '3 Days'},
-    {'value': 'week', 'label': 'This Week'},
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _playController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 30),
-    );
-    _playController.addListener(() => setState(() {}));
-    _fetchTrack();
-  }
-
-  @override
-  void dispose() {
-    _playController.dispose();
-    _trackMapController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _fetchTrack() async {
-    if (widget.tractor.deviceId == null) return;
-
-    _playController.reset();
-
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    try {
-      final provider = context.read<TractorProvider>();
-      final response = await provider.fetchTrackData(
-        widget.tractor.deviceId!,
-        _selectedPeriod,
-      );
-
-      final points = (response?['points'] as List<dynamic>? ?? [])
-          .whereType<Map<String, dynamic>>()
-          .map(
-            (p) => LatLng(
-              (p['lat'] as num).toDouble(),
-              (p['lng'] as num).toDouble(),
-            ),
-          )
-          .toList();
-
-      setState(() {
-        _trackPoints = points;
-        _loading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _error = 'Failed to load track data';
-        _loading = false;
-      });
-    }
-  }
-
-  void _togglePlayback() {
-    if (_trackPoints.length < 2) return;
-
-    if (_isPlaying) {
-      _playController.stop();
-    } else {
-      // Adjust duration based on number of points and speed
-      final baseSecs = (_trackPoints.length * 0.15).clamp(10.0, 120.0);
-      _playController.duration = Duration(
-        milliseconds: (baseSecs * 1000 / _playbackSpeed).round(),
-      );
-
-      if (_playController.isCompleted) {
-        _playController.forward(from: 0);
-      } else {
-        _playController.forward();
-      }
-    }
-    setState(() {});
-  }
-
-  void _setSpeed(double speed) {
-    final wasPlaying = _isPlaying;
-    if (wasPlaying) _playController.stop();
-
-    _playbackSpeed = speed;
-    final baseSecs = (_trackPoints.length * 0.15).clamp(10.0, 120.0);
-    _playController.duration = Duration(
-      milliseconds: (baseSecs * 1000 / _playbackSpeed).round(),
-    );
-
-    if (wasPlaying) {
-      _playController.forward();
-    }
-    setState(() {});
-  }
-
-  LatLng _interpolatedPosition() {
-    if (_trackPoints.length < 2) return _trackPoints.first;
-
-    final progress = _playController.value;
-    final totalSegments = _trackPoints.length - 1;
-    final exact = progress * totalSegments;
-    final idx = exact.floor().clamp(0, totalSegments - 1);
-    final t = exact - idx;
-
-    final from = _trackPoints[idx];
-    final to = _trackPoints[idx + 1];
-
-    return LatLng(
-      from.latitude + (to.latitude - from.latitude) * t,
-      from.longitude + (to.longitude - from.longitude) * t,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final hasTrack = _trackPoints.length >= 2;
-    final playbackAssetPath = _tractorAssetForState(
-      isOnline: widget.tractor.isOnline,
-      isIdle: widget.tractor.isIdle,
-    );
-
-    return Container(
-      height: MediaQuery.sizeOf(context).height * 0.7,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        children: [
-          // Handle
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              decoration: BoxDecoration(
-                color: AppColors.ink.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-
-          // Title
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                const Icon(Icons.route_rounded, color: AppColors.pine),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Track History — ${widget.tractor.label}',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.ink,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close_rounded, size: 22),
-                ),
-              ],
-            ),
-          ),
-
-          // Period chips
-          SizedBox(
-            height: 44,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: _periods.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final period = _periods[index];
-                final isActive = _selectedPeriod == period['value'];
-                return ChoiceChip(
-                  label: Text(period['label']!),
-                  selected: isActive,
-                  onSelected: (_) {
-                    setState(() => _selectedPeriod = period['value']!);
-                    _fetchTrack();
-                  },
-                  selectedColor: AppColors.pine,
-                  labelStyle: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: isActive ? Colors.white : AppColors.ink,
-                  ),
-                  backgroundColor: AppColors.canvas,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  side: BorderSide.none,
-                );
-              },
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Map
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: CircularProgressIndicator(color: AppColors.success),
-                  )
-                : _error != null
-                ? Center(
-                    child: Text(
-                      _error!,
-                      style: const TextStyle(color: AppColors.danger),
-                    ),
-                  )
-                : _trackPoints.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No track data for this period',
-                      style: TextStyle(color: AppColors.mutedInk),
-                    ),
-                  )
-                : ClipRRect(
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(16),
-                    ),
-                    child: FlutterMap(
-                      mapController: _trackMapController,
-                      options: MapOptions(
-                        initialCenter: _trackPoints.first,
-                        initialZoom: 14,
-                      ),
-                      children: [
-                        TileLayer(
-                          urlTemplate:
-                              'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-                          userAgentPackageName: 'com.tanod.tanodmobile',
-                        ),
-                        PolylineLayer(
-                          polylines: [
-                            Polyline(
-                              points: _trackPoints,
-                              strokeWidth: 3.5,
-                              color: AppColors.pine,
-                            ),
-                          ],
-                        ),
-                        MarkerLayer(
-                          markers: [
-                            // Start marker
-                            Marker(
-                              point: _trackPoints.first,
-                              width: 24,
-                              height: 24,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: AppColors.success,
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 2,
-                                  ),
-                                ),
-                                child: const Icon(
-                                  Icons.play_arrow_rounded,
-                                  size: 12,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                            // End marker
-                            Marker(
-                              point: _trackPoints.last,
-                              width: 24,
-                              height: 24,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: AppColors.danger,
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 2,
-                                  ),
-                                ),
-                                child: const Icon(
-                                  Icons.stop_rounded,
-                                  size: 12,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                            // Animated tractor marker
-                            if (hasTrack && _playController.value > 0)
-                              Marker(
-                                point: _interpolatedPosition(),
-                                width: 38,
-                                height: 38,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: AppColors.pine.withValues(alpha: 0.35),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Image.asset(
-                                    playbackAssetPath,
-                                    fit: BoxFit.contain,
-                                    filterQuality: FilterQuality.high,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-          ),
-
-          // ─── Playback controls ───
-          if (!_loading && _trackPoints.length >= 2)
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.ink.withValues(alpha: 0.06),
-                    blurRadius: 8,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Progress slider
-                  SliderTheme(
-                    data: SliderThemeData(
-                      trackHeight: 3,
-                      thumbShape: const RoundSliderThumbShape(
-                        enabledThumbRadius: 6,
-                      ),
-                      activeTrackColor: AppColors.pine,
-                      inactiveTrackColor: AppColors.ink.withValues(alpha: 0.08),
-                      thumbColor: AppColors.pine,
-                      overlayShape: const RoundSliderOverlayShape(
-                        overlayRadius: 14,
-                      ),
-                    ),
-                    child: Slider(
-                      value: _playController.value,
-                      onChanged: (v) {
-                        _playController.value = v;
-                      },
-                      onChangeStart: (_) {
-                        if (_isPlaying) _playController.stop();
-                      },
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      // Play/Pause button
-                      Material(
-                        color: AppColors.pine,
-                        borderRadius: BorderRadius.circular(24),
-                        child: InkWell(
-                          onTap: _togglePlayback,
-                          borderRadius: BorderRadius.circular(24),
-                          child: Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: Icon(
-                              _isPlaying
-                                  ? Icons.pause_rounded
-                                  : _playController.isCompleted
-                                  ? Icons.replay_rounded
-                                  : Icons.play_arrow_rounded,
-                              size: 22,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Points info
-                      Text(
-                        '${(_playController.value * _trackPoints.length).round()} / ${_trackPoints.length} pts',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.mutedInk,
-                        ),
-                      ),
-                      const Spacer(),
-                      // Speed selector
-                      for (final speed in [1.0, 2.0, 4.0])
-                        Padding(
-                          padding: const EdgeInsets.only(left: 4),
-                          child: Material(
-                            color: _playbackSpeed == speed
-                                ? AppColors.pine
-                                : AppColors.canvas,
-                            borderRadius: BorderRadius.circular(8),
-                            child: InkWell(
-                              onTap: () => _setSpeed(speed),
-                              borderRadius: BorderRadius.circular(8),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
-                                ),
-                                child: Text(
-                                  '${speed.toInt()}x',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: _playbackSpeed == speed
-                                        ? Colors.white
-                                        : AppColors.ink,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-        ],
       ),
     );
   }

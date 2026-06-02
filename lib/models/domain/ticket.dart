@@ -21,6 +21,8 @@ class Ticket {
     this.resolvedAt,
     this.assignees,
     this.comments,
+    this.lastComment,
+    this.lastActivityAt,
     this.createdAt,
   });
 
@@ -44,6 +46,8 @@ class Ticket {
   final DateTime? resolvedAt;
   final List<TicketAssignee>? assignees;
   final List<TicketComment>? comments;
+  final TicketComment? lastComment;
+  final DateTime? lastActivityAt;
   final DateTime? createdAt;
 
   String get statusLabel {
@@ -78,6 +82,28 @@ class Ticket {
 
   bool get isResolvable => status == 'open' || status == 'in_progress';
 
+  DateTime? get activityAt =>
+      lastActivityAt ?? lastComment?.createdAt ?? createdAt;
+
+  String get chatPreview {
+    final latestBody = lastComment?.body.trim();
+    if (latestBody != null && latestBody.isNotEmpty) {
+      return latestBody;
+    }
+
+    if (lastComment?.attachmentUrl != null &&
+        lastComment!.attachmentUrl!.isNotEmpty) {
+      return 'Sent an attachment';
+    }
+
+    final ticketDescription = description?.trim();
+    if (ticketDescription != null && ticketDescription.isNotEmpty) {
+      return ticketDescription;
+    }
+
+    return 'Open the room to continue the discussion.';
+  }
+
   String get assigneeNames {
     if (assignees == null || assignees!.isEmpty) return 'Unassigned';
     return assignees!.map((a) => a.name).join(', ');
@@ -94,11 +120,26 @@ class Ticket {
   }
 
   factory Ticket.fromJson(Map<String, dynamic> json) {
+    Map<String, dynamic>? normalizeMap(dynamic value) {
+      if (value is Map<String, dynamic>) {
+        return value;
+      }
+
+      if (value is Map) {
+        return Map<String, dynamic>.from(value);
+      }
+
+      return null;
+    }
+
     final tractor = json['tractor'] as Map<String, dynamic>?;
-    final submitter = json['submitter'] as Map<String, dynamic>?;
-    final resolver = json['resolver'] as Map<String, dynamic>?;
+    final submitter =
+        normalizeMap(json['submitted_by']) ?? normalizeMap(json['submitter']);
+    final resolver =
+        normalizeMap(json['resolved_by']) ?? normalizeMap(json['resolver']);
     final rawAssignees = json['assignees'] as List<dynamic>?;
     final rawComments = json['comments'] as List<dynamic>?;
+    final lastComment = normalizeMap(json['last_comment']);
 
     return Ticket(
       id: json['id'] as int,
@@ -127,6 +168,12 @@ class Ticket {
           ?.whereType<Map<String, dynamic>>()
           .map(TicketComment.fromJson)
           .toList(),
+      lastComment: lastComment != null
+          ? TicketComment.fromJson(lastComment)
+          : null,
+      lastActivityAt: DateTime.tryParse(
+        json['last_activity_at']?.toString() ?? '',
+      ),
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
     );
   }
@@ -153,6 +200,8 @@ class Ticket {
       resolvedAt: resolvedAt,
       assignees: assignees,
       comments: [...(comments ?? []), comment],
+      lastComment: comment,
+      lastActivityAt: comment.createdAt ?? DateTime.now(),
       createdAt: createdAt,
     );
   }

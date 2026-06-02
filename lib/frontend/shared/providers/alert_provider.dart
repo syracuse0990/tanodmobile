@@ -21,6 +21,7 @@ class AlertProvider extends ChangeNotifier {
   int _currentPage = 1;
   int _lastPage = 1;
   String? _typeFilter;
+  String _searchQuery = '';
 
   List<Alert> get alerts => _alerts;
   bool get loading => _loading;
@@ -28,6 +29,26 @@ class AlertProvider extends ChangeNotifier {
   int get unacknowledgedCount => _unacknowledgedCount;
   bool get hasMore => _currentPage < _lastPage;
   String? get typeFilter => _typeFilter;
+  String get searchQuery => _searchQuery;
+
+  String _normalizeSearchQuery(String? query) => query?.trim() ?? '';
+
+  Map<String, dynamic> _queryParameters({required int page}) {
+    final params = <String, dynamic>{
+      'per_page': '20',
+      'page': '$page',
+    };
+
+    if (_typeFilter != null) {
+      params['type'] = _typeFilter!;
+    }
+
+    if (_searchQuery.isNotEmpty) {
+      params['search'] = _searchQuery;
+    }
+
+    return params;
+  }
 
   /// Set a type filter and refresh (null = all).
   void setFilter(String? type) {
@@ -40,6 +61,21 @@ class AlertProvider extends ChangeNotifier {
     fetchAlerts();
   }
 
+  Future<void> setSearchQuery(String query) async {
+    final normalizedQuery = _normalizeSearchQuery(query);
+    if (_searchQuery == normalizedQuery) {
+      return;
+    }
+
+    _searchQuery = normalizedQuery;
+    _alerts = [];
+    _currentPage = 1;
+    _lastPage = 1;
+    _error = null;
+    notifyListeners();
+    await fetchAlerts();
+  }
+
   /// Fetch first page of alerts.
   Future<void> fetchAlerts() async {
     _loading = true;
@@ -47,12 +83,9 @@ class AlertProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final params = <String, dynamic>{'per_page': '20', 'page': '1'};
-      if (_typeFilter != null) params['type'] = _typeFilter!;
-
       final response = await _apiClient.get(
         AppEndpoints.alerts,
-        queryParameters: params,
+        queryParameters: _queryParameters(page: 1),
       );
 
       final dataList = response['data'] as List<dynamic>? ?? [];
@@ -81,15 +114,9 @@ class AlertProvider extends ChangeNotifier {
 
     try {
       final nextPage = _currentPage + 1;
-      final params = <String, dynamic>{
-        'per_page': '20',
-        'page': nextPage.toString(),
-      };
-      if (_typeFilter != null) params['type'] = _typeFilter!;
-
       final response = await _apiClient.get(
         AppEndpoints.alerts,
-        queryParameters: params,
+        queryParameters: _queryParameters(page: nextPage),
       );
 
       final dataList = response['data'] as List<dynamic>? ?? [];
@@ -98,7 +125,7 @@ class AlertProvider extends ChangeNotifier {
           .map(Alert.fromJson)
           .toList();
       _alerts = [..._alerts, ...newAlerts];
-      _currentPage = nextPage;
+      _currentPage = (response['current_page'] as num?)?.toInt() ?? nextPage;
       _lastPage = (response['last_page'] as num?)?.toInt() ?? _lastPage;
     } catch (e) {
       debugPrint('AlertProvider.fetchMore error: $e');

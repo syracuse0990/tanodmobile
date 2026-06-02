@@ -1,14 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/core/locale/app_localizations.dart';
+import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/maintenance_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tps_provider.dart';
 import 'package:tanodmobile/models/domain/distribution.dart';
 import 'package:tanodmobile/models/domain/farmer_feedback.dart';
 import 'package:tanodmobile/models/domain/maintenance_tractor.dart';
 import 'package:tanodmobile/models/domain/ticket.dart';
+import 'package:tanodmobile/models/domain/tps_fca.dart';
+
+enum _TpsDashboardAction { refreshOfflineData }
 
 class TpsScreen extends StatefulWidget {
   const TpsScreen({super.key});
@@ -24,9 +30,9 @@ class _TpsScreenState extends State<TpsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
     context.read<TpsProvider>().loadAll();
-    context.read<MaintenanceProvider>().fetchTractors();
+    context.read<MaintenanceProvider>().fetchTractors(pageSize: 20);
   }
 
   @override
@@ -35,121 +41,198 @@ class _TpsScreenState extends State<TpsScreen>
     super.dispose();
   }
 
+  Future<void> _handleDashboardAction(
+    _TpsDashboardAction action,
+    AuthProvider authProvider,
+  ) async {
+    switch (action) {
+      case _TpsDashboardAction.refreshOfflineData:
+        await _openOfflineRefresh(authProvider);
+    }
+  }
+
+  Future<void> _openOfflineRefresh(AuthProvider authProvider) async {
+    if (!authProvider.isConnected) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Internet connection is required to refresh offline data.',
+            ),
+          ),
+        );
+      return;
+    }
+
+    await context.push('/tps/offline-download?manual=1');
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Consumer<TpsProvider>(
-      builder: (context, provider, _) {
+    return Consumer2<TpsProvider, AuthProvider>(
+      builder: (context, provider, authProvider, _) {
         return Scaffold(
           backgroundColor: const Color(0xFFF5F7F6),
           floatingActionButton: AnimatedBuilder(
             animation: _tabController,
             builder: (context, child) {
               final index = _tabController.index;
-              final showFab = index == 4;
+              final fabLabel = switch (index) {
+                1 => context.tr('distribute_tractor'),
+                2 => 'Add FCA',
+                _ => null,
+              };
+              final fabIcon = switch (index) {
+                1 => Icons.add_rounded,
+                2 => Icons.groups_rounded,
+                _ => null,
+              };
+              final fabAction = switch (index) {
+                1 => () => context.go('/tps/distribute'),
+                2 => () => context.go('/tps/fcas/create'),
+                _ => null,
+              };
+              final showFab = fabAction != null;
+
               return AnimatedScale(
                 scale: showFab ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 200),
                 child: showFab
                     ? FloatingActionButton.extended(
-                        onPressed: () {
-                          context.go('/tps/distribute');
-                        },
+                        onPressed: fabAction,
                         backgroundColor: AppColors.forest,
                         foregroundColor: Colors.white,
-                        icon: const Icon(Icons.add_rounded, size: 20),
-                        label: Text(context.tr('distribute_tractor')),
+                        icon: Icon(fabIcon, size: 20),
+                        label: Text(fabLabel!),
                       )
                     : const SizedBox.shrink(),
               );
             },
           ),
           body: RefreshIndicator(
-            onRefresh: () => provider.loadAll(),
+            onRefresh: () async {
+              await Future.wait([
+                provider.loadAll(),
+                context.read<MaintenanceProvider>().fetchTractors(pageSize: 20),
+              ]);
+            },
             color: AppColors.forest,
             child: NestedScrollView(
-            headerSliverBuilder: (context, innerBoxIsScrolled) {
-              return [
-                SliverAppBar(
-                  floating: true,
-                  snap: true,
-                  backgroundColor: Colors.white,
-                  surfaceTintColor: Colors.transparent,
-                  elevation: 0,
-                  toolbarHeight: 70,
-                  title: const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'TPS Dashboard',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
+              headerSliverBuilder: (context, innerBoxIsScrolled) {
+                return [
+                  SliverAppBar(
+                    floating: true,
+                    snap: true,
+                    backgroundColor: Colors.white,
+                    surfaceTintColor: Colors.transparent,
+                    elevation: 0,
+                    toolbarHeight: 70,
+                    actions: [
+                      PopupMenuButton<_TpsDashboardAction>(
+                        tooltip: 'TPS actions',
+                        icon: const Icon(
+                          Icons.more_vert_rounded,
                           color: AppColors.ink,
                         ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Manage assigned tractors & services',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.mutedInk,
-                          fontWeight: FontWeight.w400,
-                        ),
+                        onSelected: (action) =>
+                            _handleDashboardAction(action, authProvider),
+                        itemBuilder: (context) => const [
+                          PopupMenuItem<_TpsDashboardAction>(
+                            value: _TpsDashboardAction.refreshOfflineData,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.cloud_sync_rounded,
+                                  color: AppColors.forest,
+                                  size: 20,
+                                ),
+                                SizedBox(width: 12),
+                                Text('Refresh offline data'),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
-                  ),
-                  bottom: PreferredSize(
-                    preferredSize: const Size.fromHeight(132),
-                    child: Column(
+                    title: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Summary cards
-                        _SummaryRow(provider: provider),
-                        const SizedBox(height: 8),
-                        // Tabs
-                        Container(
-                          color: Colors.white,
-                          child: TabBar(
-                            controller: _tabController,
-                            labelColor: AppColors.forest,
-                            unselectedLabelColor: AppColors.mutedInk,
-                            indicatorColor: AppColors.forest,
-                            indicatorSize: TabBarIndicatorSize.label,
-                            isScrollable: true,
-                            tabAlignment: TabAlignment.start,
-                            labelStyle: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            unselectedLabelStyle: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            tabs: const [
-                              Tab(text: 'Tickets'),
-                              Tab(text: 'Feedbacks'),
-                              Tab(text: 'Tractors'),
-                              Tab(text: 'Maintenance'),
-                              Tab(text: 'Distributions'),
-                            ],
+                        Text(
+                          'TPS Dashboard',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Manage assigned tractors & services',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.mutedInk,
+                            fontWeight: FontWeight.w400,
                           ),
                         ),
                       ],
                     ),
+                    bottom: PreferredSize(
+                      preferredSize: const Size.fromHeight(132),
+                      child: Column(
+                        children: [
+                          _SummaryRow(provider: provider),
+                          const SizedBox(height: 8),
+                          Container(
+                            color: Colors.white,
+                            child: TabBar(
+                              controller: _tabController,
+                              labelColor: AppColors.forest,
+                              unselectedLabelColor: AppColors.mutedInk,
+                              indicatorColor: AppColors.forest,
+                              indicatorSize: TabBarIndicatorSize.label,
+                              isScrollable: true,
+                              tabAlignment: TabAlignment.start,
+                              labelStyle: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              unselectedLabelStyle: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              tabs: const [
+                                Tab(text: 'Tickets'),
+                                Tab(text: 'Distributions'),
+                                Tab(text: 'FCAs'),
+                                Tab(text: 'Tractors'),
+                                Tab(text: 'Maintenance'),
+                                Tab(text: 'Feedbacks'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ];
-            },
-            body: TabBarView(
-              controller: _tabController,
-              children: [
-                _TicketsTab(provider: provider),
-                _FeedbacksTab(provider: provider),
-                _TractorsTab(provider: provider),
-                const _MaintenanceTab(),
-                _DistributionsTab(provider: provider),
-              ],
+                ];
+              },
+              body: TabBarView(
+                controller: _tabController,
+                children: [
+                  _TicketsTab(provider: provider),
+                  _DistributionsTab(provider: provider),
+                  _FcasTab(provider: provider),
+                  _TractorsTab(provider: provider),
+                  const _MaintenanceTab(),
+                  _FeedbacksTab(provider: provider),
+                ],
+              ),
             ),
-          ),
           ),
         );
       },
@@ -157,23 +240,31 @@ class _TpsScreenState extends State<TpsScreen>
   }
 }
 
-// ─── Summary cards row ──────────────────────────
-
 class _SummaryRow extends StatelessWidget {
   const _SummaryRow({required this.provider});
+
   final TpsProvider provider;
 
   @override
   Widget build(BuildContext context) {
-    if (provider.dashboardLoading) {
-      return const SizedBox(
-        height: 72,
+    if (provider.ticketsLoading &&
+        provider.feedbacksLoading &&
+        provider.tractorsLoading &&
+        provider.distributionsLoading &&
+        provider.tickets.isEmpty &&
+        provider.feedbacks.isEmpty &&
+        provider.tractors.isEmpty &&
+        provider.distributions.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
         child: Center(
           child: SizedBox(
             width: 20,
             height: 20,
             child: CircularProgressIndicator(
-                strokeWidth: 2, color: AppColors.forest),
+              strokeWidth: 2,
+              color: AppColors.forest,
+            ),
           ),
         ),
       );
@@ -279,30 +370,20 @@ class _TicketsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (provider.ticketsLoading && provider.tickets.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.forest),
-      );
-    }
-
-    if (provider.tickets.isEmpty) {
-      return _buildEmpty(Icons.confirmation_number_outlined, 'No tickets');
-    }
-
-    return RefreshIndicator(
+    return _PagedSearchList<Ticket>(
+      items: provider.tickets,
+      loading: provider.ticketsLoading,
+      hasMore: provider.hasMoreTickets,
+      searchQuery: provider.ticketSearchQuery,
+      searchHint: 'Search ticket, tractor, or assignee',
+      emptyIcon: Icons.confirmation_number_outlined,
+      emptyMessage: 'No tickets',
       onRefresh: () => provider.fetchTickets(),
-      color: AppColors.forest,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: provider.tickets.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
-        itemBuilder: (_, i) {
-          final ticket = provider.tickets[i];
-          return GestureDetector(
-            onTap: () => context.go('/tps/tickets/${ticket.id}'),
-            child: _TicketCard(ticket: ticket),
-          );
-        },
+      onLoadMore: provider.fetchMoreTickets,
+      onSearchChanged: (query) => provider.setTicketSearchQuery(query),
+      itemBuilder: (context, ticket) => GestureDetector(
+        onTap: () => context.go('/tps/tickets/${ticket.id}'),
+        child: _TicketCard(ticket: ticket),
       ),
     );
   }
@@ -369,8 +450,11 @@ class _TicketCard extends StatelessWidget {
                   color: _priorityColor.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(Icons.confirmation_number_rounded,
-                    size: 20, color: _priorityColor),
+                child: Icon(
+                  Icons.confirmation_number_rounded,
+                  size: 20,
+                  color: _priorityColor,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -391,7 +475,9 @@ class _TicketCard extends StatelessWidget {
                       Text(
                         ticket.tractorLabel!,
                         style: const TextStyle(
-                            fontSize: 12, color: AppColors.mutedInk),
+                          fontSize: 12,
+                          color: AppColors.mutedInk,
+                        ),
                       ),
                   ],
                 ),
@@ -420,12 +506,319 @@ class _TicketCard extends StatelessWidget {
               const Spacer(),
               Text(
                 ticket.timeAgo,
-                style: const TextStyle(
-                    fontSize: 11, color: AppColors.mutedInk),
+                style: const TextStyle(fontSize: 11, color: AppColors.mutedInk),
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── FCAs Tab ───────────────────────────────────
+
+class _FcasTab extends StatelessWidget {
+  const _FcasTab({required this.provider});
+  final TpsProvider provider;
+
+  @override
+  Widget build(BuildContext context) {
+    return _PagedSearchList<TpsFca>(
+      items: provider.fcas,
+      loading: provider.fcasLoading,
+      hasMore: provider.hasMoreFcas,
+      searchQuery: provider.fcaSearchQuery,
+      searchHint: 'Search FCA, cooperative, phone, or email',
+      emptyIcon: Icons.groups_2_outlined,
+      emptyMessage: 'No FCAs',
+      onRefresh: () => provider.fetchFcas(),
+      onLoadMore: provider.fetchMoreFcas,
+      onSearchChanged: (query) => provider.setFcaSearchQuery(query),
+      itemBuilder: (_, fca) => _FcaCard(fca: fca),
+    );
+  }
+}
+
+class _FcaCard extends StatelessWidget {
+  const _FcaCard({required this.fca});
+  final TpsFca fca;
+
+  String _formatCardDate(DateTime value) {
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+
+    return '$month-$day-${value.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final receivedLabel = fca.dateReceived == null
+        ? null
+        : _formatCardDate(fca.dateReceived!);
+    final parkingLabel = fca.locationLabel.isNotEmpty
+        ? fca.locationLabel
+        : (fca.parkingLatitude != null && fca.parkingLongitude != null)
+        ? '${fca.parkingLatitude!.toStringAsFixed(4)}, ${fca.parkingLongitude!.toStringAsFixed(4)}'
+        : null;
+    final createdLabel = fca.createdAt == null
+        ? null
+        : _formatCardDate(fca.createdAt!);
+    final statusColor = fca.isCompletedData
+        ? AppColors.success
+        : AppColors.warning;
+    final statusIcon = fca.isCompletedData
+        ? Icons.verified_rounded
+        : Icons.edit_note_rounded;
+    final title = fca.organizationName?.trim().isNotEmpty == true
+        ? fca.organizationName!.trim()
+        : fca.fullName;
+    final subtitle = fca.organizationName?.trim().isNotEmpty == true
+        ? fca.fullName
+        : 'Organization name pending';
+    final completionPercent = (fca.dataCompletionRatio * 100).round();
+    final completionLabel = fca.isCompletedData
+        ? 'Main details are complete.'
+        : 'Some details are still missing.';
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.white, statusColor.withValues(alpha: 0.04)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: statusColor.withValues(alpha: 0.12)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ink.withValues(alpha: 0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 4,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [statusColor, statusColor.withValues(alpha: 0.45)],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(
+                          Icons.groups_2_rounded,
+                          size: 20,
+                          color: statusColor,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                _FcaStatusPill(
+                                  label: fca.dataStatusLabel,
+                                  color: statusColor,
+                                  icon: statusIcon,
+                                ),
+                                if (createdLabel != null)
+                                  _FcaHeaderDatePill(label: createdLabel),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              title,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.ink,
+                                height: 1.15,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              subtitle,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.mutedInk,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Tooltip(
+                        message: 'Edit FCA',
+                        child: Material(
+                          color: statusColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(14),
+                          child: InkWell(
+                            onTap: () => context.go('/tps/fcas/${fca.id}/edit'),
+                            borderRadius: BorderRadius.circular(14),
+                            child: SizedBox(
+                              width: 42,
+                              height: 42,
+                              child: Icon(
+                                Icons.edit_rounded,
+                                size: 18,
+                                color: statusColor,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.78),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: statusColor.withValues(alpha: 0.10),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.query_stats_rounded,
+                              size: 16,
+                              color: statusColor,
+                            ),
+                            const SizedBox(width: 7),
+                            Expanded(
+                              child: Text(
+                                completionLabel,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.ink,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Text(
+                              '$completionPercent%',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: statusColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 7),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(999),
+                                child: LinearProgressIndicator(
+                                  value: fca.dataCompletionRatio,
+                                  minHeight: 6,
+                                  backgroundColor: statusColor.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    statusColor,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              '${fca.completedDataCheckpoints}/${TpsFca.totalDataCheckpoints}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: statusColor.withValues(alpha: 0.92),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _FcaMetaPill(
+                        icon: Icons.call_outlined,
+                        text: fca.contactLabel.isNotEmpty
+                            ? fca.contactLabel
+                            : 'Contact pending',
+                        color: fca.hasContactDetails
+                            ? AppColors.forest
+                            : AppColors.warning,
+                      ),
+                      _FcaMetaPill(
+                        icon: Icons.place_outlined,
+                        text: parkingLabel ?? 'Location pending',
+                        color: fca.hasLocationDetails
+                            ? AppColors.pine
+                            : AppColors.warning,
+                      ),
+                      _FcaMetaPill(
+                        icon: Icons.calendar_month_outlined,
+                        text: receivedLabel ?? 'Date pending',
+                        color: fca.hasReceivedDetails
+                            ? AppColors.clay
+                            : AppColors.warning,
+                      ),
+                      if (fca.province?.isNotEmpty == true)
+                        _FcaMetaPill(
+                          icon: Icons.map_outlined,
+                          text: fca.province!,
+                          color: AppColors.forest,
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -439,26 +832,18 @@ class _FeedbacksTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (provider.feedbacksLoading && provider.feedbacks.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.forest),
-      );
-    }
-
-    if (provider.feedbacks.isEmpty) {
-      return _buildEmpty(Icons.rate_review_outlined, 'No feedbacks');
-    }
-
-    return RefreshIndicator(
+    return _PagedSearchList<FarmerFeedbackItem>(
+      items: provider.feedbacks,
+      loading: provider.feedbacksLoading,
+      hasMore: provider.hasMoreFeedbacks,
+      searchQuery: provider.feedbackSearchQuery,
+      searchHint: 'Search feedback, tractor, or farmer',
+      emptyIcon: Icons.rate_review_outlined,
+      emptyMessage: 'No feedbacks',
       onRefresh: () => provider.fetchFeedbacks(),
-      color: AppColors.forest,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: provider.feedbacks.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
-        itemBuilder: (_, i) =>
-            _FeedbackCard(feedback: provider.feedbacks[i]),
-      ),
+      onLoadMore: provider.fetchMoreFeedbacks,
+      onSearchChanged: (query) => provider.setFeedbackSearchQuery(query),
+      itemBuilder: (_, feedback) => _FeedbackCard(feedback: feedback),
     );
   }
 }
@@ -493,9 +878,7 @@ class _FeedbackCard extends StatelessWidget {
                 children: List.generate(5, (i) {
                   final r = feedback.rating ?? 0;
                   return Icon(
-                    i < r
-                        ? Icons.star_rounded
-                        : Icons.star_border_rounded,
+                    i < r ? Icons.star_rounded : Icons.star_border_rounded,
                     size: 18,
                     color: i < r
                         ? AppColors.gold
@@ -506,8 +889,7 @@ class _FeedbackCard extends StatelessWidget {
               const Spacer(),
               Text(
                 feedback.timeAgo,
-                style: const TextStyle(
-                    fontSize: 11, color: AppColors.mutedInk),
+                style: const TextStyle(fontSize: 11, color: AppColors.mutedInk),
               ),
             ],
           ),
@@ -524,27 +906,25 @@ class _FeedbackCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           const SizedBox(height: 10),
-          Row(
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
             children: [
               if (feedback.tractorLabel != null)
                 _InfoChip(
                   icon: Icons.agriculture_rounded,
                   text: feedback.tractorLabel!,
                 ),
-              if (feedback.submitterName != null) ...[
-                const SizedBox(width: 10),
+              if (feedback.submitterName != null)
                 _InfoChip(
                   icon: Icons.person_outline_rounded,
                   text: feedback.submitterName!,
                 ),
-              ],
-              if (feedback.category != null) ...[
-                const SizedBox(width: 10),
+              if (feedback.category != null)
                 _InfoChip(
                   icon: Icons.category_outlined,
                   text: feedback.category!,
                 ),
-              ],
             ],
           ),
         ],
@@ -561,101 +941,98 @@ class _TractorsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (provider.tractorsLoading && provider.tractors.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.forest),
-      );
-    }
-
-    if (provider.tractors.isEmpty) {
-      return _buildEmpty(Icons.agriculture_outlined, 'No tractors assigned');
-    }
-
-    return RefreshIndicator(
+    return _PagedSearchList<Map<String, dynamic>>(
+      items: provider.tractors,
+      loading: provider.tractorsLoading,
+      hasMore: provider.hasMoreTractors,
+      searchQuery: provider.tractorSearchQuery,
+      searchHint: 'Search plate, IMEI, brand, or group',
+      emptyIcon: Icons.agriculture_outlined,
+      emptyMessage: 'No tractors available',
       onRefresh: () => provider.fetchTractors(),
-      color: AppColors.forest,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: provider.tractors.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
-        itemBuilder: (_, i) {
-          final t = provider.tractors[i];
-          final plate = t['no_plate']?.toString() ?? 'N/A';
-          final brand = t['brand']?.toString() ?? '';
-          final model = t['model']?.toString() ?? '';
-          final status = t['status']?.toString() ?? 'unknown';
-          final year = t['year']?.toString();
-          final group = (t['groups'] is List && (t['groups'] as List).isNotEmpty)
-              ? (t['groups'] as List).first['name']?.toString()
-              : null;
+      onLoadMore: provider.fetchMoreTractors,
+      onSearchChanged: (query) => provider.setTractorSearchQuery(query),
+      itemBuilder: (_, t) {
+        final plate = t['no_plate']?.toString() ?? 'N/A';
+        final brand = t['brand']?.toString() ?? '';
+        final model = t['model']?.toString() ?? '';
+        final status = t['status']?.toString() ?? 'unknown';
+        final year = t['year']?.toString();
+        final group = (t['groups'] is List && (t['groups'] as List).isNotEmpty)
+            ? (t['groups'] as List).first['name']?.toString()
+            : null;
 
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.ink.withValues(alpha: 0.04),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.ink.withValues(alpha: 0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppColors.forest.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.forest.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(Icons.agriculture_rounded,
-                      color: AppColors.forest, size: 26),
+                child: const Icon(
+                  Icons.agriculture_rounded,
+                  color: AppColors.forest,
+                  size: 26,
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        plate,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.ink,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      plate,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    Text(
+                      '$brand $model${year != null ? ' ($year)' : ''}'.trim(),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.mutedInk,
+                      ),
+                    ),
+                    if (group != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: _InfoChip(
+                          icon: Icons.group_work_rounded,
+                          text: group,
                         ),
                       ),
-                      Text(
-                        '$brand $model${year != null ? ' ($year)' : ''}'.trim(),
-                        style: const TextStyle(
-                            fontSize: 13, color: AppColors.mutedInk),
-                      ),
-                      if (group != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: _InfoChip(
-                            icon: Icons.group_work_rounded,
-                            text: group,
-                          ),
-                        ),
-                    ],
-                  ),
+                  ],
                 ),
-                _Badge(
-                  label: status[0].toUpperCase() + status.substring(1),
-                  color: status == 'active'
-                      ? AppColors.success
-                      : status == 'maintenance'
-                          ? AppColors.warning
-                          : AppColors.mutedInk,
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+              ),
+              _Badge(
+                label: status[0].toUpperCase() + status.substring(1),
+                color: status == 'active'
+                    ? AppColors.success
+                    : status == 'maintenance'
+                    ? AppColors.warning
+                    : AppColors.mutedInk,
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -699,8 +1076,10 @@ class _MaintenanceTab extends StatelessWidget {
             ),
             const Divider(height: 1),
             ListTile(
-              leading:
-                  const Icon(Icons.history_rounded, color: AppColors.forest),
+              leading: const Icon(
+                Icons.history_rounded,
+                color: AppColors.forest,
+              ),
               title: const Text('PMS History'),
               subtitle: const Text('View past PMS records'),
               onTap: () {
@@ -709,8 +1088,10 @@ class _MaintenanceTab extends StatelessWidget {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.checklist_rounded,
-                  color: AppColors.forest),
+              leading: const Icon(
+                Icons.checklist_rounded,
+                color: AppColors.forest,
+              ),
               title: const Text('Record PMS'),
               subtitle: const Text('Perform PMS checklist'),
               onTap: () {
@@ -732,36 +1113,27 @@ class _MaintenanceTab extends StatelessWidget {
     final tractors = List<MaintenanceTractor>.from(provider.tractors)
       ..sort((a, b) {
         const order = {'due': 0, 'upcoming': 1, 'ok': 2};
-        final cmp =
-            (order[a.pmsStatus] ?? 2).compareTo(order[b.pmsStatus] ?? 2);
+        final cmp = (order[a.pmsStatus] ?? 2).compareTo(
+          order[b.pmsStatus] ?? 2,
+        );
         if (cmp != 0) return cmp;
         return a.totalRunningHours.compareTo(b.totalRunningHours);
       });
 
-    if (provider.loading && tractors.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.forest),
-      );
-    }
-
-    if (tractors.isEmpty) {
-      return _buildEmpty(Icons.build_circle_outlined, 'No maintenance data');
-    }
-
-    return RefreshIndicator(
-      onRefresh: () => provider.fetchTractors(),
-      color: AppColors.forest,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: tractors.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
-        itemBuilder: (_, i) {
-          final tractor = tractors[i];
-          return GestureDetector(
-            onTap: () => _showPmsActions(context, tractor),
-            child: _MaintenanceCard(tractor: tractor),
-          );
-        },
+    return _PagedSearchList<MaintenanceTractor>(
+      items: tractors,
+      loading: provider.loading,
+      hasMore: provider.hasMore,
+      searchQuery: provider.searchQuery,
+      searchHint: 'Search tractor, brand, assignee, or IMEI',
+      emptyIcon: Icons.build_circle_outlined,
+      emptyMessage: 'No maintenance data',
+      onRefresh: () => provider.fetchTractors(pageSize: 20),
+      onLoadMore: () => provider.fetchMore(pageSize: 20),
+      onSearchChanged: (query) => provider.setSearchQuery(query, pageSize: 20),
+      itemBuilder: (context, tractor) => GestureDetector(
+        onTap: () => _showPmsActions(context, tractor),
+        child: _MaintenanceCard(tractor: tractor),
       ),
     );
   }
@@ -773,8 +1145,11 @@ class _MaintenanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (Color badgeBg, Color badgeFg, String badgeText) =
-        switch (tractor.pmsStatus) {
+    final (
+      Color badgeBg,
+      Color badgeFg,
+      String badgeText,
+    ) = switch (tractor.pmsStatus) {
       'due' => (const Color(0xFFFFEBEE), AppColors.danger, 'PMS DUE'),
       'upcoming' => (
         const Color(0xFFFFF3E0),
@@ -797,12 +1172,15 @@ class _MaintenanceCard extends StatelessWidget {
         ],
         border: tractor.isPmsDue
             ? Border.all(
-                color: AppColors.danger.withValues(alpha: 0.4), width: 1.5)
+                color: AppColors.danger.withValues(alpha: 0.4),
+                width: 1.5,
+              )
             : tractor.isPmsUpcoming
-                ? Border.all(
-                    color: const Color(0xFFE65100).withValues(alpha: 0.3),
-                    width: 1)
-                : null,
+            ? Border.all(
+                color: const Color(0xFFE65100).withValues(alpha: 0.3),
+                width: 1,
+              )
+            : null,
       ),
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -854,14 +1232,18 @@ class _MaintenanceCard extends StatelessWidget {
                       Text(
                         tractor.brandModel,
                         style: const TextStyle(
-                            fontSize: 12, color: AppColors.mutedInk),
+                          fontSize: 12,
+                          color: AppColors.mutedInk,
+                        ),
                       ),
                   ],
                 ),
               ),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: badgeBg,
                   borderRadius: BorderRadius.circular(8),
@@ -914,27 +1296,20 @@ class _DistributionsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (provider.distributionsLoading && provider.distributions.isEmpty) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.forest),
-      );
-    }
-
-    if (provider.distributions.isEmpty) {
-      return _buildEmpty(
-          Icons.local_shipping_outlined, 'No distributions');
-    }
-
-    return RefreshIndicator(
+    return _PagedSearchList<Distribution>(
+      items: provider.distributions,
+      loading: provider.distributionsLoading,
+      hasMore: provider.hasMoreDistributions,
+      searchQuery: provider.distributionSearchQuery,
+      searchHint: 'Search tractor, FCA, email, or area',
+      emptyIcon: Icons.local_shipping_outlined,
+      emptyMessage: 'No distributions',
       onRefresh: () => provider.fetchDistributions(),
-      color: AppColors.forest,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: provider.distributions.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
-        itemBuilder: (_, i) =>
-            _DistributionCard(distribution: provider.distributions[i]),
-      ),
+      onLoadMore: provider.fetchMoreDistributions,
+      onSearchChanged: (query) => provider.setDistributionSearchQuery(query),
+      listPadding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
+      itemBuilder: (_, distribution) =>
+          _DistributionCard(distribution: distribution),
     );
   }
 }
@@ -985,8 +1360,11 @@ class _DistributionCard extends StatelessWidget {
                   color: AppColors.pine.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.local_shipping_rounded,
-                    size: 20, color: AppColors.pine),
+                child: const Icon(
+                  Icons.local_shipping_rounded,
+                  size: 20,
+                  color: AppColors.pine,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1005,7 +1383,9 @@ class _DistributionCard extends StatelessWidget {
                       Text(
                         'To: ${distribution.distributedToName}',
                         style: const TextStyle(
-                            fontSize: 12, color: AppColors.mutedInk),
+                          fontSize: 12,
+                          color: AppColors.mutedInk,
+                        ),
                       ),
                   ],
                 ),
@@ -1015,10 +1395,7 @@ class _DistributionCard extends StatelessWidget {
           ),
           if (distribution.area != null) ...[
             const SizedBox(height: 10),
-            _InfoChip(
-              icon: Icons.place_rounded,
-              text: distribution.area!,
-            ),
+            _InfoChip(icon: Icons.place_rounded, text: distribution.area!),
           ],
         ],
       ),
@@ -1027,6 +1404,225 @@ class _DistributionCard extends StatelessWidget {
 }
 
 // ─── Shared widgets ─────────────────────────────
+
+class _PagedSearchList<T> extends StatefulWidget {
+  const _PagedSearchList({
+    required this.items,
+    required this.loading,
+    required this.hasMore,
+    required this.searchQuery,
+    required this.searchHint,
+    required this.emptyIcon,
+    required this.emptyMessage,
+    required this.onRefresh,
+    required this.onLoadMore,
+    required this.onSearchChanged,
+    required this.itemBuilder,
+    this.listPadding = const EdgeInsets.fromLTRB(16, 4, 16, 24),
+  });
+
+  final List<T> items;
+  final bool loading;
+  final bool hasMore;
+  final String searchQuery;
+  final String searchHint;
+  final IconData emptyIcon;
+  final String emptyMessage;
+  final Future<void> Function() onRefresh;
+  final Future<void> Function() onLoadMore;
+  final Future<void> Function(String query) onSearchChanged;
+  final Widget Function(BuildContext context, T item) itemBuilder;
+  final EdgeInsets listPadding;
+
+  @override
+  State<_PagedSearchList<T>> createState() => _PagedSearchListState<T>();
+}
+
+class _PagedSearchListState<T> extends State<_PagedSearchList<T>> {
+  final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.text = widget.searchQuery;
+    _scrollController.addListener(_handleScroll);
+  }
+
+  @override
+  void didUpdateWidget(covariant _PagedSearchList<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (widget.searchQuery != _searchController.text) {
+      _searchController.value = TextEditingValue(
+        text: widget.searchQuery,
+        selection: TextSelection.collapsed(offset: widget.searchQuery.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _scrollController.dispose();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+
+    if (_scrollController.position.pixels <
+        _scrollController.position.maxScrollExtent - 180) {
+      return;
+    }
+
+    widget.onLoadMore();
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() {});
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      widget.onSearchChanged(value);
+    });
+  }
+
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    setState(() {});
+    widget.onSearchChanged('');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _searchController.text.trim();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: _DashboardSearchField(
+            controller: _searchController,
+            hintText: widget.searchHint,
+            onChanged: _onSearchChanged,
+            onClear: _clearSearch,
+          ),
+        ),
+        Expanded(
+          child: widget.loading && widget.items.isEmpty
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppColors.forest),
+                )
+              : RefreshIndicator(
+                  onRefresh: widget.onRefresh,
+                  color: AppColors.forest,
+                  child: widget.items.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(16, 48, 16, 24),
+                          children: [
+                            _buildEmpty(
+                              widget.emptyIcon,
+                              query.isEmpty
+                                  ? widget.emptyMessage
+                                  : 'No results found',
+                            ),
+                          ],
+                        )
+                      : ListView.separated(
+                          controller: _scrollController,
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: widget.listPadding,
+                          itemCount:
+                              widget.items.length + (widget.hasMore ? 1 : 0),
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            if (index >= widget.items.length) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                child: Center(
+                                  child: widget.loading
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            color: AppColors.forest,
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                              );
+                            }
+
+                            return widget.itemBuilder(
+                              context,
+                              widget.items[index],
+                            );
+                          },
+                        ),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DashboardSearchField extends StatelessWidget {
+  const _DashboardSearchField({
+    required this.controller,
+    required this.hintText,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final String hintText;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasValue = controller.text.trim().isNotEmpty;
+
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        hintText: hintText,
+        prefixIcon: const Icon(Icons.search_rounded, color: AppColors.mutedInk),
+        suffixIcon: hasValue
+            ? IconButton(
+                onPressed: onClear,
+                icon: const Icon(
+                  Icons.close_rounded,
+                  color: AppColors.mutedInk,
+                ),
+              )
+            : null,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+}
 
 Widget _buildEmpty(IconData icon, String message) {
   return Center(
@@ -1067,6 +1663,128 @@ class _Badge extends StatelessWidget {
           fontSize: 12,
           fontWeight: FontWeight.w700,
           color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _FcaStatusPill extends StatelessWidget {
+  const _FcaStatusPill({
+    required this.label,
+    required this.color,
+    required this.icon,
+  });
+
+  final String label;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.11),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.14)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FcaHeaderDatePill extends StatelessWidget {
+  const _FcaHeaderDatePill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.mutedInk.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.calendar_today_outlined,
+            size: 12,
+            color: AppColors.mutedInk,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: AppColors.mutedInk,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FcaMetaPill extends StatelessWidget {
+  const _FcaMetaPill({
+    required this.icon,
+    required this.text,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 280),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.90),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.12)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.ink,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
       ),
     );

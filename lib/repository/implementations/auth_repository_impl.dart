@@ -28,6 +28,36 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<void> persistSession(AppSession session) async {
+    await _localDataSource.persistSession(session);
+  }
+
+  @override
+  Future<AppSession?> restoreOfflineTpsSession() async {
+    return _localDataSource.getOfflineTpsSession();
+  }
+
+  @override
+  Future<void> saveOfflineTpsSession(AppSession session) async {
+    await _localDataSource.persistOfflineTpsSession(session);
+  }
+
+  @override
+  Future<void> clearOfflineTpsSession() async {
+    await _localDataSource.clearOfflineTpsSession();
+  }
+
+  @override
+  Future<bool> getOfflineModeEnabled() async {
+    return _localDataSource.getOfflineModeEnabled();
+  }
+
+  @override
+  Future<void> setOfflineModeEnabled(bool enabled) async {
+    await _localDataSource.setOfflineModeEnabled(enabled);
+  }
+
+  @override
   Future<AppSession> signIn({
     required String login,
     required String password,

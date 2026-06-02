@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Allow Tanod Tractor to capture a photo of the reported issue.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Allow Tanod Tractor to verify ticket photos with your current location.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Allow Tanod Tractor to choose a photo of the reported issue from your library.</string>
 </dict>
 </plist>

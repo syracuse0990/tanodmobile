@@ -2,9 +2,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/services.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
+import 'package:tanodmobile/frontend/modules/tickets/models/ticket_issue_photo.dart';
+import 'package:tanodmobile/frontend/modules/tickets/services/ticket_issue_photo_service.dart';
+import 'package:tanodmobile/frontend/modules/tickets/widgets/ticket_issue_photo_picker.dart';
 import 'package:tanodmobile/frontend/shared/providers/ticket_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/app_toast.dart';
 
@@ -23,7 +26,12 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   int? _selectedTractorId;
   String _selectedPriority = 'medium';
   String? _selectedCategory;
-  File? _photo;
+  final _photoService = TicketIssuePhotoService();
+  List<TicketIssuePhoto> _photos = const [];
+  File? _uploadPhoto;
+  String? _photoError;
+  String _photoProcessingLabel = 'Applying secure watermark...';
+  bool _processingPhotos = false;
   bool _submitting = false;
 
   static const _categories = [
@@ -55,97 +63,203 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     super.dispose();
   }
 
-  Future<void> _pickPhoto() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1920,
-      maxHeight: 1920,
-      imageQuality: 80,
+  Future<void> _pickPhotosFromGallery() async {
+    if (_photos.length >= TicketIssuePhotoService.maxPhotos) {
+      AppToast.show(
+        'Only up to 2 issue photos are allowed.',
+        type: ToastType.error,
+      );
+      return;
+    }
+
+    await _appendPhotos(
+      loadingLabel: 'Applying secure watermark...',
+      action: () => _photoService.pickFromGallery(
+        remainingSlots: TicketIssuePhotoService.maxPhotos - _photos.length,
+      ),
     );
-    if (picked != null) {
-      setState(() => _photo = File(picked.path));
+  }
+
+  Future<void> _capturePhoto() async {
+    if (_photos.length >= TicketIssuePhotoService.maxPhotos) {
+      AppToast.show(
+        'Only up to 2 issue photos are allowed.',
+        type: ToastType.error,
+      );
+      return;
+    }
+
+    await _appendPhotos(
+      loadingLabel: 'Stamping GPS verification...',
+      action: () async {
+        final capturedPhoto = await _photoService.captureWithCamera();
+        return capturedPhoto == null ? const [] : [capturedPhoto];
+      },
+    );
+  }
+
+  Future<void> _appendPhotos({
+    required String loadingLabel,
+    required Future<List<TicketIssuePhoto>> Function() action,
+  }) async {
+    if (_processingPhotos) {
+      return;
+    }
+
+    setState(() {
+      _processingPhotos = true;
+      _photoProcessingLabel = loadingLabel;
+    });
+
+    try {
+      final newPhotos = await action();
+      if (newPhotos.isEmpty) {
+        return;
+      }
+
+      final nextPhotos = [
+        ..._photos,
+        ...newPhotos,
+      ].take(TicketIssuePhotoService.maxPhotos).toList(growable: false);
+      final uploadPhoto = await _photoService.buildUploadPhoto(nextPhotos);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _photos = nextPhotos;
+        _uploadPhoto = uploadPhoto;
+        _photoError = null;
+      });
+    } on TicketIssuePhotoException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      AppToast.show(error.message, type: ToastType.error);
+    } catch (error, stackTrace) {
+      if (!mounted) {
+        return;
+      }
+
+      debugPrint('CreateTicketScreen._appendPhotos error: $error\n$stackTrace');
+
+      AppToast.show(_friendlyPhotoError(error), type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() => _processingPhotos = false);
+      }
     }
   }
 
-  Future<void> _takePhoto() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: ImageSource.camera,
-      maxWidth: 1920,
-      maxHeight: 1920,
-      imageQuality: 80,
-    );
-    if (picked != null) {
-      setState(() => _photo = File(picked.path));
+  Future<void> _removePhotoAt(int index) async {
+    final nextPhotos = [..._photos]..removeAt(index);
+
+    if (nextPhotos.length > 1) {
+      setState(() {
+        _processingPhotos = true;
+        _photoProcessingLabel = 'Refreshing verified proof sheet...';
+      });
+    }
+
+    try {
+      final uploadPhoto = await _photoService.buildUploadPhoto(nextPhotos);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _photos = nextPhotos;
+        _uploadPhoto = uploadPhoto;
+        if (nextPhotos.isNotEmpty) {
+          _photoError = null;
+        }
+      });
+    } on TicketIssuePhotoException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      AppToast.show(error.message, type: ToastType.error);
+    } catch (error, stackTrace) {
+      if (!mounted) {
+        return;
+      }
+
+      debugPrint(
+        'CreateTicketScreen._removePhotoAt error: $error\n$stackTrace',
+      );
+
+      AppToast.show(_friendlyPhotoError(error), type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() => _processingPhotos = false);
+      }
     }
   }
 
-  void _showPhotoOptions() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading:
-                  const Icon(Icons.camera_alt_rounded, color: AppColors.forest),
-              title: const Text('Take Photo'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _takePhoto();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_rounded,
-                  color: AppColors.forest),
-              title: const Text('Choose from Gallery'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickPhoto();
-              },
-            ),
-            if (_photo != null)
-              ListTile(
-                leading: const Icon(Icons.delete_outline_rounded,
-                    color: AppColors.danger),
-                title:
-                    const Text('Remove Photo', style: TextStyle(color: AppColors.danger)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  setState(() => _photo = null);
-                },
-              ),
-          ],
-        ),
-      ),
-    );
+  String _friendlyPhotoError(Object error) {
+    if (error is MissingPluginException) {
+      return 'Restart the app once so the photo verification tools can finish loading.';
+    }
+
+    if (error is PlatformException) {
+      final message = error.message?.trim();
+      if (message != null && message.isNotEmpty) {
+        return message;
+      }
+    }
+
+    final text = error.toString().replaceFirst('Exception: ', '').trim();
+    if (text.isNotEmpty && text != 'null') {
+      return text;
+    }
+
+    return 'Unable to prepare the verified issue photo.';
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_processingPhotos) {
+      AppToast.show(
+        'Please wait for the verified watermark to finish.',
+        type: ToastType.error,
+      );
+      return;
+    }
 
-    setState(() => _submitting = true);
+    if (_photos.isEmpty || _uploadPhoto == null) {
+      setState(() {
+        _photoError = 'At least 1 verified issue photo is required.';
+      });
+      return;
+    }
 
-    final success = await context.read<TicketProvider>().createTicket(
-          subject: _subjectController.text.trim(),
-          description: _descriptionController.text.trim(),
-          priority: _selectedPriority,
-          category: _selectedCategory,
-          tractorId: _selectedTractorId,
-          photo: _photo,
-        );
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _photoError = null;
+    });
+
+    final createdTicket = await context.read<TicketProvider>().createTicket(
+      subject: _subjectController.text.trim(),
+      description: _descriptionController.text.trim(),
+      priority: _selectedPriority,
+      category: _selectedCategory,
+      tractorId: _selectedTractorId,
+      photo: _uploadPhoto,
+    );
 
     if (!mounted) return;
     setState(() => _submitting = false);
 
-    if (success) {
+    if (createdTicket != null) {
       AppToast.show('Ticket created successfully');
-      context.go('/account/tickets');
+      context.go('/chat/${createdTicket.id}');
     } else {
       AppToast.show('Failed to create ticket', type: ToastType.error);
     }
@@ -180,8 +294,9 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               TextFormField(
                 controller: _subjectController,
                 decoration: _inputDecoration('Enter ticket subject'),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Subject is required' : null,
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'Subject is required'
+                    : null,
                 textInputAction: TextInputAction.next,
               ),
 
@@ -197,8 +312,10 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                 items: [
                   const DropdownMenuItem<int>(
                     value: null,
-                    child: Text('None',
-                        style: TextStyle(color: AppColors.mutedInk)),
+                    child: Text(
+                      'None',
+                      style: TextStyle(color: AppColors.mutedInk),
+                    ),
                   ),
                   ...provider.tractors.map((t) {
                     final label =
@@ -232,9 +349,10 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                           items: [
                             const DropdownMenuItem<String>(
                               value: null,
-                              child: Text('None',
-                                  style:
-                                      TextStyle(color: AppColors.mutedInk)),
+                              child: Text(
+                                'None',
+                                style: TextStyle(color: AppColors.mutedInk),
+                              ),
                             ),
                             ..._categories.map(
                               (c) => DropdownMenuItem(
@@ -302,63 +420,15 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               // ─── Photo ───
               _FieldLabel(label: 'Photo of Issue'),
               const SizedBox(height: 6),
-              GestureDetector(
-                onTap: _showPhotoOptions,
-                child: Container(
-                  width: double.infinity,
-                  height: _photo != null ? 200 : 120,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: _photo != null
-                      ? Stack(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(13),
-                              child: Image.file(
-                                _photo!,
-                                width: double.infinity,
-                                height: 200,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                            Positioned(
-                              top: 8,
-                              right: 8,
-                              child: GestureDetector(
-                                onTap: () => setState(() => _photo = null),
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black54,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: const Icon(Icons.close_rounded,
-                                      color: Colors.white, size: 18),
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.add_a_photo_rounded,
-                                size: 32,
-                                color: AppColors.mutedInk.withValues(alpha: 0.4)),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Tap to add a photo',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: AppColors.mutedInk,
-                              ),
-                            ),
-                          ],
-                        ),
-                ),
+              TicketIssuePhotoPicker(
+                photos: _photos,
+                uploadPreviewFile: _uploadPhoto,
+                isProcessing: _processingPhotos,
+                processingLabel: _photoProcessingLabel,
+                errorText: _photoError,
+                onPickGallery: _pickPhotosFromGallery,
+                onCapture: _capturePhoto,
+                onRemove: _removePhotoAt,
               ),
 
               const SizedBox(height: 28),
@@ -372,18 +442,25 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.forest,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: AppColors.forest.withValues(alpha: 0.5),
+                    disabledBackgroundColor: AppColors.forest.withValues(
+                      alpha: 0.5,
+                    ),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                     textStyle: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   child: _submitting
                       ? const SizedBox(
                           width: 22,
                           height: 22,
                           child: CircularProgressIndicator(
-                              color: Colors.white, strokeWidth: 2.5),
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
                         )
                       : const Text('Submit Ticket'),
                 ),
@@ -398,29 +475,28 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   }
 
   InputDecoration _inputDecoration(String hint) => InputDecoration(
-        hintText: hint,
-        hintStyle: TextStyle(color: AppColors.mutedInk.withValues(alpha: 0.5)),
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.forest, width: 1.5),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.danger),
-        ),
-      );
+    hintText: hint,
+    hintStyle: TextStyle(color: AppColors.mutedInk.withValues(alpha: 0.5)),
+    filled: true,
+    fillColor: Colors.white,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: Colors.grey.shade300),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: Colors.grey.shade300),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(color: AppColors.forest, width: 1.5),
+    ),
+    errorBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(color: AppColors.danger),
+    ),
+  );
 }
 
 class _FieldLabel extends StatelessWidget {

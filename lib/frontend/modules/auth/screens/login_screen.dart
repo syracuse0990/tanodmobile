@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/modules/auth/screens/parts/auth_error_banner.dart';
@@ -295,6 +296,84 @@ class _LoginScreenState extends State<LoginScreen> {
                   passwordController: _passwordController,
                 ),
               ),
+              if (authProvider.canUseOfflineMode) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.canvas,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: AppColors.pine.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.cloud_off_rounded,
+                            color: AppColors.pine,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'You can use Offline Mode on this phone.',
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: AppColors.ink,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Tap Offline Mode if you already logged in on this phone before. Use it when you have no signal and need to continue TPS work.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.mutedInk,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: authProvider.isBusy
+                            ? null
+                            : () async {
+                                FocusScope.of(context).unfocus();
+                                final openedOfflineMode = await context
+                                    .read<AuthProvider>()
+                                    .enterOfflineMode();
+                                if (!mounted || !openedOfflineMode) {
+                                  return;
+                                }
+
+                                context.go('/tps/offline');
+                              },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.pine,
+                          minimumSize: const Size.fromHeight(50),
+                          side: BorderSide(
+                            color: AppColors.pine.withValues(alpha: 0.28),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        icon: const Icon(Icons.wifi_off_rounded),
+                        label: const Text('Offline Mode'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),

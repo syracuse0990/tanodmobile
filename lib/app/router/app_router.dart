@@ -1,8 +1,9 @@
-﻿import 'package:flutter/widgets.dart';
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:tanodmobile/frontend/modules/alerts/screens/alerts_screen.dart';
 import 'package:tanodmobile/frontend/modules/auth/screens/login_screen.dart';
 import 'package:tanodmobile/frontend/modules/bookings/screens/bookings_screen.dart';
+import 'package:tanodmobile/frontend/modules/chat/screens/chat_rooms_screen.dart';
 import 'package:tanodmobile/frontend/modules/dashboard/screens/dashboard_shell.dart';
 import 'package:tanodmobile/frontend/modules/home/screens/home_screen.dart';
 import 'package:tanodmobile/frontend/modules/profile/screens/account_screen.dart';
@@ -31,9 +32,18 @@ import 'package:tanodmobile/frontend/modules/profile/screens/delete_account_scre
 import 'package:tanodmobile/frontend/modules/reports/screens/reports_screen.dart';
 import 'package:tanodmobile/frontend/modules/tps/screens/tps_screen.dart';
 import 'package:tanodmobile/frontend/modules/tps/screens/distribute_tractor_screen.dart';
+import 'package:tanodmobile/frontend/modules/tps/screens/tps_create_fca_screen.dart';
+import 'package:tanodmobile/frontend/modules/tps/screens/tps_offline_distributions_screen.dart';
+import 'package:tanodmobile/frontend/modules/tps/screens/tps_offline_distribution_draft_screen.dart';
+import 'package:tanodmobile/frontend/modules/tps/screens/tps_offline_download_screen.dart';
+import 'package:tanodmobile/frontend/modules/tps/screens/tps_offline_fca_draft_screen.dart';
+import 'package:tanodmobile/frontend/modules/tps/screens/tps_offline_fcas_screen.dart';
+import 'package:tanodmobile/frontend/modules/tps/screens/tps_offline_home_screen.dart';
 import 'package:tanodmobile/frontend/modules/tps/screens/tps_ticket_detail_screen.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/models/domain/maintenance_tractor.dart';
+import 'package:tanodmobile/models/local/offline_distribution_draft.dart';
+import 'package:tanodmobile/models/local/offline_fca_draft.dart';
 
 class AppRouter {
   const AppRouter._();
@@ -41,16 +51,29 @@ class AppRouter {
   static GoRouter create(
     AuthProvider authProvider, {
     GlobalKey<NavigatorState>? navigatorKey,
+    String? initialLocation,
   }) {
     final isTps = authProvider.session?.roles.contains('tps') ?? false;
+    final requiresTpsOfflineSync =
+        isTps &&
+        authProvider.requiresTpsOfflineSync &&
+        !authProvider.isOfflineMode;
 
     return GoRouter(
       navigatorKey: navigatorKey,
       refreshListenable: authProvider,
-      initialLocation: '/home',
+      initialLocation: initialLocation ?? '/home',
       redirect: (BuildContext context, GoRouterState state) {
         final status = authProvider.status;
         final isAuthRoute = state.matchedLocation == '/login';
+        final isOfflineSyncRoute =
+            state.matchedLocation == '/tps/offline-download';
+        final isOfflineWorkspaceRoute =
+            state.matchedLocation == '/tps/offline' ||
+            state.matchedLocation.startsWith('/tps/offline/');
+        final isManualOfflineSync =
+            state.uri.queryParameters['manual'] == '1' &&
+            !requiresTpsOfflineSync;
 
         if (status == AuthStatus.initial || status == AuthStatus.loading) {
           return '/splash';
@@ -61,12 +84,34 @@ class AppRouter {
           return isAuthRoute ? null : '/login';
         }
 
-        if (status == AuthStatus.authenticated && isAuthRoute) {
+        if (requiresTpsOfflineSync && !isOfflineSyncRoute) {
+          return '/tps/offline-download';
+        }
+
+        if (isOfflineWorkspaceRoute && !authProvider.isOfflineMode) {
           return '/home';
         }
 
-        if (state.matchedLocation == '/splash') {
+        if (isOfflineSyncRoute &&
+            !requiresTpsOfflineSync &&
+            !isManualOfflineSync) {
           return '/home';
+        }
+
+        if (status == AuthStatus.authenticated && isAuthRoute) {
+          if (requiresTpsOfflineSync) {
+            return '/tps/offline-download';
+          }
+
+          return authProvider.isOfflineMode ? '/tps/offline' : '/home';
+        }
+
+        if (state.matchedLocation == '/splash') {
+          if (requiresTpsOfflineSync) {
+            return '/tps/offline-download';
+          }
+
+          return authProvider.isOfflineMode ? '/tps/offline' : '/home';
         }
 
         return null;
@@ -81,6 +126,56 @@ class AppRouter {
           path: '/login',
           builder: (context, state) =>
               const LoginScreen(key: ValueKey('login')),
+        ),
+        GoRoute(
+          path: '/tps/offline-download',
+          builder: (context, state) => TpsOfflineDownloadScreen(
+            key: const ValueKey('tps-offline-download'),
+            isManualSync:
+                state.uri.queryParameters['manual'] == '1' &&
+                !requiresTpsOfflineSync,
+          ),
+        ),
+        GoRoute(
+          path: '/tps/offline',
+          builder: (context, state) =>
+              const TpsOfflineHomeScreen(key: ValueKey('tps-offline-home')),
+          routes: [
+            GoRoute(
+              path: 'distributions',
+              builder: (context, state) => const TpsOfflineDistributionsScreen(
+                key: ValueKey('tps-offline-distributions'),
+              ),
+              routes: [
+                GoRoute(
+                  path: 'draft',
+                  builder: (context, state) =>
+                      TpsOfflineDistributionDraftScreen(
+                        key: const ValueKey('tps-offline-distribution-draft'),
+                        draft: state.extra is OfflineDistributionDraft
+                            ? state.extra as OfflineDistributionDraft
+                            : null,
+                      ),
+                ),
+              ],
+            ),
+            GoRoute(
+              path: 'fcas',
+              builder: (context, state) =>
+                  const TpsOfflineFcasScreen(key: ValueKey('tps-offline-fcas')),
+              routes: [
+                GoRoute(
+                  path: 'draft',
+                  builder: (context, state) => TpsOfflineFcaDraftScreen(
+                    key: const ValueKey('tps-offline-fca-draft'),
+                    draft: state.extra is OfflineFcaDraft
+                        ? state.extra as OfflineFcaDraft
+                        : null,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
         StatefulShellRoute.indexedStack(
           builder: (context, state, navigationShell) {
@@ -117,10 +212,22 @@ class AppRouter {
                                 const DistributeTractorScreen(),
                           ),
                           GoRoute(
+                            path: 'fcas/create',
+                            builder: (context, state) =>
+                                const TpsCreateFcaScreen(),
+                          ),
+                          GoRoute(
+                            path: 'fcas/:id/edit',
+                            builder: (context, state) {
+                              final id = int.parse(state.pathParameters['id']!);
+
+                              return TpsCreateFcaScreen(fcaId: id);
+                            },
+                          ),
+                          GoRoute(
                             path: 'tickets/:id',
                             builder: (context, state) {
-                              final id =
-                                  int.parse(state.pathParameters['id']!);
+                              final id = int.parse(state.pathParameters['id']!);
                               return TpsTicketDetailScreen(ticketId: id);
                             },
                           ),
@@ -132,8 +239,38 @@ class AppRouter {
             StatefulShellBranch(
               routes: [
                 GoRoute(
+                  path: '/chat',
+                  builder: (context, state) => const ChatRoomsScreen(),
+                  routes: [
+                    GoRoute(
+                      path: ':id',
+                      builder: (context, state) {
+                        final id = int.parse(state.pathParameters['id']!);
+
+                        if (isTps) {
+                          return TpsTicketDetailScreen(
+                            ticketId: id,
+                            backLocation: '/chat',
+                            openChatOnLoad: true,
+                          );
+                        }
+
+                        return TicketDetailScreen(
+                          ticketId: id,
+                          backLocation: '/chat',
+                          openChatOnLoad: true,
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
                   path: '/farmers',
-                  builder: (context, state) => const FarmersScreen(),
+                  redirect: (context, state) => '/account/farmers',
                 ),
               ],
             ),
@@ -152,6 +289,13 @@ class AppRouter {
                       builder: (context, state) => const ChangePasswordScreen(),
                     ),
                     GoRoute(
+                      path: 'farmers',
+                      builder: (context, state) => const FarmersScreen(
+                        showBackButton: true,
+                        backLocation: '/account',
+                      ),
+                    ),
+                    GoRoute(
                       path: 'phone-verification',
                       builder: (context, state) =>
                           const PhoneVerificationScreen(),
@@ -168,8 +312,7 @@ class AppRouter {
                         GoRoute(
                           path: ':id',
                           builder: (context, state) {
-                            final id =
-                                int.parse(state.pathParameters['id']!);
+                            final id = int.parse(state.pathParameters['id']!);
                             return TicketDetailScreen(ticketId: id);
                           },
                         ),
@@ -177,30 +320,26 @@ class AppRouter {
                     ),
                     GoRoute(
                       path: 'maintenance',
-                      builder: (context, state) =>
-                          const MaintenanceScreen(),
+                      builder: (context, state) => const MaintenanceScreen(),
                       routes: [
                         GoRoute(
                           path: 'record',
                           builder: (context, state) {
-                            final tractor =
-                                state.extra as MaintenanceTractor;
+                            final tractor = state.extra as MaintenanceTractor;
                             return PmsRecordScreen(tractor: tractor);
                           },
                         ),
                         GoRoute(
                           path: 'request',
                           builder: (context, state) {
-                            final tractor =
-                                state.extra as MaintenanceTractor;
+                            final tractor = state.extra as MaintenanceTractor;
                             return PmsRequestScreen(tractor: tractor);
                           },
                         ),
                         GoRoute(
                           path: 'history',
                           builder: (context, state) {
-                            final tractor =
-                                state.extra as MaintenanceTractor;
+                            final tractor = state.extra as MaintenanceTractor;
                             return PmsHistoryScreen(tractor: tractor);
                           },
                         ),
@@ -208,8 +347,7 @@ class AppRouter {
                     ),
                     GoRoute(
                       path: 'geofences',
-                      builder: (context, state) =>
-                          const GeofencesScreen(),
+                      builder: (context, state) => const GeofencesScreen(),
                       routes: [
                         GoRoute(
                           path: 'create',
@@ -219,16 +357,16 @@ class AppRouter {
                         GoRoute(
                           path: ':id',
                           builder: (context, state) {
-                            final id =
-                                int.parse(state.pathParameters['id']!);
+                            final id = int.parse(state.pathParameters['id']!);
                             return GeofenceDetailScreen(geofenceId: id);
                           },
                           routes: [
                             GoRoute(
                               path: 'edit',
                               builder: (context, state) {
-                                final id =
-                                    int.parse(state.pathParameters['id']!);
+                                final id = int.parse(
+                                  state.pathParameters['id']!,
+                                );
                                 return EditGeofenceScreen(geofenceId: id);
                               },
                             ),
@@ -238,8 +376,7 @@ class AppRouter {
                     ),
                     GoRoute(
                       path: 'feedback',
-                      builder: (context, state) =>
-                          const FeedbackScreen(),
+                      builder: (context, state) => const FeedbackScreen(),
                       routes: [
                         GoRoute(
                           path: 'create',
@@ -250,28 +387,23 @@ class AppRouter {
                     ),
                     GoRoute(
                       path: 'reports',
-                      builder: (context, state) =>
-                          const ReportsScreen(),
+                      builder: (context, state) => const ReportsScreen(),
                     ),
                     GoRoute(
                       path: 'help-center',
-                      builder: (context, state) =>
-                          const HelpCenterScreen(),
+                      builder: (context, state) => const HelpCenterScreen(),
                     ),
                     GoRoute(
                       path: 'about',
-                      builder: (context, state) =>
-                          const AboutScreen(),
+                      builder: (context, state) => const AboutScreen(),
                     ),
                     GoRoute(
                       path: 'terms-privacy',
-                      builder: (context, state) =>
-                          const TermsPrivacyScreen(),
+                      builder: (context, state) => const TermsPrivacyScreen(),
                     ),
                     GoRoute(
                       path: 'delete-account',
-                      builder: (context, state) =>
-                          const DeleteAccountScreen(),
+                      builder: (context, state) => const DeleteAccountScreen(),
                     ),
                   ],
                 ),

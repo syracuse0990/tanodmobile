@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
@@ -14,11 +16,14 @@ class AlertsScreen extends StatefulWidget {
 class _AlertsScreenState extends State<AlertsScreen> {
   String _filter = 'all';
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
     final provider = context.read<AlertProvider>();
+    _searchController.text = provider.searchQuery;
     provider.startPolling();
 
     _scrollController.addListener(() {
@@ -31,9 +36,26 @@ class _AlertsScreenState extends State<AlertsScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     context.read<AlertProvider>().stopPolling();
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() {});
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      context.read<AlertProvider>().setSearchQuery(value);
+    });
+  }
+
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    setState(() {});
+    context.read<AlertProvider>().setSearchQuery('');
   }
 
   void _onFilterTap(String filter) {
@@ -133,6 +155,43 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   ),
                   const SizedBox(width: 8),
                 ],
+              ),
+
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: _onSearchChanged,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: 'Search alert, tractor, or IMEI',
+                      prefixIcon: const Icon(
+                        Icons.search_rounded,
+                        color: AppColors.mutedInk,
+                      ),
+                      suffixIcon: _searchController.text.trim().isNotEmpty
+                          ? IconButton(
+                              onPressed: _clearSearch,
+                              icon: const Icon(
+                                Icons.close_rounded,
+                                color: AppColors.mutedInk,
+                              ),
+                            )
+                          : null,
+                      filled: true,
+                      fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
               ),
 
               // ─── Filter Chips ───

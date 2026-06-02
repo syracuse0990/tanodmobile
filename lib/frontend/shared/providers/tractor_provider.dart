@@ -19,6 +19,7 @@ class TractorProvider extends ChangeNotifier {
   List<TractorLocation> _tractors = [];
   bool _loading = false;
   String? _error;
+  String _searchQuery = '';
 
   int? _focusedTractorId;
   int _secondsUntilPoll = 0;
@@ -33,6 +34,8 @@ class TractorProvider extends ChangeNotifier {
       _tractors.where((t) => t.hasLocation).toList(growable: false);
   bool get loading => _loading;
   String? get error => _error;
+  String get searchQuery => _searchQuery;
+  int get movingCount => _tractors.where((t) => t.isMoving).length;
   int get onlineCount => _tractors.where((t) => t.isOnline).length;
   int get idleCount => _tractors.where((t) => t.isIdle).length;
   int get offlineCount => _tractors.where((t) => !t.isOnline).length;
@@ -70,6 +73,27 @@ class TractorProvider extends ChangeNotifier {
     _restartPolling();
   }
 
+  /// Apply a backend-scoped search query to the tractor list.
+  Future<void> setSearchQuery(String query, {bool clearFocus = false}) async {
+    final normalized = query.trim();
+    final shouldClearFocus = clearFocus && _focusedTractorId != null;
+    if (_searchQuery == normalized && !shouldClearFocus) {
+      return;
+    }
+
+    _pollSessionId += 1;
+    _searchQuery = normalized;
+    if (shouldClearFocus) {
+      _focusedTractorId = null;
+    }
+    _nextPollAt = null;
+    notifyListeners();
+    _restartPolling(fetchImmediately: false);
+    if (_homeVisible) {
+      await fetch();
+    }
+  }
+
   /// Fetch tractors from the API and merge live GPS from Jimi.
   /// When focused on a single tractor, only fetches that device's
   /// real-time location (no cache) instead of all devices.
@@ -90,11 +114,20 @@ class TractorProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Fetch tractor metadata and live GPS in parallel.
+      // Fetch the first tractor page and live GPS in parallel, then load any
+      // remaining tractor pages so fleet counts reflect the full scope.
+      final tractorQueryParameters = <String, dynamic>{'per_page': '200'};
+      if (_searchQuery.isNotEmpty) {
+        tractorQueryParameters['search'] = _searchQuery;
+      }
+
       final results = await Future.wait([
         _apiClient.get(
           AppEndpoints.tractors,
-          queryParameters: {'per_page': '200'},
+          queryParameters: {
+            ...tractorQueryParameters,
+            'page': '1',
+          },
         ),
         _apiClient.get(AppEndpoints.devicesLiveLocations),
       ]);
@@ -109,7 +142,37 @@ class TractorProvider extends ChangeNotifier {
         return;
       }
 
-      final dataList = tractorResponse['data'] as List<dynamic>? ?? [];
+      final dataList = <dynamic>[
+        ...(tractorResponse['data'] as List<dynamic>? ?? const []),
+      ];
+      final lastPage = _extractLastPage(tractorResponse);
+
+      for (var page = 2; page <= lastPage; page++) {
+        if (
+            requestId != _latestAllRequestId ||
+            sessionId != _pollSessionId ||
+            isFocused) {
+          return;
+        }
+
+        final nextPageResponse = await _apiClient.get(
+          AppEndpoints.tractors,
+          queryParameters: {
+            ...tractorQueryParameters,
+            'page': page.toString(),
+          },
+        );
+
+        if (
+            requestId != _latestAllRequestId ||
+            sessionId != _pollSessionId ||
+            isFocused) {
+          return;
+        }
+
+        dataList.addAll(nextPageResponse['data'] as List<dynamic>? ?? const []);
+      }
+
       final liveList = liveResponse['locations'] as List<dynamic>? ?? [];
 
       // Index live locations by device_id for O(1) lookup.
@@ -142,6 +205,31 @@ class TractorProvider extends ChangeNotifier {
         notifyListeners();
       }
     }
+  }
+
+  int _extractLastPage(Map<String, dynamic> response) {
+    final topLevelLastPage = (response['last_page'] as num?)?.toInt();
+    if (topLevelLastPage != null && topLevelLastPage > 0) {
+      return topLevelLastPage;
+    }
+
+    final meta = response['meta'];
+    if (meta is Map<String, dynamic>) {
+      final metaLastPage = (meta['last_page'] as num?)?.toInt();
+      if (metaLastPage != null && metaLastPage > 0) {
+        return metaLastPage;
+      }
+    }
+
+    if (meta is Map) {
+      final normalizedMeta = Map<String, dynamic>.from(meta);
+      final metaLastPage = (normalizedMeta['last_page'] as num?)?.toInt();
+      if (metaLastPage != null && metaLastPage > 0) {
+        return metaLastPage;
+      }
+    }
+
+    return 1;
   }
 
   /// Fetch only the focused tractor's real-time location (10s polling).
@@ -305,7 +393,7 @@ class TractorProvider extends ChangeNotifier {
 
   /// Start polling. Safe to call multiple times.
   /// Uses wall-clock timestamps so the countdown survives app backgrounding.
-  void startPolling() {
+  void startPolling({bool fetchImmediately = true}) {
     _pollTimer?.cancel();
     _countdownTimer?.cancel();
 
@@ -313,7 +401,7 @@ class TractorProvider extends ChangeNotifier {
     final bool overdue = _nextPollAt != null && _nextPollAt!.isBefore(now);
 
     // Fetch immediately on first start or if we're overdue from background.
-    if (_nextPollAt == null || overdue) {
+    if (fetchImmediately && (_nextPollAt == null || overdue)) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
         if (_pollTimer == null) return; // stopped before callback ran
         fetch();
@@ -346,9 +434,9 @@ class TractorProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _restartPolling() {
+  void _restartPolling({bool fetchImmediately = true}) {
     if (_pollTimer != null) {
-      startPolling();
+      startPolling(fetchImmediately: fetchImmediately);
     }
   }
 

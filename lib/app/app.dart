@@ -13,6 +13,7 @@ import 'package:tanodmobile/core/locale/app_localizations.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/alert_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/booking_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/chat_unread_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/farmer_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/locale_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/realtime_provider.dart';
@@ -69,9 +70,10 @@ class TanodMobileApp extends StatelessWidget {
           ),
         ),
         ChangeNotifierProvider<AuthProvider>(
-          create: (context) =>
-              AuthProvider(authRepository: context.read<AuthRepository>())
-                ..bootstrap(),
+          create: (context) => AuthProvider(
+            authRepository: context.read<AuthRepository>(),
+            connectivityService: context.read<ConnectivityService>(),
+          )..bootstrap(),
         ),
         ChangeNotifierProvider<TractorProvider>(
           create: (context) =>
@@ -99,6 +101,7 @@ class TanodMobileApp extends StatelessWidget {
           create: (context) => TpsProvider(
             apiClient: context.read<ApiClient>(),
             dio: context.read<Dio>(),
+            hiveService: context.read<HiveService>(),
           ),
         ),
         ChangeNotifierProvider<MaintenanceProvider>(
@@ -130,13 +133,38 @@ class TanodMobileApp extends StatelessWidget {
             feedbackProvider: context.read<FeedbackProvider>(),
           ),
           update: (context, auth, realtime) {
+            final provider =
+                realtime ??
+                RealtimeProvider(
+                  dio: context.read<Dio>(),
+                  alertProvider: context.read<AlertProvider>(),
+                  feedbackProvider: context.read<FeedbackProvider>(),
+                );
             final userId = auth.session?.userId;
-            if (auth.status == AuthStatus.authenticated && userId != null) {
-              realtime!.start(userId);
-            } else if (auth.status == AuthStatus.unauthenticated) {
-              realtime!.stop();
+            if (auth.status == AuthStatus.authenticated &&
+                userId != null &&
+                !auth.isOfflineMode) {
+              provider.start(userId);
+            } else {
+              provider.stop();
             }
-            return realtime!;
+            return provider;
+          },
+        ),
+        ChangeNotifierProxyProvider2<
+          AuthProvider,
+          RealtimeProvider,
+          ChatUnreadProvider
+        >(
+          create: (context) =>
+              ChatUnreadProvider(apiClient: context.read<ApiClient>()),
+          update: (context, auth, realtime, chatUnread) {
+            final provider =
+                chatUnread ??
+                ChatUnreadProvider(apiClient: context.read<ApiClient>());
+            provider.syncUser(auth.session?.userId);
+            provider.consumeRealtimeEvent(realtime.lastEvent);
+            return provider;
           },
         ),
       ],
@@ -177,17 +205,23 @@ class _RouterAppState extends State<_RouterApp> {
     }
   }
 
-  GoRouter _createRouter() {
+  GoRouter _createRouter({String? initialLocation}) {
     return AppRouter.create(
       context.read<AuthProvider>(),
       navigatorKey: AppToast.navigatorKey,
+      initialLocation: initialLocation,
     );
+  }
+
+  String? _currentRouterLocation() {
+    final location = _router.routeInformationProvider.value.uri.toString();
+    return location.isEmpty ? null : location;
   }
 
   void _handleNotificationTap(Map<String, dynamic> payload) {
     final ticketId = payload['ticket_id'];
     if (ticketId != null) {
-      _router.go('/account/tickets/$ticketId');
+      _router.go('/chat/$ticketId');
     }
   }
 
@@ -212,8 +246,9 @@ class _RouterAppState extends State<_RouterApp> {
     if (authStatus == AuthStatus.authenticated &&
         _lastAuthStatus != null &&
         _lastAuthStatus != AuthStatus.authenticated) {
+      final currentLocation = _currentRouterLocation();
       _router.dispose();
-      _router = _createRouter();
+      _router = _createRouter(initialLocation: currentLocation);
     }
     _lastAuthStatus = authStatus;
 

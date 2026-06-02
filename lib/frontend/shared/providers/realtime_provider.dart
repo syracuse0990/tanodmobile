@@ -32,20 +32,46 @@ class RealtimeProvider extends ChangeNotifier with WidgetsBindingObserver {
   PusherClient? _client;
   StreamSubscription<PusherEvent>? _eventSub;
   int? _userId;
+  final Set<String> _desiredChannels = <String>{};
 
   bool _connected = false;
   bool get connected => _connected;
+  String? get socketId => _client?.socketId;
 
   /// Raw event stream for external listeners (e.g. ticket detail screen).
   Stream<PusherEvent>? get events => _client?.events;
 
   /// Subscribe to an additional private channel (e.g. ticket chat).
   Future<void> subscribeToChannel(String channel) async {
-    await _client?.subscribe(channel);
+    _desiredChannels.add(channel);
+
+    if (_client == null) {
+      debugPrint(
+        'RealtimeProvider: subscribeToChannel queued for $channel '
+        '(client not initialized)',
+      );
+      return;
+    }
+
+    if (_client!.socketId == null) {
+      debugPrint(
+        'RealtimeProvider: subscribeToChannel queued for $channel '
+        '(socket not ready yet)',
+      );
+      return;
+    }
+
+    debugPrint(
+      'RealtimeProvider: subscribeToChannel channel=$channel '
+      'socketId=${_client!.socketId}',
+    );
+    await _client!.subscribe(channel);
   }
 
   /// Unsubscribe from an additional channel.
   void unsubscribeFromChannel(String channel) {
+    _desiredChannels.remove(channel);
+    debugPrint('RealtimeProvider: unsubscribeFromChannel channel=$channel');
     _client?.unsubscribe(channel);
   }
 
@@ -55,6 +81,10 @@ class RealtimeProvider extends ChangeNotifier with WidgetsBindingObserver {
     String event,
     Map<String, dynamic> data,
   ) {
+    debugPrint(
+      'RealtimeProvider: triggerClientEvent event=$event '
+      'channel=$channel data=$data',
+    );
     _client?.trigger(channel, event, data);
   }
 
@@ -74,6 +104,7 @@ class RealtimeProvider extends ChangeNotifier with WidgetsBindingObserver {
     _client = null;
     _connected = false;
     _userId = null;
+    _desiredChannels.clear();
     notifyListeners();
   }
 
@@ -95,19 +126,33 @@ class RealtimeProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     debugPrint('RealtimeProvider: connecting to WebSocket...');
     await _client!.connect();
-    debugPrint(
-      'RealtimeProvider: connected, socketId=${_client!.socketId}',
-    );
+    debugPrint('RealtimeProvider: connected, socketId=${_client!.socketId}');
 
     final channel = 'private-notifications.$_userId';
     debugPrint('RealtimeProvider: subscribing to $channel');
     await _client!.subscribe(channel);
-    debugPrint(
-      'RealtimeProvider: subscribe request sent for $channel',
-    );
+    debugPrint('RealtimeProvider: subscribe request sent for $channel');
+
+    await _subscribeDesiredChannels();
 
     _connected = _client?.isConnected ?? false;
     notifyListeners();
+  }
+
+  Future<void> _subscribeDesiredChannels() async {
+    if (_client == null ||
+        _client!.socketId == null ||
+        _desiredChannels.isEmpty) {
+      return;
+    }
+
+    for (final channel in _desiredChannels) {
+      debugPrint(
+        'RealtimeProvider: restoring desired channel $channel '
+        'socketId=${_client!.socketId}',
+      );
+      await _client!.subscribe(channel);
+    }
   }
 
   Future<Map<String, dynamic>> _authenticate(
@@ -131,7 +176,9 @@ class RealtimeProvider extends ChangeNotifier with WidgetsBindingObserver {
       data: {'socket_id': socketId, 'channel_name': channelName},
     );
 
-    debugPrint('RealtimeProvider: auth response for $channelName: ${response.statusCode}');
+    debugPrint(
+      'RealtimeProvider: auth response for $channelName: ${response.statusCode}',
+    );
 
     return Map<String, dynamic>.from(response.data as Map);
   }

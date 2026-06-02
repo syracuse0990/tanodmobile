@@ -50,6 +50,12 @@ class AppEndpoints {
   static const String tpsTicketFormData = '/tps/tickets/form-data';
   static const String tpsMaintenances = '/tps/maintenances';
   static const String tpsFeedbacks = '/tps/feedbacks';
+  static const String tpsUsers = '/tps/users';
+  static const String tpsFcas = '/tps/fcas';
+  static const String tpsFcaDrafts = '/tps/fca-drafts';
+  static const String tpsFcaLocationProvinces = '/tps/fca-locations/provinces';
+  static const String tpsFcaLocationCities = '/tps/fca-locations/cities';
+  static const String tpsFcaLocationBarangays = '/tps/fca-locations/barangays';
   static const String tpsTractors = '/tps/tractors';
   static const String tpsDistributions = '/tps/distributions';
   static const String tpsDistributionFormData = '/tps/distributions/form-data';

@@ -6,7 +6,10 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
+import 'package:tanodmobile/frontend/modules/chat/widgets/ticket_conversation_sheet.dart';
+import 'package:tanodmobile/frontend/modules/tickets/widgets/ticket_network_photo_preview.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/chat_unread_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/realtime_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/ticket_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/app_toast.dart';
@@ -14,9 +17,16 @@ import 'package:tanodmobile/models/domain/ticket.dart';
 import 'package:tanodmobile/services/websocket/pusher_client.dart';
 
 class TicketDetailScreen extends StatefulWidget {
-  const TicketDetailScreen({super.key, required this.ticketId});
+  const TicketDetailScreen({
+    super.key,
+    required this.ticketId,
+    this.backLocation = '/account/tickets',
+    this.openChatOnLoad = false,
+  });
 
   final int ticketId;
+  final String backLocation;
+  final bool openChatOnLoad;
 
   @override
   State<TicketDetailScreen> createState() => _TicketDetailScreenState();
@@ -34,11 +44,15 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   // Unread chat badge
   int _unreadCount = 0;
   bool _chatOpen = false;
+  bool _didAutoOpenChat = false;
 
   @override
   void initState() {
     super.initState();
     _channelName = 'private-ticket.${widget.ticketId}';
+    debugPrint(
+      'TicketDetailScreen: subscribing to realtime room $_channelName',
+    );
 
     context.read<TicketProvider>().fetchTicketDetail(widget.ticketId);
 
@@ -56,6 +70,10 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     if (event.event.contains('TicketCommentAdded')) {
       final commentData = event.data['comment'] as Map<String, dynamic>?;
       if (commentData != null && mounted) {
+        debugPrint(
+          'TicketDetailScreen: received comment event on $_channelName '
+          'commentId=${commentData['id']} chatOpen=$_chatOpen',
+        );
         context.read<TicketProvider>().appendRealtimeComment(commentData);
         // Increment unread count when chat is not open
         if (!_chatOpen) {
@@ -64,6 +82,15 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       }
     } else if (event.event == 'client-typing') {
       if (!mounted) return;
+      final currentUserId = context.read<AuthProvider>().currentUser?.id;
+      final typingUserId = (event.data['user_id'] as num?)?.toInt();
+      if (currentUserId != null && typingUserId == currentUserId) {
+        return;
+      }
+      debugPrint(
+        'TicketDetailScreen: received typing event on $_channelName '
+        'from userId=$typingUserId name=${event.data['name']}',
+      );
       _typingUserName.value = event.data['name'] as String?;
       _typingUserRole.value = event.data['role'] as String?;
       _typingClearTimer?.cancel();
@@ -79,6 +106,10 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     _typingClearTimer?.cancel();
     _typingUserName.dispose();
     _typingUserRole.dispose();
+    context.read<ChatUnreadProvider>().setActiveTicketId(null);
+    debugPrint(
+      'TicketDetailScreen: unsubscribing from realtime room $_channelName',
+    );
     // Unsubscribe from the ticket channel
     context.read<RealtimeProvider>().unsubscribeFromChannel(_channelName);
     super.dispose();
@@ -101,10 +132,14 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   }
 
   void _openChat() {
+    final chatUnreadProvider = context.read<ChatUnreadProvider>();
+
     setState(() {
       _unreadCount = 0;
       _chatOpen = true;
     });
+
+    chatUnreadProvider.setActiveTicketId(widget.ticketId);
 
     final provider = context.read<TicketProvider>();
     final ticket = provider.selectedTicket;
@@ -121,6 +156,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
         typingUserRole: _typingUserRole,
       ),
     ).whenComplete(() {
+      chatUnreadProvider.setActiveTicketId(null);
       if (mounted) setState(() => _chatOpen = false);
     });
   }
@@ -131,6 +167,18 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     final ticket = provider.selectedTicket;
     final commentCount = ticket?.comments?.length ?? 0;
 
+    if (widget.openChatOnLoad &&
+        !_didAutoOpenChat &&
+        !provider.loadingDetail &&
+        ticket != null) {
+      _didAutoOpenChat = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _openChat();
+        }
+      });
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
       appBar: AppBar(
@@ -140,7 +188,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.go('/account/tickets'),
+          onPressed: () => context.go(widget.backLocation),
         ),
       ),
       floatingActionButton: ticket != null
@@ -340,28 +388,14 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                     ),
 
                     // ─── Issue photo ───
-                    if (ticket.photoUrl != null) ...[
+                    if (ticket.photoUrl != null &&
+                        ticket.photoUrl!.isNotEmpty) ...[
                       const SizedBox(height: 16),
                       _SectionHeader(title: 'Photo of Issue'),
                       const SizedBox(height: 8),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: Image.network(
-                          ticket.photoUrl!,
-                          width: double.infinity,
-                          height: 220,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => Container(
-                            height: 120,
-                            color: Colors.grey.shade200,
-                            child: const Center(
-                              child: Icon(
-                                Icons.broken_image_rounded,
-                                color: AppColors.mutedInk,
-                              ),
-                            ),
-                          ),
-                        ),
+                      TicketNetworkPhotoPreview(
+                        imageUrl: ticket.photoUrl!,
+                        title: 'Issue photo',
                       ),
                     ],
 
@@ -403,26 +437,12 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                           ],
                         ),
                       ),
-                      if (ticket.resolutionPhotoUrl != null) ...[
+                      if (ticket.resolutionPhotoUrl != null &&
+                          ticket.resolutionPhotoUrl!.isNotEmpty) ...[
                         const SizedBox(height: 12),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: Image.network(
-                            ticket.resolutionPhotoUrl!,
-                            width: double.infinity,
-                            height: 220,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => Container(
-                              height: 120,
-                              color: Colors.grey.shade200,
-                              child: const Center(
-                                child: Icon(
-                                  Icons.broken_image_rounded,
-                                  color: AppColors.mutedInk,
-                                ),
-                              ),
-                            ),
-                          ),
+                        TicketNetworkPhotoPreview(
+                          imageUrl: ticket.resolutionPhotoUrl!,
+                          title: 'Resolution photo',
                         ),
                       ],
                     ],
@@ -492,15 +512,6 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   }
 }
 
-String _formatCommentTime(DateTime dt) {
-  final diff = DateTime.now().difference(dt);
-  if (diff.inMinutes < 1) return 'Just now';
-  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-  if (diff.inHours < 24) return '${diff.inHours}h ago';
-  if (diff.inDays < 7) return '${diff.inDays}d ago';
-  return '${dt.day}/${dt.month}/${dt.year}';
-}
-
 // ─── Chat Bottom Sheet ──────────────────────────
 
 class _ChatSheet extends StatelessWidget {
@@ -522,368 +533,34 @@ class _ChatSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final ticket = context.watch<TicketProvider>().selectedTicket;
     final currentComments = ticket?.comments ?? comments;
-    final bottomInsets = MediaQuery.of(context).viewInsets.bottom;
+    final currentUser = context.read<AuthProvider>().currentUser;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
-      decoration: const BoxDecoration(
-        color: Color(0xFFF5F7F6),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          // ─── Handle bar + header ───
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(20)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.chat_rounded,
-                      size: 20,
-                      color: AppColors.forest,
-                    ),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'Discussion',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.ink,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      '${currentComments.length} message${currentComments.length == 1 ? '' : 's'}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.mutedInk,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+    return TicketConversationSheet(
+      comments: currentComments,
+      typingUserName: typingUserName,
+      typingUserRole: typingUserRole,
+      currentUserId: currentUser?.id,
+      onSendComment: ({body, attachment}) {
+        return context.read<TicketProvider>().addComment(
+          ticketId: ticketId,
+          body: body,
+          attachment: attachment,
+          socketId: context.read<RealtimeProvider>().socketId,
+        );
+      },
+      onTyping: () {
+        final roleName = formatTicketChatRole(
+          currentUser?.roles.firstOrNull ?? '',
+        );
 
-          // ─── Messages ───
-          Expanded(
-            child: currentComments.isNotEmpty
-                ? ListView.builder(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    reverse: true,
-                    itemCount: currentComments.length,
-                    itemBuilder: (context, index) {
-                      final c = currentComments[
-                          currentComments.length - 1 - index];
-                      final currentUserId =
-                          context.read<AuthProvider>().currentUser?.id;
-                      final isMe = c.userId == currentUserId;
-                      return _ChatBubble(comment: c, isMe: isMe);
-                    },
-                  )
-                : Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.chat_bubble_outline_rounded,
-                          size: 48,
-                          color: AppColors.mutedInk.withValues(alpha: 0.3),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'No messages yet.\nStart the conversation!',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: AppColors.mutedInk,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-          ),
-
-          // ─── Typing indicator ───
-          ValueListenableBuilder<String?>(
-            valueListenable: typingUserName,
-            builder: (context, name, _) {
-              if (name == null) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: _TypingIndicator(
-                  userName: name,
-                  userRole: typingUserRole.value,
-                ),
-              );
-            },
-          ),
-
-          // ─── Chat input ───
-          Padding(
-            padding: EdgeInsets.fromLTRB(12, 8, 12, 8 + bottomInsets),
-            child: _ChatInput(
-              ticketId: ticketId,
-              channelName: channelName,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Inline Chat Input ───────────────────────────
-
-class _ChatInput extends StatefulWidget {
-  const _ChatInput({required this.ticketId, required this.channelName});
-
-  final int ticketId;
-  final String channelName;
-
-  @override
-  State<_ChatInput> createState() => _ChatInputState();
-}
-
-class _ChatInputState extends State<_ChatInput> {
-  final _controller = TextEditingController();
-  bool _sending = false;
-  File? _selectedFile;
-  Timer? _typingDebounce;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller.addListener(_onTextChanged);
-  }
-
-  @override
-  void dispose() {
-    _typingDebounce?.cancel();
-    _controller.removeListener(_onTextChanged);
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _onTextChanged() {
-    if (_controller.text.isEmpty) return;
-    if (_typingDebounce?.isActive ?? false) return;
-
-    final auth = context.read<AuthProvider>();
-    final user = auth.currentUser;
-    final roleName = _displayRole(user?.roles.firstOrNull ?? '');
-
-    context.read<RealtimeProvider>().triggerClientEvent(
-      widget.channelName,
-      'client-typing',
-      {'name': user?.name ?? 'Someone', 'role': roleName},
-    );
-
-    _typingDebounce = Timer(const Duration(seconds: 2), () {});
-  }
-
-  String _displayRole(String role) {
-    return switch (role) {
-      'super-admin' || 'sub-admin' => 'Admin',
-      'tps' => 'TPS',
-      'fca' => 'FCA',
-      'farmer' => 'Farmer',
-      _ => '',
-    };
-  }
-
-  Future<void> _pickAttachment() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1920,
-      maxHeight: 1920,
-      imageQuality: 80,
-    );
-    if (picked != null) {
-      setState(() => _selectedFile = File(picked.path));
-    }
-  }
-
-  void _removeAttachment() {
-    setState(() => _selectedFile = null);
-  }
-
-  Future<void> _send() async {
-    final text = _controller.text.trim();
-    if (text.isEmpty && _selectedFile == null) return;
-    if (_sending) return;
-
-    setState(() => _sending = true);
-
-    final success = await context.read<TicketProvider>().addComment(
-      ticketId: widget.ticketId,
-      body: text.isEmpty ? null : text,
-      attachment: _selectedFile,
-    );
-
-    if (!mounted) return;
-    setState(() => _sending = false);
-
-    if (success) {
-      _controller.clear();
-      setState(() => _selectedFile = null);
-    } else {
-      AppToast.show('Failed to send message', type: ToastType.error);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Attachment preview
-          if (_selectedFile != null) ...[
-            Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.file(
-                    _selectedFile!,
-                    width: double.infinity,
-                    height: 140,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: GestureDetector(
-                    onTap: _removeAttachment,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.close,
-                        size: 16,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-          ],
-          // Input row
-          Row(
-            children: [
-              // Attachment button
-              SizedBox(
-                width: 36,
-                height: 36,
-                child: IconButton(
-                  onPressed: _pickAttachment,
-                  icon: const Icon(Icons.attach_file_rounded, size: 20),
-                  color: AppColors.mutedInk,
-                  padding: EdgeInsets.zero,
-                ),
-              ),
-              const SizedBox(width: 4),
-              // Text field
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => _send(),
-                  decoration: InputDecoration(
-                    hintText: 'Write your message...',
-                    hintStyle: TextStyle(
-                      color: AppColors.mutedInk.withValues(alpha: 0.5),
-                      fontSize: 14,
-                    ),
-                    filled: true,
-                    fillColor: const Color(0xFFF5F7F6),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Send button
-              SizedBox(
-                width: 40,
-                height: 40,
-                child: _sending
-                    ? const Padding(
-                        padding: EdgeInsets.all(8),
-                        child: CircularProgressIndicator(
-                          color: AppColors.forest,
-                          strokeWidth: 2.5,
-                        ),
-                      )
-                    : IconButton(
-                        onPressed: _send,
-                        icon: const Icon(Icons.send_rounded, size: 20),
-                        color: AppColors.forest,
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppColors.forest.withValues(
-                            alpha: 0.1,
-                          ),
-                        ),
-                      ),
-              ),
-            ],
-          ),
-        ],
-      ),
+        context
+            .read<RealtimeProvider>()
+            .triggerClientEvent(channelName, 'client-typing', {
+              'name': currentUser?.name ?? 'Someone',
+              'role': roleName,
+              'user_id': currentUser?.id,
+            });
+      },
     );
   }
 }
@@ -1275,304 +952,6 @@ class _PriorityBadge extends StatelessWidget {
           color: fg,
           letterSpacing: 0.5,
         ),
-      ),
-    );
-  }
-}
-
-// ─── Animated typing dots ───────────────────────
-
-class _TypingIndicator extends StatefulWidget {
-  const _TypingIndicator({required this.userName, this.userRole});
-
-  final String userName;
-  final String? userRole;
-
-  @override
-  State<_TypingIndicator> createState() => _TypingIndicatorState();
-}
-
-class _TypingIndicatorState extends State<_TypingIndicator>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _anim = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _anim.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final label = '${widget.userRole ?? ''} ${widget.userName} is typing...'
-        .trimLeft();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 4, bottom: 8),
-      child: Row(
-        children: [
-          AnimatedBuilder(
-            animation: _anim,
-            builder: (_, _) => Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(3, (i) {
-                final shift = i * 0.25;
-                final t = ((_anim.value + shift) % 1.0);
-                final scale = 0.5 + 0.5 * (t < 0.5 ? t * 2 : 2.0 - t * 2);
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Transform.scale(
-                    scale: scale,
-                    child: Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: AppColors.forest,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontStyle: FontStyle.italic,
-              color: AppColors.mutedInk,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Chat bubble ────────────────────────────────
-
-class _ChatBubble extends StatelessWidget {
-  const _ChatBubble({required this.comment, required this.isMe});
-
-  final TicketComment comment;
-  final bool isMe;
-
-  bool get _hasAttachment =>
-      comment.attachmentUrl != null && comment.attachmentUrl!.isNotEmpty;
-
-  bool get _isImageAttachment {
-    if (!_hasAttachment) return false;
-    final url = comment.attachmentUrl!.toLowerCase();
-    return url.endsWith('.jpg') ||
-        url.endsWith('.jpeg') ||
-        url.endsWith('.png') ||
-        url.endsWith('.gif') ||
-        url.endsWith('.webp');
-  }
-
-  void _showFullImage(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(16),
-        child: GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: InteractiveViewer(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                comment.attachmentUrl!,
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => Container(
-                  height: 200,
-                  color: Colors.grey.shade200,
-                  child: const Center(
-                    child: Icon(Icons.broken_image_rounded, size: 48),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        mainAxisAlignment: isMe
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!isMe) ...[
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: AppColors.forest.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  (comment.userName ?? '?')[0].toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.forest,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.72,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: isMe
-                    ? AppColors.forest.withValues(alpha: 0.12)
-                    : Colors.white,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(isMe ? 16 : 4),
-                  bottomRight: Radius.circular(isMe ? 4 : 16),
-                ),
-                boxShadow: [
-                  if (!isMe)
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 4,
-                      offset: const Offset(0, 1),
-                    ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Sender name + time
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        isMe ? 'You' : (comment.userName ?? 'User'),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: isMe ? AppColors.forest : AppColors.mutedInk,
-                        ),
-                      ),
-                      if (comment.createdAt != null) ...[
-                        const SizedBox(width: 6),
-                        Text(
-                          _formatCommentTime(comment.createdAt!),
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: AppColors.mutedInk.withValues(alpha: 0.7),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  // Attachment image
-                  if (_hasAttachment && _isImageAttachment) ...[
-                    const SizedBox(height: 6),
-                    GestureDetector(
-                      onTap: () => _showFullImage(context),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.network(
-                          comment.attachmentUrl!,
-                          width: double.infinity,
-                          height: 160,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => Container(
-                            height: 80,
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                Icons.broken_image_rounded,
-                                color: AppColors.mutedInk,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                  // Non-image attachment
-                  if (_hasAttachment && !_isImageAttachment) ...[
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.forest.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.insert_drive_file_rounded,
-                            size: 18,
-                            color: AppColors.forest,
-                          ),
-                          SizedBox(width: 6),
-                          Text(
-                            'Attachment',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.forest,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                  // Message body
-                  if (comment.body.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      comment.body,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: AppColors.ink,
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          if (isMe) const SizedBox(width: 8),
-        ],
       ),
     );
   }

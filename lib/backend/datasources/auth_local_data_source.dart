@@ -11,11 +11,31 @@ class AuthLocalDataSource {
     return _hiveService.getSession();
   }
 
+  AppSession? getOfflineTpsSession() {
+    return _hiveService.getOfflineTpsSession();
+  }
+
   Future<void> persistSession(AppSession session) async {
     await _hiveService.saveSession(session);
   }
 
+  Future<void> persistOfflineTpsSession(AppSession session) async {
+    await _hiveService.saveOfflineTpsSession(session);
+  }
+
   Future<void> clearSession() async {
     await _hiveService.clearSession();
+  }
+
+  Future<void> clearOfflineTpsSession() async {
+    await _hiveService.clearOfflineTpsSession();
+  }
+
+  bool getOfflineModeEnabled() {
+    return _hiveService.getOfflineModeEnabled();
+  }
+
+  Future<void> setOfflineModeEnabled(bool enabled) async {
+    await _hiveService.setOfflineModeEnabled(enabled);
   }
 }

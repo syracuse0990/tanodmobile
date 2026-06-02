@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/shared/providers/farmer_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/elegant_dialog.dart';
 
 class FarmersScreen extends StatefulWidget {
-  const FarmersScreen({super.key});
+  const FarmersScreen({
+    super.key,
+    this.showBackButton = false,
+    this.backLocation,
+  });
+
+  final bool showBackButton;
+  final String? backLocation;
 
   @override
   State<FarmersScreen> createState() => _FarmersScreenState();
@@ -91,8 +99,9 @@ class _FarmersScreenState extends State<FarmersScreen> {
                       label: 'Full Name',
                       icon: Icons.person_outline_rounded,
                     ),
-                    validator: (v) =>
-                        (v == null || v.trim().isEmpty) ? 'Name is required' : null,
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'Name is required'
+                        : null,
                   ),
                   const SizedBox(height: 14),
                   TextFormField(
@@ -102,8 +111,9 @@ class _FarmersScreenState extends State<FarmersScreen> {
                       label: 'Phone Number',
                       icon: Icons.phone_outlined,
                     ),
-                    validator: (v) =>
-                        (v == null || v.trim().isEmpty) ? 'Phone is required' : null,
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'Phone is required'
+                        : null,
                   ),
                   const SizedBox(height: 14),
                   TextFormField(
@@ -143,9 +153,11 @@ class _FarmersScreenState extends State<FarmersScreen> {
                                     Navigator.pop(context);
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text(isEditing
-                                            ? 'Farmer updated'
-                                            : 'Farmer added'),
+                                        content: Text(
+                                          isEditing
+                                              ? 'Farmer updated'
+                                              : 'Farmer added',
+                                        ),
                                         behavior: SnackBarBehavior.floating,
                                         backgroundColor: AppColors.success,
                                       ),
@@ -153,9 +165,11 @@ class _FarmersScreenState extends State<FarmersScreen> {
                                   } else if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text(isEditing
-                                            ? 'Failed to update farmer'
-                                            : 'Failed to add farmer'),
+                                        content: Text(
+                                          isEditing
+                                              ? 'Failed to update farmer'
+                                              : 'Failed to add farmer',
+                                        ),
                                         behavior: SnackBarBehavior.floating,
                                         backgroundColor: AppColors.danger,
                                       ),
@@ -165,11 +179,13 @@ class _FarmersScreenState extends State<FarmersScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.forest,
                             foregroundColor: Colors.white,
-                            disabledBackgroundColor:
-                                AppColors.forest.withValues(alpha: 0.7),
+                            disabledBackgroundColor: AppColors.forest
+                                .withValues(alpha: 0.7),
                             minimumSize: const Size.fromHeight(50),
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
@@ -221,10 +237,10 @@ class _FarmersScreenState extends State<FarmersScreen> {
           scaffold.showSnackBar(
             SnackBar(
               content: Text(
-                  success ? 'Farmer removed' : 'Failed to remove farmer'),
+                success ? 'Farmer removed' : 'Failed to remove farmer',
+              ),
               behavior: SnackBarBehavior.floating,
-              backgroundColor:
-                  success ? AppColors.success : AppColors.danger,
+              backgroundColor: success ? AppColors.success : AppColors.danger,
             ),
           );
         }
@@ -271,201 +287,239 @@ class _FarmersScreenState extends State<FarmersScreen> {
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-              // ─── App Bar ───
-              SliverAppBar(
-                floating: true,
-                snap: true,
-                backgroundColor: Colors.white,
-                surfaceTintColor: Colors.transparent,
-                elevation: 0,
-                toolbarHeight: 70,
-                automaticallyImplyLeading: false,
-                title: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'My Farmers',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.ink,
+                // ─── App Bar ───
+                SliverAppBar(
+                  floating: true,
+                  snap: true,
+                  backgroundColor: Colors.white,
+                  surfaceTintColor: Colors.transparent,
+                  elevation: 0,
+                  toolbarHeight: 70,
+                  automaticallyImplyLeading: widget.showBackButton,
+                  leading: widget.showBackButton
+                      ? IconButton(
+                          onPressed: () {
+                            final router = GoRouter.of(context);
+                            if (widget.backLocation != null) {
+                              context.go(widget.backLocation!);
+                              return;
+                            }
+
+                            if (router.canPop()) {
+                              router.pop();
+                            }
+                          },
+                          icon: const Icon(
+                            Icons.arrow_back_rounded,
+                            color: AppColors.ink,
+                          ),
+                        )
+                      : null,
+                  title: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'My Farmers',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.ink,
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Manage farmers under your cooperative',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.mutedInk,
+                      SizedBox(height: 2),
+                      Text(
+                        'Manage farmers under your cooperative',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.mutedInk,
+                        ),
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: 16),
+                      child: IconButton(
+                        onPressed: _showAddFarmerSheet,
+                        style: IconButton.styleFrom(
+                          backgroundColor: AppColors.forest.withValues(
+                            alpha: 0.08,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        icon: const Icon(
+                          Icons.person_add_rounded,
+                          color: AppColors.forest,
+                          size: 22,
+                        ),
                       ),
                     ),
                   ],
                 ),
-                actions: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 16),
-                    child: IconButton(
-                      onPressed: _showAddFarmerSheet,
-                      style: IconButton.styleFrom(
-                        backgroundColor:
-                            AppColors.forest.withValues(alpha: 0.08),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+
+                // ─── Search ───
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (v) => setState(() => _searchQuery = v),
+                      decoration: InputDecoration(
+                        hintText: 'Search farmers...',
+                        hintStyle: TextStyle(
+                          color: AppColors.mutedInk.withValues(alpha: 0.6),
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.search_rounded,
+                          size: 20,
+                          color: AppColors.mutedInk,
+                        ),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.close_rounded, size: 18),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
                         ),
                       ),
-                      icon: const Icon(
-                        Icons.person_add_rounded,
-                        color: AppColors.forest,
-                        size: 22,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              // ─── Search ───
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (v) => setState(() => _searchQuery = v),
-                    decoration: InputDecoration(
-                      hintText: 'Search farmers...',
-                      hintStyle:
-                          TextStyle(color: AppColors.mutedInk.withValues(alpha: 0.6)),
-                      prefixIcon: const Icon(Icons.search_rounded,
-                          size: 20, color: AppColors.mutedInk),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.close_rounded, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() => _searchQuery = '');
-                              },
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
                     ),
                   ),
                 ),
-              ),
 
-              // ─── Count ───
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                  child: Text(
-                    '${farmers.length} farmer${farmers.length == 1 ? '' : 's'}',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.mutedInk,
+                // ─── Count ───
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 4,
+                    ),
+                    child: Text(
+                      '${farmers.length} farmer${farmers.length == 1 ? '' : 's'}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.mutedInk,
+                      ),
                     ),
                   ),
                 ),
-              ),
 
-              // ─── Loading / Error / List ───
-              if (provider.loading && provider.farmers.isEmpty)
-                const SliverFillRemaining(
-                  child: Center(
-                    child:
-                        CircularProgressIndicator(color: AppColors.success),
-                  ),
-                )
-              else if (provider.error != null && provider.farmers.isEmpty)
-                SliverFillRemaining(
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.error_outline_rounded,
-                            size: 48, color: AppColors.danger),
-                        const SizedBox(height: 12),
-                        Text(provider.error!,
-                            style:
-                                const TextStyle(color: AppColors.mutedInk)),
-                        const SizedBox(height: 12),
-                        TextButton(
-                          onPressed: () => provider.fetchFarmers(),
-                          child: const Text('Retry'),
-                        ),
-                      ],
+                // ─── Loading / Error / List ───
+                if (provider.loading && provider.farmers.isEmpty)
+                  const SliverFillRemaining(
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.success,
+                      ),
                     ),
-                  ),
-                )
-              else if (farmers.isEmpty)
-                SliverFillRemaining(
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.people_outline_rounded,
-                            size: 56,
-                            color: AppColors.mutedInk.withValues(alpha: 0.3)),
-                        const SizedBox(height: 12),
-                        Text(
-                          _searchQuery.isNotEmpty
-                              ? 'No farmers match your search'
-                              : 'No farmers yet',
-                          style:
-                              const TextStyle(color: AppColors.mutedInk),
-                        ),
-                        if (_searchQuery.isEmpty) ...[
-                          const SizedBox(height: 16),
-                          ElevatedButton.icon(
-                            onPressed: _showAddFarmerSheet,
-                            icon: const Icon(Icons.add_rounded, size: 18),
-                            label: const Text('Add Farmer'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.forest,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              elevation: 0,
-                            ),
+                  )
+                else if (provider.error != null && provider.farmers.isEmpty)
+                  SliverFillRemaining(
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.error_outline_rounded,
+                            size: 48,
+                            color: AppColors.danger,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            provider.error!,
+                            style: const TextStyle(color: AppColors.mutedInk),
+                          ),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: () => provider.fetchFarmers(),
+                            child: const Text('Retry'),
                           ),
                         ],
-                      ],
+                      ),
+                    ),
+                  )
+                else if (farmers.isEmpty)
+                  SliverFillRemaining(
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.people_outline_rounded,
+                            size: 56,
+                            color: AppColors.mutedInk.withValues(alpha: 0.3),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            _searchQuery.isNotEmpty
+                                ? 'No farmers match your search'
+                                : 'No farmers yet',
+                            style: const TextStyle(color: AppColors.mutedInk),
+                          ),
+                          if (_searchQuery.isEmpty) ...[
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              onPressed: _showAddFarmerSheet,
+                              icon: const Icon(Icons.add_rounded, size: 18),
+                              label: const Text('Add Farmer'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.forest,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 0,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
+                    sliver: SliverList.separated(
+                      itemCount: farmers.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final farmer = farmers[index];
+                        return _FarmerCard(
+                          farmer: farmer,
+                          onEdit: () => _showEditFarmerSheet(farmer),
+                          onRemove: () => _confirmRemove(farmer),
+                        );
+                      },
                     ),
                   ),
-                )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
-                  sliver: SliverList.separated(
-                    itemCount: farmers.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final farmer = farmers[index];
-                      return _FarmerCard(
-                        farmer: farmer,
-                        onEdit: () => _showEditFarmerSheet(farmer),
-                        onRemove: () => _confirmRemove(farmer),
-                      );
-                    },
-                  ),
-                ),
-            ],
-          ),
+              ],
+            ),
           ),
           floatingActionButton: farmers.isNotEmpty
               ? FloatingActionButton(
                   onPressed: _showAddFarmerSheet,
                   backgroundColor: AppColors.forest,
-                  child: const Icon(Icons.person_add_rounded,
-                      color: Colors.white),
+                  child: const Icon(
+                    Icons.person_add_rounded,
+                    color: Colors.white,
+                  ),
                 )
               : null,
         );
@@ -544,8 +598,11 @@ class _FarmerCard extends StatelessWidget {
                 const SizedBox(height: 3),
                 Row(
                   children: [
-                    const Icon(Icons.phone_outlined,
-                        size: 13, color: AppColors.mutedInk),
+                    const Icon(
+                      Icons.phone_outlined,
+                      size: 13,
+                      color: AppColors.mutedInk,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       phone,
@@ -556,8 +613,11 @@ class _FarmerCard extends StatelessWidget {
                     ),
                     if (email.isNotEmpty) ...[
                       const SizedBox(width: 10),
-                      const Icon(Icons.email_outlined,
-                          size: 13, color: AppColors.mutedInk),
+                      const Icon(
+                        Icons.email_outlined,
+                        size: 13,
+                        color: AppColors.mutedInk,
+                      ),
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
@@ -581,17 +641,20 @@ class _FarmerCard extends StatelessWidget {
               if (value == 'edit') onEdit();
               if (value == 'remove') onRemove();
             },
-            icon: const Icon(Icons.more_vert_rounded,
-                size: 20, color: AppColors.mutedInk),
+            icon: const Icon(
+              Icons.more_vert_rounded,
+              size: 20,
+              color: AppColors.mutedInk,
+            ),
             shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
+              borderRadius: BorderRadius.circular(12),
+            ),
             itemBuilder: (_) => [
               const PopupMenuItem(
                 value: 'edit',
                 child: Row(
                   children: [
-                    Icon(Icons.edit_rounded,
-                        size: 18, color: AppColors.forest),
+                    Icon(Icons.edit_rounded, size: 18, color: AppColors.forest),
                     SizedBox(width: 8),
                     Text('Edit'),
                   ],
@@ -601,11 +664,13 @@ class _FarmerCard extends StatelessWidget {
                 value: 'remove',
                 child: Row(
                   children: [
-                    Icon(Icons.delete_outline_rounded,
-                        size: 18, color: AppColors.danger),
+                    Icon(
+                      Icons.delete_outline_rounded,
+                      size: 18,
+                      color: AppColors.danger,
+                    ),
                     SizedBox(width: 8),
-                    Text('Remove',
-                        style: TextStyle(color: AppColors.danger)),
+                    Text('Remove', style: TextStyle(color: AppColors.danger)),
                   ],
                 ),
               ),

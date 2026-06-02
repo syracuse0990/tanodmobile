@@ -28,10 +28,15 @@ class TicketProvider extends ChangeNotifier {
   }
 
   List<Ticket> _tickets = [];
+  List<Ticket> _chatTickets = [];
   bool _loading = false;
+  bool _chatLoading = false;
   String? _error;
+  String? _chatError;
   int _currentPage = 1;
+  int _chatCurrentPage = 1;
   int _lastPage = 1;
+  int _chatLastPage = 1;
   String? _statusFilter;
 
   // Tractor list for the create form selector
@@ -43,9 +48,13 @@ class TicketProvider extends ChangeNotifier {
   bool _loadingDetail = false;
 
   List<Ticket> get tickets => _tickets;
+  List<Ticket> get chatTickets => _chatTickets;
   bool get loading => _loading;
+  bool get chatLoading => _chatLoading;
   String? get error => _error;
+  String? get chatError => _chatError;
   bool get hasMore => _currentPage < _lastPage;
+  bool get hasMoreChatTickets => _chatCurrentPage < _chatLastPage;
   String? get statusFilter => _statusFilter;
   List<Map<String, dynamic>> get tractors => _tractors;
   bool get loadingTractors => _loadingTractors;
@@ -64,6 +73,48 @@ class TicketProvider extends ChangeNotifier {
     fetchTickets();
   }
 
+  Map<String, dynamic> _ticketQueryParameters({
+    required int page,
+    String? status,
+    bool forChat = false,
+  }) {
+    return {
+      'per_page': '30',
+      'page': page.toString(),
+      'status': ?status,
+      if (forChat) 'for_chat': '1',
+    };
+  }
+
+  List<Ticket> _parseTicketList(Map<String, dynamic> response) {
+    final dataList = response['data'] as List<dynamic>? ?? [];
+    return dataList
+        .whereType<Map<String, dynamic>>()
+        .map(Ticket.fromJson)
+        .toList();
+  }
+
+  void _upsertChatTicket(Ticket ticket) {
+    _chatTickets = [
+      ticket,
+      ..._chatTickets.where((item) => item.id != ticket.id),
+    ];
+  }
+
+  void _applyCommentToChatTicket(int ticketId, TicketComment comment) {
+    final index = _chatTickets.indexWhere((ticket) => ticket.id == ticketId);
+    if (index < 0) {
+      return;
+    }
+
+    final existing = _chatTickets[index];
+    if (existing.lastComment?.id == comment.id) {
+      return;
+    }
+
+    _upsertChatTicket(existing.copyWithNewComment(comment));
+  }
+
   // ─── Fetch tickets ─────────────────────────────
 
   Future<void> fetchTickets() async {
@@ -72,19 +123,12 @@ class TicketProvider extends ChangeNotifier {
     _safeNotify();
 
     try {
-      final params = <String, dynamic>{'per_page': '30', 'page': '1'};
-      if (_statusFilter != null) params['status'] = _statusFilter!;
-
       final response = await _apiClient.get(
         AppEndpoints.tickets,
-        queryParameters: params,
+        queryParameters: _ticketQueryParameters(page: 1, status: _statusFilter),
       );
 
-      final dataList = response['data'] as List<dynamic>? ?? [];
-      _tickets = dataList
-          .whereType<Map<String, dynamic>>()
-          .map(Ticket.fromJson)
-          .toList();
+      _tickets = _parseTicketList(response);
       _currentPage = (response['current_page'] as num?)?.toInt() ?? 1;
       _lastPage = (response['last_page'] as num?)?.toInt() ?? 1;
     } catch (e) {
@@ -104,22 +148,15 @@ class TicketProvider extends ChangeNotifier {
 
     try {
       final nextPage = _currentPage + 1;
-      final params = <String, dynamic>{
-        'per_page': '30',
-        'page': nextPage.toString(),
-      };
-      if (_statusFilter != null) params['status'] = _statusFilter!;
-
       final response = await _apiClient.get(
         AppEndpoints.tickets,
-        queryParameters: params,
+        queryParameters: _ticketQueryParameters(
+          page: nextPage,
+          status: _statusFilter,
+        ),
       );
 
-      final dataList = response['data'] as List<dynamic>? ?? [];
-      final newTickets = dataList
-          .whereType<Map<String, dynamic>>()
-          .map(Ticket.fromJson)
-          .toList();
+      final newTickets = _parseTicketList(response);
       _tickets = [..._tickets, ...newTickets];
       _currentPage = nextPage;
       _lastPage = (response['last_page'] as num?)?.toInt() ?? _lastPage;
@@ -127,6 +164,56 @@ class TicketProvider extends ChangeNotifier {
       debugPrint('TicketProvider.fetchMore error: $e');
     } finally {
       _loading = false;
+      _safeNotify();
+    }
+  }
+
+  Future<void> fetchChatTickets() async {
+    _chatLoading = true;
+    _chatError = null;
+    _safeNotify();
+
+    try {
+      final response = await _apiClient.get(
+        AppEndpoints.tickets,
+        queryParameters: _ticketQueryParameters(page: 1, forChat: true),
+      );
+
+      _chatTickets = _parseTicketList(response);
+      _chatCurrentPage = (response['current_page'] as num?)?.toInt() ?? 1;
+      _chatLastPage = (response['last_page'] as num?)?.toInt() ?? 1;
+    } catch (e) {
+      _chatError = 'Failed to load chat rooms';
+      debugPrint('TicketProvider.fetchChatTickets error: $e');
+    } finally {
+      _chatLoading = false;
+      _safeNotify();
+    }
+  }
+
+  Future<void> fetchMoreChatTickets() async {
+    if (!hasMoreChatTickets || _chatLoading) {
+      return;
+    }
+
+    _chatLoading = true;
+    _safeNotify();
+
+    try {
+      final nextPage = _chatCurrentPage + 1;
+      final response = await _apiClient.get(
+        AppEndpoints.tickets,
+        queryParameters: _ticketQueryParameters(page: nextPage, forChat: true),
+      );
+
+      final newTickets = _parseTicketList(response);
+      _chatTickets = [..._chatTickets, ...newTickets];
+      _chatCurrentPage = nextPage;
+      _chatLastPage = (response['last_page'] as num?)?.toInt() ?? _chatLastPage;
+    } catch (e) {
+      debugPrint('TicketProvider.fetchMoreChatTickets error: $e');
+    } finally {
+      _chatLoading = false;
       _safeNotify();
     }
   }
@@ -176,7 +263,7 @@ class TicketProvider extends ChangeNotifier {
 
   // ─── Create ticket (multipart) ─────────────────
 
-  Future<bool> createTicket({
+  Future<Ticket?> createTicket({
     required String subject,
     required String description,
     required String priority,
@@ -202,17 +289,30 @@ class TicketProvider extends ChangeNotifier {
 
       final formData = FormData.fromMap(formMap);
 
-      await _dio.post(
+      final response = await _dio.post(
         AppEndpoints.tickets,
         data: formData,
         options: Options(contentType: 'multipart/form-data'),
       );
 
-      await fetchTickets();
-      return true;
+      final rawData = (response.data as Map?)?['data'];
+      final data = rawData is Map<String, dynamic>
+          ? rawData
+          : rawData is Map
+          ? Map<String, dynamic>.from(rawData)
+          : null;
+      final createdTicket = data != null ? Ticket.fromJson(data) : null;
+
+      if (createdTicket != null) {
+        _selectedTicket = createdTicket;
+        _upsertChatTicket(createdTicket);
+      }
+
+      await Future.wait([fetchTickets(), fetchChatTickets()]);
+      return createdTicket;
     } catch (e) {
       debugPrint('TicketProvider.createTicket error: $e');
-      return false;
+      return null;
     }
   }
 
@@ -224,9 +324,7 @@ class TicketProvider extends ChangeNotifier {
     File? resolutionPhoto,
   }) async {
     try {
-      final formMap = <String, dynamic>{
-        'resolution_notes': ?resolutionNotes,
-      };
+      final formMap = <String, dynamic>{'resolution_notes': ?resolutionNotes};
 
       if (resolutionPhoto != null) {
         formMap['resolution_photo'] = await MultipartFile.fromFile(
@@ -243,7 +341,7 @@ class TicketProvider extends ChangeNotifier {
         options: Options(contentType: 'multipart/form-data'),
       );
 
-      await fetchTickets();
+      await Future.wait([fetchTickets(), fetchChatTickets()]);
       return true;
     } catch (e) {
       debugPrint('TicketProvider.resolveTicket error: $e');
@@ -257,11 +355,13 @@ class TicketProvider extends ChangeNotifier {
     required int ticketId,
     String? body,
     File? attachment,
+    String? socketId,
   }) async {
     try {
       if (attachment != null) {
         final formMap = <String, dynamic>{
           if (body != null && body.isNotEmpty) 'body': body,
+          if (socketId != null && socketId.isNotEmpty) 'socket_id': socketId,
           'attachment': await MultipartFile.fromFile(
             attachment.path,
             filename: attachment.path.split(Platform.pathSeparator).last,
@@ -279,21 +379,32 @@ class TicketProvider extends ChangeNotifier {
         final data =
             (response.data as Map<String, dynamic>?)?['data']
                 as Map<String, dynamic>?;
-        if (data != null && _selectedTicket != null) {
+        if (data != null) {
           final comment = TicketComment.fromJson(data);
-          _selectedTicket = _selectedTicket!.copyWithNewComment(comment);
+          if (_selectedTicket != null) {
+            _selectedTicket = _selectedTicket!.copyWithNewComment(comment);
+          }
+
+          _applyCommentToChatTicket(ticketId, comment);
           _safeNotify();
         }
       } else {
         final response = await _apiClient.post(
           '${AppEndpoints.tickets}/$ticketId/comment',
-          data: {'body': body},
+          data: {
+            'body': body,
+            if (socketId != null && socketId.isNotEmpty) 'socket_id': socketId,
+          },
         );
 
         final data = response['data'] as Map<String, dynamic>?;
-        if (data != null && _selectedTicket != null) {
+        if (data != null) {
           final comment = TicketComment.fromJson(data);
-          _selectedTicket = _selectedTicket!.copyWithNewComment(comment);
+          if (_selectedTicket != null) {
+            _selectedTicket = _selectedTicket!.copyWithNewComment(comment);
+          }
+
+          _applyCommentToChatTicket(ticketId, comment);
           _safeNotify();
         }
       }
@@ -307,8 +418,6 @@ class TicketProvider extends ChangeNotifier {
 
   /// Append a comment received via WebSocket (avoids duplicates).
   void appendRealtimeComment(Map<String, dynamic> commentData) {
-    if (_selectedTicket == null) return;
-
     // Build attachment_url from path using the mobile's known server base
     final attachmentPath = commentData['attachment_path']?.toString();
     if (attachmentPath != null && attachmentPath.isNotEmpty) {
@@ -321,13 +430,26 @@ class TicketProvider extends ChangeNotifier {
 
     final id = commentData['id'] as int?;
     if (id != null &&
+        _selectedTicket != null &&
         _selectedTicket!.comments != null &&
         _selectedTicket!.comments!.any((c) => c.id == id)) {
       return; // already exists
     }
 
     final comment = TicketComment.fromJson(commentData);
-    _selectedTicket = _selectedTicket!.copyWithNewComment(comment);
+    if (_selectedTicket != null) {
+      _selectedTicket = _selectedTicket!.copyWithNewComment(comment);
+    }
+
+    final rawTicketId = commentData['ticket_id'];
+    final ticketId = rawTicketId is num
+        ? rawTicketId.toInt()
+        : int.tryParse(rawTicketId?.toString() ?? '');
+
+    if (ticketId != null) {
+      _applyCommentToChatTicket(ticketId, comment);
+    }
+
     _safeNotify();
   }
 }

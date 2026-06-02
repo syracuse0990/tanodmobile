@@ -13,7 +13,7 @@ class MapFabControls extends StatelessWidget {
     required this.secondsUntilPoll,
     this.showTractorActions = false,
     this.onShareLocation,
-    this.onTrackHistory,
+    this.onViewTrackHistory,
     this.onClearFocus,
   });
 
@@ -26,7 +26,7 @@ class MapFabControls extends StatelessWidget {
   final int secondsUntilPoll;
   final bool showTractorActions;
   final VoidCallback? onShareLocation;
-  final VoidCallback? onTrackHistory;
+  final VoidCallback? onViewTrackHistory;
   final VoidCallback? onClearFocus;
 
   @override
@@ -148,7 +148,7 @@ class MapFabControls extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _FabButton(
-                  icon: Icons.share_location_rounded,
+                  icon: Icons.share_rounded,
                   onTap: onShareLocation ?? () {},
                   dark: dark,
                   borderRadius:
@@ -157,7 +157,7 @@ class MapFabControls extends StatelessWidget {
                 _Divider(dark: dark),
                 _FabButton(
                   icon: Icons.route_rounded,
-                  onTap: onTrackHistory ?? () {},
+                  onTap: onViewTrackHistory ?? () {},
                   dark: dark,
                 ),
                 _Divider(dark: dark),
