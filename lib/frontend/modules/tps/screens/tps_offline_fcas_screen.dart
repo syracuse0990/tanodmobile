@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
-import 'package:tanodmobile/frontend/modules/tps/widgets/offline_location_cache_card.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tps_provider.dart';
 import 'package:tanodmobile/models/local/offline_fca_draft.dart';
@@ -121,30 +120,29 @@ class _TpsOfflineFcasScreenState extends State<TpsOfflineFcasScreen> {
   Widget build(BuildContext context) {
     return Consumer2<TpsProvider, AuthProvider>(
       builder: (context, provider, authProvider, _) {
-        final offlineLocationSummary = provider.offlineLocationCacheSummary;
+        final drafts = provider.offlineFcaDrafts;
 
         return Scaffold(
           backgroundColor: const Color(0xFFF5F7F6),
           appBar: AppBar(
             backgroundColor: Colors.white,
             surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded, color: AppColors.ink),
+              onPressed: () => context.pop(),
+            ),
             title: const Text(
               'Offline Revisit',
-              style: TextStyle(
-                color: AppColors.ink,
-                fontWeight: FontWeight.w800,
-              ),
+              style: TextStyle(color: AppColors.ink, fontWeight: FontWeight.w800),
             ),
             actions: [
-              IconButton(
+              TextButton.icon(
                 onPressed: () => _refreshSavedData(authProvider),
-                tooltip: 'Update data',
-                icon: Icon(
-                  Icons.cloud_sync_rounded,
-                  color: authProvider.isConnected
-                      ? AppColors.forest
-                      : AppColors.mutedInk,
-                ),
+                icon: Icon(Icons.cloud_sync_rounded, size: 18,
+                    color: authProvider.isConnected ? AppColors.forest : AppColors.mutedInk),
+                label: Text('Sync', style: TextStyle(
+                    color: authProvider.isConnected ? AppColors.forest : AppColors.mutedInk)),
               ),
             ],
           ),
@@ -155,385 +153,134 @@ class _TpsOfflineFcasScreenState extends State<TpsOfflineFcasScreen> {
             icon: const Icon(Icons.add_rounded),
             label: const Text('New draft'),
           ),
-          body: RefreshIndicator(
-            color: AppColors.forest,
-            onRefresh: _loadData,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.ink.withValues(alpha: 0.05),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Offline revisit drafts',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.ink,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Create and edit revisit drafts here.',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.mutedInk,
-                          height: 1.45,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          _OfflineFcaCountChip(
-                            icon: Icons.edit_note_rounded,
-                            label:
-                                '${provider.offlineFcaDrafts.length} draft${provider.offlineFcaDrafts.length == 1 ? '' : 's'}',
-                            color: AppColors.forest,
-                          ),
-                          _OfflineFcaCountChip(
-                            icon: Icons.map_outlined,
-                            label: offlineLocationSummary.hasData
-                                ? '${offlineLocationSummary.cityCount} ${offlineLocationSummary.cityCount == 1 ? 'city' : 'cities'} ready'
-                                : 'Update data first',
-                            color: AppColors.clay,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Last update: ${_formatTimestamp(provider.offlineReferenceDataSyncedAt)}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.mutedInk,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                OfflineLocationCacheCard(
-                  summary: offlineLocationSummary,
-                  showProvinceBreakdown: true,
-                ),
-                const SizedBox(height: 20),
-                if (_loading)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 48),
-                    child: Center(
-                      child: CircularProgressIndicator(color: AppColors.forest),
-                    ),
-                  )
-                else ...[
-                  const _OfflineFcaSectionHeader(
-                    title: 'My drafts',
-                    subtitle: 'Tap a draft to edit it.',
-                  ),
-                  const SizedBox(height: 10),
-                  if (provider.offlineFcaDrafts.isEmpty)
-                    const _OfflineFcaEmptyState(
+          body: _loading
+              ? const Center(child: CircularProgressIndicator(color: AppColors.forest))
+              : drafts.isEmpty
+                  ? const _OfflineFcaEmptyState(
                       icon: Icons.edit_note_rounded,
                       title: 'No drafts yet',
                       message: 'Tap New draft to add a revisit.',
                     )
-                  else
-                    ...provider.offlineFcaDrafts.map(
-                      (draft) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _OfflineFcaDraftCard(
-                          draft: draft,
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+                      itemCount: drafts.length,
+                      itemBuilder: (context, index) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _DraftFeedCard(
+                          draft: drafts[index],
                           dateFormat: _dateFormat,
-                          onEdit: () => _openDraftEditor(draft),
-                          onDelete: () => _deleteDraft(draft),
+                          onTap: () => _openDraftEditor(drafts[index]),
+                          onDelete: () => _deleteDraft(drafts[index]),
                         ),
                       ),
                     ),
-                ],
-              ],
-            ),
-          ),
         );
       },
     );
   }
 }
 
-class _OfflineFcaEmptyState extends StatelessWidget {
-  const _OfflineFcaEmptyState({
-    required this.icon,
-    required this.title,
-    required this.message,
+class _DraftFeedCard extends StatelessWidget {
+  const _DraftFeedCard({
+    required this.draft, required this.dateFormat,
+    required this.onTap, required this.onDelete,
   });
-
-  final IconData icon;
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: AppColors.mutedInk),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: AppColors.ink,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            message,
-            style: const TextStyle(
-              fontSize: 13,
-              color: AppColors.mutedInk,
-              height: 1.45,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OfflineFcaSectionHeader extends StatelessWidget {
-  const _OfflineFcaSectionHeader({required this.title, required this.subtitle});
-
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: AppColors.ink,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          subtitle,
-          style: const TextStyle(
-            fontSize: 13,
-            color: AppColors.mutedInk,
-            height: 1.45,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _OfflineFcaCountChip extends StatelessWidget {
-  const _OfflineFcaCountChip({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OfflineFcaDraftCard extends StatelessWidget {
-  const _OfflineFcaDraftCard({
-    required this.draft,
-    required this.dateFormat,
-    required this.onEdit,
-    required this.onDelete,
-  });
-
   final OfflineFcaDraft draft;
   final DateFormat dateFormat;
-  final VoidCallback onEdit;
+  final VoidCallback onTap;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.ink.withValues(alpha: 0.05),
-            blurRadius: 14,
-            offset: const Offset(0, 8),
+    final dateLabel = draft.updatedAt != null
+        ? dateFormat.format(draft.updatedAt!.toLocal())
+        : (draft.createdAt != null ? dateFormat.format(draft.createdAt!.toLocal()) : '');
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [BoxShadow(color: AppColors.ink.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))],
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
-                child: Text(
-                  'Draft',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.clay,
-                    letterSpacing: 0.3,
-                  ),
+              Container(
+                width: 42, height: 42,
+                decoration: BoxDecoration(color: AppColors.forest.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.groups_2_rounded, color: AppColors.forest, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(draft.organizationName, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
+                    if (draft.contactName.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(draft.contactName, maxLines: 2, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13, color: AppColors.mutedInk, height: 1.35)),
+                    ],
+                    if (draft.locationLabel.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Row(children: [
+                        Icon(Icons.place_outlined, size: 14, color: AppColors.mutedInk.withValues(alpha: 0.7)),
+                        const SizedBox(width: 4),
+                        Flexible(child: Text(draft.locationLabel, maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11, color: AppColors.mutedInk.withValues(alpha: 0.7)))),
+                      ]),
+                    ],
+                    const SizedBox(height: 10),
+                    Row(children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(color: AppColors.forest.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(6)),
+                        child: const Text('Draft', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.forest)),
+                      ),
+                      const Spacer(),
+                      Text(dateLabel, style: const TextStyle(fontSize: 11, color: AppColors.mutedInk)),
+                    ]),
+                  ],
                 ),
               ),
-              IconButton(
-                onPressed: onEdit,
-                tooltip: 'Edit draft',
-                icon: const Icon(Icons.edit_rounded, color: AppColors.forest),
-              ),
-              IconButton(
-                onPressed: onDelete,
-                tooltip: 'Delete draft',
-                icon: const Icon(
-                  Icons.delete_outline_rounded,
-                  color: AppColors.danger,
+              GestureDetector(
+                onTap: onDelete,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Icon(Icons.delete_outline_rounded, size: 20, color: AppColors.mutedInk.withValues(alpha: 0.5)),
                 ),
               ),
             ],
           ),
-          Text(
-            draft.organizationName,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: AppColors.ink,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            draft.contactName,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.mutedInk,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              if (draft.contactLabel.isNotEmpty)
-                _OfflineFcaMetaChip(
-                  icon: Icons.call_outlined,
-                  label: draft.contactLabel,
-                ),
-              if (draft.locationLabel.isNotEmpty)
-                _OfflineFcaMetaChip(
-                  icon: Icons.place_outlined,
-                  label: draft.locationLabel,
-                ),
-              if (draft.dateReceived != null)
-                _OfflineFcaMetaChip(
-                  icon: Icons.calendar_month_rounded,
-                  label: dateFormat.format(draft.dateReceived!.toLocal()),
-                ),
-            ],
-          ),
-          if ((draft.notes ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(
-              draft.notes!.trim(),
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.mutedInk,
-                height: 1.45,
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
 }
 
-class _OfflineFcaMetaChip extends StatelessWidget {
-  const _OfflineFcaMetaChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
+class _OfflineFcaEmptyState extends StatelessWidget {
+  const _OfflineFcaEmptyState({required this.icon, required this.title, required this.message});
+  final IconData icon; final String title; final String message;
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.canvas,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: AppColors.forest),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: AppColors.ink,
-            ),
-          ),
-        ],
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 80),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 64, height: 64, decoration: BoxDecoration(
+            color: AppColors.forest.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(20)),
+            child: Icon(icon, color: AppColors.forest, size: 32)),
+          const SizedBox(height: 20),
+          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.ink)),
+          const SizedBox(height: 8),
+          Text(message, textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14, color: AppColors.mutedInk, height: 1.45)),
+        ]),
       ),
     );
   }

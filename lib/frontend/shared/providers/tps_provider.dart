@@ -718,6 +718,22 @@ class TpsProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> syncOfflineTractorOptions() async {
+    await fetchFcaTractorOptions();
+  }
+
+  Future<void> syncOfflineUserOptions() async {
+    await fetchTpsUserOptions();
+  }
+
+  Future<void> finalizeOfflineReferenceDataSync() async {
+    final syncedAt = DateTime.now();
+    await _saveOfflineTimestamp(HiveBoxes.tpsOfflineReferenceDataSyncedAtKey, syncedAt);
+    _offlineReferenceDataSyncedAt = syncedAt;
+    _offlineLocationCacheSummary = _buildOfflineLocationCacheSummary();
+    notifyListeners();
+  }
+
   Map<String, dynamic> _ticketQueryParameters({
     required int page,
     String? status,

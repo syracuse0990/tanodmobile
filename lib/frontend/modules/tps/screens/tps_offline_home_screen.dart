@@ -16,7 +16,6 @@ class TpsOfflineHomeScreen extends StatefulWidget {
 
 class _TpsOfflineHomeScreenState extends State<TpsOfflineHomeScreen> {
   bool _loading = true;
-  final DateFormat _dateFormat = DateFormat('MMM d, yyyy • h:mm a');
 
   @override
   void initState() {
@@ -27,46 +26,10 @@ class _TpsOfflineHomeScreenState extends State<TpsOfflineHomeScreen> {
   }
 
   Future<void> _loadOfflineWorkspace() async {
-    if (!mounted) {
-      return;
-    }
-
+    if (!mounted) return;
     setState(() => _loading = true);
     await context.read<TpsProvider>().loadOfflineWorkspaceSnapshot();
-
-    if (mounted) {
-      setState(() => _loading = false);
-    }
-  }
-
-  String _formatLastDownloaded(DateTime? value) {
-    if (value == null) {
-      return 'No form data update yet';
-    }
-
-    return _dateFormat.format(value.toLocal());
-  }
-
-  Future<void> _refreshOfflineData(AuthProvider authProvider) async {
-    if (!authProvider.isConnected) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Connect to the internet first to refresh offline form data.',
-            ),
-          ),
-        );
-      return;
-    }
-
-    await context.push('/tps/offline-download?manual=1');
-    if (!mounted) {
-      return;
-    }
-
-    await _loadOfflineWorkspace();
+    if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _signOut() async {
@@ -81,21 +44,40 @@ class _TpsOfflineHomeScreenState extends State<TpsOfflineHomeScreen> {
             provider.offlineDistributionDrafts.length +
             provider.offlineFcaDrafts.length;
         final offlineLocationSummary = provider.offlineLocationCacheSummary;
-        final formDataStatus = provider.offlineReferenceDataSyncedAt == null
-            ? 'Data not updated yet'
-            : 'Data updated ${_formatLastDownloaded(provider.offlineReferenceDataSyncedAt)}';
+        final isOnline = authProvider.isConnected;
 
         return Scaffold(
           backgroundColor: const Color(0xFFF5F7F6),
           appBar: AppBar(
             backgroundColor: Colors.white,
             surfaceTintColor: Colors.transparent,
-            title: const Text(
-              'Offline Work',
-              style: TextStyle(
-                color: AppColors.ink,
-                fontWeight: FontWeight.w800,
-              ),
+            elevation: 0,
+            title: Row(
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: isOnline ? AppColors.success : AppColors.pine,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: (isOnline ? AppColors.success : AppColors.pine)
+                            .withValues(alpha: 0.4),
+                        blurRadius: 6,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Offline Work',
+                  style: TextStyle(
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
             ),
             actions: [
               TextButton.icon(
@@ -108,141 +90,140 @@ class _TpsOfflineHomeScreenState extends State<TpsOfflineHomeScreen> {
               ),
             ],
           ),
-          body: RefreshIndicator(
-            color: AppColors.forest,
-            onRefresh: _loadOfflineWorkspace,
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                Container(
+          body: _loading
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppColors.forest),
+                )
+              : ListView(
                   padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.ink.withValues(alpha: 0.06),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
+                  children: [
+                    // ── Status bar ──
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          _StatusPill(
-                            icon: authProvider.isConnected
-                                ? Icons.wifi_tethering_rounded
-                                : Icons.cloud_off_rounded,
-                            label: authProvider.isConnected
-                                ? 'Online'
-                                : 'Offline',
-                            color: authProvider.isConnected
-                                ? AppColors.success
-                                : AppColors.pine,
-                          ),
-                          _StatusPill(
-                            icon: Icons.folder_copy_rounded,
-                            label:
-                                '$totalLocalDrafts local draft${totalLocalDrafts == 1 ? '' : 's'}',
-                            color: AppColors.clay,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.ink.withValues(alpha: 0.05),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Pick a module',
+                      child: Row(
+                        children: [
+                          _StatusDot(
+                            color: isOnline
+                                ? AppColors.success
+                                : AppColors.pine,
+                            label: isOnline ? 'Online' : 'Offline',
+                          ),
+                          const SizedBox(width: 14),
+                          _StatusDot(
+                            color: totalLocalDrafts > 0
+                                ? AppColors.clay
+                                : AppColors.mutedInk,
+                            label:
+                                '$totalLocalDrafts draft${totalLocalDrafts == 1 ? '' : 's'}',
+                          ),
+                          const Spacer(),
+                          Icon(
+                            isOnline
+                                ? Icons.wifi_tethering_rounded
+                                : Icons.cloud_off_rounded,
+                            size: 18,
+                            color: isOnline
+                                ? AppColors.success
+                                : AppColors.pine,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // ── Section header ──
+                    const Padding(
+                      padding: EdgeInsets.only(left: 4, bottom: 12),
+                      child: Text(
+                        'Work modules',
                         style: TextStyle(
-                          fontSize: 20,
+                          fontSize: 18,
                           fontWeight: FontWeight.w800,
                           color: AppColors.ink,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        authProvider.isConnected
-                            ? 'Open a module or update data while you have signal.'
-                            : 'Open a module and keep saving drafts on this phone.',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: AppColors.mutedInk,
-                          height: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        formDataStatus,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.mutedInk,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      FilledButton.icon(
-                        onPressed: () => _refreshOfflineData(authProvider),
-                        icon: const Icon(Icons.cloud_sync_rounded),
-                        label: Text(
-                          authProvider.isConnected
-                              ? 'Update data'
-                              : 'Need signal to update',
-                        ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.forest,
-                          foregroundColor: Colors.white,
-                          minimumSize: const Size.fromHeight(52),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 18),
-                if (_loading)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 48),
-                    child: Center(
-                      child: CircularProgressIndicator(color: AppColors.forest),
                     ),
-                  )
-                else ...[
-                  OfflineLocationCacheCard(summary: offlineLocationSummary),
-                  const SizedBox(height: 14),
-                  _OfflineModuleCard(
-                    title: 'Tractor Distribution',
-                    subtitle: 'Open drafts',
-                    icon: Icons.local_shipping_rounded,
-                    color: AppColors.pine,
-                    countLabel:
-                        '${provider.offlineDistributionDrafts.length} draft${provider.offlineDistributionDrafts.length == 1 ? '' : 's'}',
-                    statusLabel: 'Save drafts',
-                    onTap: () => context.push('/tps/offline/distributions'),
-                  ),
-                  const SizedBox(height: 14),
-                  _OfflineModuleCard(
-                    title: 'Offline Revisit',
-                    subtitle: 'Open drafts',
-                    icon: Icons.groups_2_rounded,
-                    color: AppColors.forest,
-                    countLabel:
-                        '${provider.offlineFcaDrafts.length} draft${provider.offlineFcaDrafts.length == 1 ? '' : 's'}',
-                    statusLabel: offlineLocationSummary.hasData
-                        ? '${offlineLocationSummary.provinceCount} ${offlineLocationSummary.provinceCount == 1 ? 'province' : 'provinces'} ready'
-                        : 'Update data first',
-                    onTap: () => context.push('/tps/offline/fcas'),
-                  ),
-                ],
-              ],
-            ),
-          ),
+
+                    // ── Tractor Distribution ──
+                    _OfflineModuleCard(
+                      title: 'Tractor Distribution',
+                      subtitle: 'Assign tractors to farmers',
+                      icon: Icons.local_shipping_rounded,
+                      color: AppColors.pine,
+                      countLabel:
+                          '${provider.offlineDistributionDrafts.length} draft${provider.offlineDistributionDrafts.length == 1 ? '' : 's'}',
+                      secondaryLabel: 'Save drafts offline',
+                      onTap: () => context.push('/tps/offline/distributions'),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // ── Offline Revisit ──
+                    _OfflineModuleCard(
+                      title: 'Offline Revisit',
+                      subtitle: 'Manage FCA visits',
+                      icon: Icons.groups_2_rounded,
+                      color: AppColors.forest,
+                      countLabel:
+                          '${provider.offlineFcaDrafts.length} draft${provider.offlineFcaDrafts.length == 1 ? '' : 's'}',
+                      secondaryLabel: offlineLocationSummary.hasData
+                          ? '${offlineLocationSummary.provinceCount} ${offlineLocationSummary.provinceCount == 1 ? 'province' : 'provinces'} cached'
+                          : 'No location cache',
+                      onTap: () => context.push('/tps/offline/fcas'),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // ── Location cache summary ──
+                    OfflineLocationCacheCard(summary: offlineLocationSummary),
+                  ],
+                ),
         );
       },
+    );
+  }
+}
+
+class _StatusDot extends StatelessWidget {
+  const _StatusDot({required this.color, required this.label});
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -254,7 +235,7 @@ class _OfflineModuleCard extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.countLabel,
-    required this.statusLabel,
+    required this.secondaryLabel,
     required this.onTap,
   });
 
@@ -263,7 +244,7 @@ class _OfflineModuleCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final String countLabel;
-  final String statusLabel;
+  final String secondaryLabel;
   final VoidCallback onTap;
 
   @override
@@ -272,16 +253,16 @@ class _OfflineModuleCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(22),
         child: Ink(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(22),
             boxShadow: [
               BoxShadow(
-                color: AppColors.ink.withValues(alpha: 0.05),
-                blurRadius: 16,
+                color: color.withValues(alpha: 0.08),
+                blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
             ],
@@ -292,13 +273,13 @@ class _OfflineModuleCard extends StatelessWidget {
               Row(
                 children: [
                   Container(
-                    width: 52,
-                    height: 52,
+                    width: 48,
+                    height: 48,
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Icon(icon, color: color, size: 26),
+                    child: Icon(icon, color: color, size: 24),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -308,39 +289,52 @@ class _OfflineModuleCard extends StatelessWidget {
                         Text(
                           title,
                           style: const TextStyle(
-                            fontSize: 17,
+                            fontSize: 16,
                             fontWeight: FontWeight.w800,
                             color: AppColors.ink,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 3),
                         Text(
                           subtitle,
                           style: const TextStyle(
-                            fontSize: 13,
+                            fontSize: 12,
                             color: AppColors.mutedInk,
-                            height: 1.4,
+                            height: 1.3,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Icon(Icons.arrow_forward_rounded, color: color),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.arrow_forward_rounded,
+                      color: color,
+                      size: 20,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
+              Row(
                 children: [
-                  _StatusPill(
+                  _ModuleChip(
                     icon: Icons.edit_note_rounded,
                     label: countLabel,
                     color: color,
                   ),
-                  _StatusPill(
+                  const SizedBox(width: 10),
+                  _ModuleChip(
                     icon: Icons.check_circle_outline_rounded,
-                    label: statusLabel,
+                    label: secondaryLabel,
                     color: AppColors.clay,
                   ),
                 ],
@@ -353,8 +347,8 @@ class _OfflineModuleCard extends StatelessWidget {
   }
 }
 
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({
+class _ModuleChip extends StatelessWidget {
+  const _ModuleChip({
     required this.icon,
     required this.label,
     required this.color,
@@ -367,20 +361,20 @@ class _StatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 8),
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 5),
           Text(
             label,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: FontWeight.w700,
               color: color,
             ),

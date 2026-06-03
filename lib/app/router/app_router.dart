@@ -54,10 +54,6 @@ class AppRouter {
     String? initialLocation,
   }) {
     final isTps = authProvider.session?.roles.contains('tps') ?? false;
-    final requiresTpsOfflineSync =
-        isTps &&
-        authProvider.requiresTpsOfflineSync &&
-        !authProvider.isOfflineMode;
 
     return GoRouter(
       navigatorKey: navigatorKey,
@@ -73,7 +69,8 @@ class AppRouter {
             state.matchedLocation.startsWith('/tps/offline/');
         final isManualOfflineSync =
             state.uri.queryParameters['manual'] == '1' &&
-            !requiresTpsOfflineSync;
+            !authProvider.requiresTpsOfflineSync;
+        final requiresSync = authProvider.requiresTpsOfflineSync && !authProvider.isOfflineMode;
 
         if (status == AuthStatus.initial || status == AuthStatus.loading) {
           return '/splash';
@@ -84,7 +81,7 @@ class AppRouter {
           return isAuthRoute ? null : '/login';
         }
 
-        if (requiresTpsOfflineSync && !isOfflineSyncRoute) {
+        if (requiresSync && !isOfflineSyncRoute) {
           return '/tps/offline-download';
         }
 
@@ -93,13 +90,13 @@ class AppRouter {
         }
 
         if (isOfflineSyncRoute &&
-            !requiresTpsOfflineSync &&
+            !requiresSync &&
             !isManualOfflineSync) {
           return '/home';
         }
 
         if (status == AuthStatus.authenticated && isAuthRoute) {
-          if (requiresTpsOfflineSync) {
+          if (requiresSync) {
             return '/tps/offline-download';
           }
 
@@ -107,7 +104,7 @@ class AppRouter {
         }
 
         if (state.matchedLocation == '/splash') {
-          if (requiresTpsOfflineSync) {
+          if (requiresSync) {
             return '/tps/offline-download';
           }
 
@@ -133,7 +130,7 @@ class AppRouter {
             key: const ValueKey('tps-offline-download'),
             isManualSync:
                 state.uri.queryParameters['manual'] == '1' &&
-                !requiresTpsOfflineSync,
+                !authProvider.requiresTpsOfflineSync,
           ),
         ),
         GoRoute(

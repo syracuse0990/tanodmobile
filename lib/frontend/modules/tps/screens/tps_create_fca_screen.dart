@@ -387,9 +387,7 @@ class _TpsCreateFcaScreenState extends State<TpsCreateFcaScreen>
     try {
       final provinces = await context.read<TpsProvider>().fetchFcaProvinces();
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setState(() {
         _provinceOptions = provinces;
@@ -398,29 +396,28 @@ class _TpsCreateFcaScreenState extends State<TpsCreateFcaScreen>
 
       await _restoreInitialStateIfNeeded();
     } on AppException catch (error) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setState(() {
         _loadingProvinces = false;
-        if (widget.isEditMode) {
-          _loadingInitialEntry = false;
-        }
+        if (widget.isEditMode) _loadingInitialEntry = false;
       });
-      AppToast.error(error.message);
+
+      // In offline mode, cached data is already used by the provider — only show errors online
+      if (!_isOfflineDraftMode) {
+        AppToast.error(error.message);
+      }
     } catch (_) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setState(() {
         _loadingProvinces = false;
-        if (widget.isEditMode) {
-          _loadingInitialEntry = false;
-        }
+        if (widget.isEditMode) _loadingInitialEntry = false;
       });
-      AppToast.error('Failed to load provinces.');
+
+      if (!_isOfflineDraftMode) {
+        AppToast.error('Failed to load provinces.');
+      }
     }
   }
 
@@ -430,9 +427,7 @@ class _TpsCreateFcaScreenState extends State<TpsCreateFcaScreen>
           .read<TpsProvider>()
           .fetchFcaTractorOptions();
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setState(() {
         _tractorOptions = tractors;
@@ -441,19 +436,13 @@ class _TpsCreateFcaScreenState extends State<TpsCreateFcaScreen>
 
       _restoreSelectedTractorOptionIfNeeded();
     } on AppException catch (error) {
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
       setState(() => _loadingTractorOptions = false);
-      AppToast.error(error.message);
+      if (!_isOfflineDraftMode) AppToast.error(error.message);
     } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
+      if (!mounted) return;
       setState(() => _loadingTractorOptions = false);
-      AppToast.error('Failed to load tractors.');
+      if (!_isOfflineDraftMode) AppToast.error('Failed to load tractors.');
     }
   }
 

@@ -20,7 +20,7 @@ class TractorFleet extends StatelessWidget {
               child: Opacity(
                 opacity: 0.9,
                 child: Image.asset(
-                  'assets/images/tractor_green.png',
+                  'assets/images/tym-1.png',
                   width: width * 0.72,
                   fit: BoxFit.contain,
                 ),
@@ -30,7 +30,7 @@ class TractorFleet extends StatelessWidget {
               right: 0,
               bottom: 0,
               child: Image.asset(
-                'assets/images/tractor_red.png',
+                'assets/images/tym-2.png',
                 width: width * 0.58,
                 fit: BoxFit.contain,
               ),
