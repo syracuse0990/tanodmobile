@@ -13,11 +13,6 @@ class RegistrationRole extends Equatable {
 
   static const List<RegistrationRole> fallbacks = [
     RegistrationRole(
-      name: 'farmer',
-      label: 'Farmer',
-      description: 'Book tractors, follow requests, and receive updates.',
-    ),
-    RegistrationRole(
       name: 'fca',
       label: 'FCA / Coop',
       description: 'Coordinate groups, bookings, and local tractor operations.',

@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:tanodmobile/backend/dio/api_client.dart';
 import 'package:tanodmobile/backend/endpoints/app_endpoints.dart';
-import 'package:tanodmobile/core/config/app_config.dart';
+import 'package:tanodmobile/core/utils/url_helper.dart';
 import 'package:tanodmobile/models/domain/ticket.dart';
 
 class TicketProvider extends ChangeNotifier {
@@ -380,6 +380,7 @@ class TicketProvider extends ChangeNotifier {
             (response.data as Map<String, dynamic>?)?['data']
                 as Map<String, dynamic>?;
         if (data != null) {
+          data['attachment_url'] = UrlHelper.fixStorageUrl(data['attachment_url']?.toString());
           final comment = TicketComment.fromJson(data);
           if (_selectedTicket != null) {
             _selectedTicket = _selectedTicket!.copyWithNewComment(comment);
@@ -399,6 +400,7 @@ class TicketProvider extends ChangeNotifier {
 
         final data = response['data'] as Map<String, dynamic>?;
         if (data != null) {
+          data['attachment_url'] = UrlHelper.fixStorageUrl(data['attachment_url']?.toString());
           final comment = TicketComment.fromJson(data);
           if (_selectedTicket != null) {
             _selectedTicket = _selectedTicket!.copyWithNewComment(comment);
@@ -420,13 +422,9 @@ class TicketProvider extends ChangeNotifier {
   void appendRealtimeComment(Map<String, dynamic> commentData) {
     // Build attachment_url from path using the mobile's known server base
     final attachmentPath = commentData['attachment_path']?.toString();
-    if (attachmentPath != null && attachmentPath.isNotEmpty) {
-      final baseUrl = AppConfig.apiBaseUrl.replaceAll(
-        RegExp(r'/api/v\d+$'),
-        '',
-      );
-      commentData['attachment_url'] = '$baseUrl/storage/$attachmentPath';
-    }
+    commentData['attachment_url'] = UrlHelper.fixStorageUrl(
+      commentData['attachment_url']?.toString() ?? attachmentPath,
+    );
 
     final id = commentData['id'] as int?;
     if (id != null &&

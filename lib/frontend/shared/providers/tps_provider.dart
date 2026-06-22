@@ -5,7 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:tanodmobile/backend/dio/api_client.dart';
 import 'package:tanodmobile/backend/endpoints/app_endpoints.dart';
-import 'package:tanodmobile/core/config/app_config.dart';
+import 'package:tanodmobile/core/utils/url_helper.dart';
 import 'package:tanodmobile/core/constants/hive_boxes.dart';
 import 'package:tanodmobile/core/errors/app_exception.dart';
 import 'package:tanodmobile/models/domain/distribution.dart';
@@ -1475,6 +1475,7 @@ class TpsProvider extends ChangeNotifier {
             (response.data as Map<String, dynamic>?)?['data']
                 as Map<String, dynamic>?;
         if (data != null) {
+          data['attachment_url'] = UrlHelper.fixStorageUrl(data['attachment_url']?.toString());
           final comment = TicketComment.fromJson(data);
           if (_selectedTicket != null) {
             _selectedTicket = _selectedTicket!.copyWithNewComment(comment);
@@ -1494,6 +1495,7 @@ class TpsProvider extends ChangeNotifier {
 
         final data = response['data'] as Map<String, dynamic>?;
         if (data != null) {
+          data['attachment_url'] = UrlHelper.fixStorageUrl(data['attachment_url']?.toString());
           final comment = TicketComment.fromJson(data);
           if (_selectedTicket != null) {
             _selectedTicket = _selectedTicket!.copyWithNewComment(comment);
@@ -1513,13 +1515,9 @@ class TpsProvider extends ChangeNotifier {
 
   void appendRealtimeComment(Map<String, dynamic> commentData) {
     final attachmentPath = commentData['attachment_path']?.toString();
-    if (attachmentPath != null && attachmentPath.isNotEmpty) {
-      final baseUrl = AppConfig.apiBaseUrl.replaceAll(
-        RegExp(r'/api/v\d+$'),
-        '',
-      );
-      commentData['attachment_url'] = '$baseUrl/storage/$attachmentPath';
-    }
+    commentData['attachment_url'] = UrlHelper.fixStorageUrl(
+      commentData['attachment_url']?.toString() ?? attachmentPath,
+    );
 
     final id = commentData['id'] as int?;
     if (id != null &&

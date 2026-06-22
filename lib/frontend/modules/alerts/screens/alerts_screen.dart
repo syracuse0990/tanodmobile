@@ -502,21 +502,25 @@ class _AlertCard extends StatelessWidget {
                   Row(
                     children: [
                       if (alert.tractorLabel != null)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.forest.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            alert.tractorLabel!,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.forest,
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.forest.withValues(alpha: 0.06),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              alert.tractorLabel!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.forest,
+                              ),
                             ),
                           ),
                         ),
@@ -528,11 +532,13 @@ class _AlertCard extends StatelessWidget {
                         color: AppColors.mutedInk.withValues(alpha: 0.6),
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        alert.timeAgo,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppColors.mutedInk.withValues(alpha: 0.7),
+                      Flexible(
+                        child: Text(
+                          alert.timeAgo,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.mutedInk.withValues(alpha: 0.7),
+                          ),
                         ),
                       ),
                     ],
