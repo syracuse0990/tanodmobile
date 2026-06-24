@@ -37,3 +37,13 @@ class TicketIssuePhotoException implements Exception {
   @override
   String toString() => message;
 }
+
+class TicketIssuePhotoValidationResult {
+  const TicketIssuePhotoValidationResult({
+    required this.valid,
+    required this.message,
+  });
+
+  final bool valid;
+  final String message;
+}

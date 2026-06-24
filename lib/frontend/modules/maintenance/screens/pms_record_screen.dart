@@ -1,10 +1,11 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/services.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
+import 'package:tanodmobile/frontend/modules/tickets/models/ticket_issue_photo.dart';
+import 'package:tanodmobile/frontend/modules/tickets/services/ticket_issue_photo_service.dart';
+import 'package:tanodmobile/frontend/modules/tickets/widgets/ticket_issue_photo_picker.dart';
 import 'package:tanodmobile/frontend/shared/providers/pms_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/app_toast.dart';
 import 'package:tanodmobile/frontend/shared/widgets/primary_button.dart';
@@ -22,9 +23,29 @@ class PmsRecordScreen extends StatefulWidget {
 
 class _PmsRecordScreenState extends State<PmsRecordScreen> {
   final _descriptionController = TextEditingController();
-  final List<File> _photos = [];
   List<PmsChecklistItem> _checklist = [];
   bool _loaded = false;
+
+  final _photoService = TicketIssuePhotoService();
+  bool _submitting = false;
+
+  // Nameplate
+  List<TicketIssuePhoto> _nameplatePhotos = const [];
+  bool _nameplateProcessing = false;
+  String _nameplateProcessingLabel = 'Applying secure watermark...';
+  String? _nameplateError;
+
+  // Dashboard
+  List<TicketIssuePhoto> _dashboardPhotos = const [];
+  bool _dashboardProcessing = false;
+  String _dashboardProcessingLabel = 'Applying secure watermark...';
+  String? _dashboardError;
+
+  // Damaged Parts
+  List<TicketIssuePhoto> _damagePhotos = const [];
+  bool _damageProcessing = false;
+  String _damageProcessingLabel = 'Applying secure watermark...';
+  String? _damageError;
 
   @override
   void initState() {
@@ -187,80 +208,278 @@ class _PmsRecordScreenState extends State<PmsRecordScreen> {
     }
   }
 
-  Future<void> _pickPhoto() async {
-    if (_photos.length >= 10) {
-      AppToast.show('Maximum 10 photos allowed', type: ToastType.error);
-      return;
-    }
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1920,
-      maxHeight: 1920,
-      imageQuality: 80,
-    );
-    if (picked != null && mounted) {
-      setState(() => _photos.add(File(picked.path)));
+  // ── Photo helpers (modeled after CreateTicketScreen) ──
+
+  Future<void> _appendPhotosForSection({
+    required List<TicketIssuePhoto> currentPhotos,
+    required int maxPhotos,
+    required void Function(List<TicketIssuePhoto>) onUpdate,
+    required void Function(bool) setProcessing,
+    required void Function(String) setProcessingLabel,
+    required void Function(String?) setError,
+    required String loadingLabel,
+    required Future<List<TicketIssuePhoto>> Function() action,
+  }) async {
+    setProcessing(true);
+    setProcessingLabel(loadingLabel);
+
+    try {
+      final newPhotos = await action();
+      if (newPhotos.isEmpty) {
+        return;
+      }
+
+      final merged = [
+        ...currentPhotos,
+        ...newPhotos,
+      ].take(maxPhotos).toList(growable: false);
+
+      if (!mounted) {
+        return;
+      }
+
+      onUpdate(merged);
+      setError(null);
+    } on TicketIssuePhotoException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      AppToast.show(error.message, type: ToastType.error);
+    } catch (error, stackTrace) {
+      if (!mounted) {
+        return;
+      }
+
+      debugPrint(
+        'PmsRecordScreen._appendPhotosForSection error: $error\n$stackTrace',
+      );
+
+      AppToast.show(_friendlyPhotoError(error), type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setProcessing(false);
+      }
     }
   }
 
-  Future<void> _takePhoto() async {
-    if (_photos.length >= 10) {
-      AppToast.show('Maximum 10 photos allowed', type: ToastType.error);
-      return;
+  String _friendlyPhotoError(Object error) {
+    if (error is MissingPluginException) {
+      return 'Restart the app once so the photo verification tools can finish loading.';
     }
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: ImageSource.camera,
-      maxWidth: 1920,
-      maxHeight: 1920,
-      imageQuality: 80,
-    );
-    if (picked != null && mounted) {
-      setState(() => _photos.add(File(picked.path)));
+
+    if (error is PlatformException) {
+      final message = error.message?.trim();
+      if (message != null && message.isNotEmpty) {
+        return message;
+      }
     }
+
+    final text = error.toString().replaceFirst('Exception: ', '').trim();
+    if (text.isNotEmpty && text != 'null') {
+      return text;
+    }
+
+    return 'Unable to prepare the verified issue photo.';
   }
 
-  void _showPhotoOptions() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt_rounded,
-                  color: AppColors.forest),
-              title: const Text('Take Photo'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _takePhoto();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_rounded,
-                  color: AppColors.forest),
-              title: const Text('Choose from Gallery'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickPhoto();
-              },
-            ),
-          ],
-        ),
+  // ── Nameplate ──
+
+  Future<void> _pickNameplateFromGallery() async {
+    if (_nameplatePhotos.length >= 1) {
+      AppToast.show('Only 1 nameplate photo is allowed.',
+          type: ToastType.error);
+      return;
+    }
+    await _appendPhotosForSection(
+      currentPhotos: _nameplatePhotos,
+      maxPhotos: 1,
+      onUpdate: (v) => setState(() => _nameplatePhotos = v),
+      setProcessing: (v) => setState(() => _nameplateProcessing = v),
+      setProcessingLabel: (v) =>
+          setState(() => _nameplateProcessingLabel = v),
+      setError: (v) => setState(() => _nameplateError = v),
+      loadingLabel: 'Applying secure watermark...',
+      action: () => _photoService.pickFromGallery(
+        remainingSlots: 1 - _nameplatePhotos.length,
       ),
     );
   }
+
+  Future<void> _captureNameplate() async {
+    if (_nameplatePhotos.length >= 1) {
+      AppToast.show('Only 1 nameplate photo is allowed.',
+          type: ToastType.error);
+      return;
+    }
+    await _appendPhotosForSection(
+      currentPhotos: _nameplatePhotos,
+      maxPhotos: 1,
+      onUpdate: (v) => setState(() => _nameplatePhotos = v),
+      setProcessing: (v) => setState(() => _nameplateProcessing = v),
+      setProcessingLabel: (v) =>
+          setState(() => _nameplateProcessingLabel = v),
+      setError: (v) => setState(() => _nameplateError = v),
+      loadingLabel: 'Stamping GPS verification...',
+      action: () async {
+        final p = await _photoService.captureWithCamera();
+        return p == null ? const [] : [p];
+      },
+    );
+  }
+
+  void _removeNameplate() {
+    setState(() {
+      _nameplatePhotos = const [];
+      _nameplateError = null;
+    });
+  }
+
+  // ── Dashboard ──
+
+  Future<void> _pickDashboardFromGallery() async {
+    if (_dashboardPhotos.length >= 1) {
+      AppToast.show('Only 1 dashboard photo is allowed.',
+          type: ToastType.error);
+      return;
+    }
+    await _appendPhotosForSection(
+      currentPhotos: _dashboardPhotos,
+      maxPhotos: 1,
+      onUpdate: (v) => setState(() => _dashboardPhotos = v),
+      setProcessing: (v) => setState(() => _dashboardProcessing = v),
+      setProcessingLabel: (v) =>
+          setState(() => _dashboardProcessingLabel = v),
+      setError: (v) => setState(() => _dashboardError = v),
+      loadingLabel: 'Applying secure watermark...',
+      action: () => _photoService.pickFromGallery(
+        remainingSlots: 1 - _dashboardPhotos.length,
+      ),
+    );
+  }
+
+  Future<void> _captureDashboard() async {
+    if (_dashboardPhotos.length >= 1) {
+      AppToast.show('Only 1 dashboard photo is allowed.',
+          type: ToastType.error);
+      return;
+    }
+    await _appendPhotosForSection(
+      currentPhotos: _dashboardPhotos,
+      maxPhotos: 1,
+      onUpdate: (v) => setState(() => _dashboardPhotos = v),
+      setProcessing: (v) => setState(() => _dashboardProcessing = v),
+      setProcessingLabel: (v) =>
+          setState(() => _dashboardProcessingLabel = v),
+      setError: (v) => setState(() => _dashboardError = v),
+      loadingLabel: 'Stamping GPS verification...',
+      action: () async {
+        final p = await _photoService.captureWithCamera();
+        return p == null ? const [] : [p];
+      },
+    );
+  }
+
+  void _removeDashboard() {
+    setState(() {
+      _dashboardPhotos = const [];
+      _dashboardError = null;
+    });
+  }
+
+  // ── Damaged Parts ──
+
+  Future<void> _pickDamageFromGallery() async {
+    if (_damagePhotos.length >= 3) {
+      AppToast.show('Only up to 3 damage photos are allowed.',
+          type: ToastType.error);
+      return;
+    }
+    await _appendPhotosForSection(
+      currentPhotos: _damagePhotos,
+      maxPhotos: 3,
+      onUpdate: (v) => setState(() => _damagePhotos = v),
+      setProcessing: (v) => setState(() => _damageProcessing = v),
+      setProcessingLabel: (v) =>
+          setState(() => _damageProcessingLabel = v),
+      setError: (v) => setState(() => _damageError = v),
+      loadingLabel: 'Applying secure watermark...',
+      action: () => _photoService.pickFromGallery(
+        remainingSlots: 3 - _damagePhotos.length,
+      ),
+    );
+  }
+
+  Future<void> _captureDamage() async {
+    if (_damagePhotos.length >= 3) {
+      AppToast.show('Only up to 3 damage photos are allowed.',
+          type: ToastType.error);
+      return;
+    }
+    await _appendPhotosForSection(
+      currentPhotos: _damagePhotos,
+      maxPhotos: 3,
+      onUpdate: (v) => setState(() => _damagePhotos = v),
+      setProcessing: (v) => setState(() => _damageProcessing = v),
+      setProcessingLabel: (v) =>
+          setState(() => _damageProcessingLabel = v),
+      setError: (v) => setState(() => _damageError = v),
+      loadingLabel: 'Stamping GPS verification...',
+      action: () async {
+        final p = await _photoService.captureWithCamera();
+        return p == null ? const [] : [p];
+      },
+    );
+  }
+
+  void _removeDamageAt(int index) {
+    setState(() {
+      final nextPhotos = [..._damagePhotos]..removeAt(index);
+      _damagePhotos = nextPhotos;
+      _damageError = null;
+    });
+  }
+
+  // ── Submit ──
 
   Future<void> _submit() async {
-    final doneCount = _checklist.where((c) => c.done).length;
-    if (doneCount == 0) {
-      AppToast.show('Please check at least one item', type: ToastType.error);
+    if (_nameplateProcessing ||
+        _dashboardProcessing ||
+        _damageProcessing) {
+      AppToast.show(
+        'Please wait for photo processing to finish.',
+        type: ToastType.error,
+      );
       return;
     }
+
+    if (_nameplatePhotos.isEmpty) {
+      setState(() => _nameplateError = 'Nameplate photo is required.');
+      return;
+    }
+    if (_dashboardPhotos.isEmpty) {
+      setState(() => _dashboardError = 'Dashboard photo is required.');
+      return;
+    }
+    if (_damagePhotos.isEmpty) {
+      setState(
+          () => _damageError = 'At least 1 damage photo is required.');
+      return;
+    }
+
+    final doneCount = _checklist.where((c) => c.done).length;
+    if (doneCount == 0) {
+      AppToast.show('Please check at least one item',
+          type: ToastType.error);
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _nameplateError = null;
+      _dashboardError = null;
+      _damageError = null;
+    });
 
     final success = await context.read<PmsProvider>().recordPms(
           tractorId: widget.tractor.id,
@@ -270,10 +489,13 @@ class _PmsRecordScreenState extends State<PmsRecordScreen> {
           description: _descriptionController.text.trim().isNotEmpty
               ? _descriptionController.text.trim()
               : null,
-          images: _photos,
+          nameplatePhoto: _nameplatePhotos.first.file,
+          dashboardPhoto: _dashboardPhotos.first.file,
+          damagePhotos: _damagePhotos.map((p) => p.file).toList(),
         );
 
     if (!mounted) return;
+    setState(() => _submitting = false);
 
     if (success) {
       AppToast.show('PMS recorded successfully');
@@ -419,47 +641,51 @@ class _PmsRecordScreenState extends State<PmsRecordScreen> {
 
                         const SizedBox(height: 20),
 
-                        // ─── Photos ───
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Photos (optional)',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.ink,
-                              ),
-                            ),
-                            TextButton.icon(
-                              onPressed: _showPhotoOptions,
-                              icon: const Icon(Icons.add_a_photo_rounded,
-                                  size: 18),
-                              label: const Text('Add'),
-                              style: TextButton.styleFrom(
-                                foregroundColor: AppColors.forest,
-                              ),
-                            ),
-                          ],
+                        // ─── Nameplate Photo ───
+                        TicketIssuePhotoPicker(
+                          label: 'Photo of Nameplate',
+                          subtitle: 'Required. Exactly 1 photo.',
+                          maxPhotos: 1,
+                          photos: _nameplatePhotos,
+                          isProcessing: _nameplateProcessing,
+                          processingLabel: _nameplateProcessingLabel,
+                          errorText: _nameplateError,
+                          onPickGallery: _pickNameplateFromGallery,
+                          onCapture: _captureNameplate,
+                          onRemove: (_) => _removeNameplate(),
                         ),
-                        if (_photos.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            height: 90,
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: _photos.length,
-                              separatorBuilder: (_, _) =>
-                                  const SizedBox(width: 10),
-                              itemBuilder: (_, i) => _PhotoThumbnail(
-                                file: _photos[i],
-                                onRemove: () {
-                                  setState(() => _photos.removeAt(i));
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
+
+                        const SizedBox(height: 18),
+
+                        // ─── Dashboard Photo ───
+                        TicketIssuePhotoPicker(
+                          label: 'Dashboard showing MACHINE HOURS',
+                          subtitle: 'Required. Exactly 1 photo.',
+                          maxPhotos: 1,
+                          photos: _dashboardPhotos,
+                          isProcessing: _dashboardProcessing,
+                          processingLabel: _dashboardProcessingLabel,
+                          errorText: _dashboardError,
+                          onPickGallery: _pickDashboardFromGallery,
+                          onCapture: _captureDashboard,
+                          onRemove: (_) => _removeDashboard(),
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        // ─── Damaged Parts ───
+                        TicketIssuePhotoPicker(
+                          label: 'Damaged Parts',
+                          subtitle: 'Required. 1 to 3 photos.',
+                          maxPhotos: 3,
+                          photos: _damagePhotos,
+                          isProcessing: _damageProcessing,
+                          processingLabel: _damageProcessingLabel,
+                          errorText: _damageError,
+                          onPickGallery: _pickDamageFromGallery,
+                          onCapture: _captureDamage,
+                          onRemove: _removeDamageAt,
+                        ),
 
                         const SizedBox(height: 24),
                       ],
@@ -470,8 +696,8 @@ class _PmsRecordScreenState extends State<PmsRecordScreen> {
                 // ─── Submit button ───
                 StickyBottomButton(
                   label: 'Record PMS ($doneCount/${_checklist.length} checked)',
-                  onPressed: _submit,
-                  isLoading: provider.submitting,
+                  onPressed: _submitting ? null : _submit,
+                  isLoading: _submitting || provider.submitting,
                 ),
               ],
             ),
@@ -656,52 +882,6 @@ class _ChecklistRow extends StatelessWidget {
             indent: 50,
             color: AppColors.mutedInk.withValues(alpha: 0.1),
           ),
-      ],
-    );
-  }
-}
-
-// ─── Photo thumbnail ────────────────────────────
-
-class _PhotoThumbnail extends StatelessWidget {
-  const _PhotoThumbnail({required this.file, required this.onRemove});
-
-  final File file;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Image.file(
-            file,
-            width: 90,
-            height: 90,
-            fit: BoxFit.cover,
-          ),
-        ),
-        Positioned(
-          top: 4,
-          right: 4,
-          child: GestureDetector(
-            onTap: onRemove,
-            child: Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.6),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.close_rounded,
-                size: 14,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }

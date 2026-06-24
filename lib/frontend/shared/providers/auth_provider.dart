@@ -81,6 +81,7 @@ class AuthProvider extends ChangeNotifier {
     _syncTpsConnectivityWatchdog();
 
     if (_session != null && !_isOfflineMode && _isConnected) {
+      unawaited(refreshProfile());
       unawaited(_authRepository.registerFcmToken());
     }
 
@@ -224,6 +225,9 @@ class AuthProvider extends ChangeNotifier {
         phone: user.phone,
         gender: user.gender,
         profilePhotoUrl: user.profilePhotoUrl,
+        province: user.province,
+        city: user.city,
+        barangay: user.barangay,
         savedAt: DateTime.now(),
       );
       await _syncOfflineTpsSession(_session);

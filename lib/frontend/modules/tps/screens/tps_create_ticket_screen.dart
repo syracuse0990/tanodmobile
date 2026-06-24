@@ -423,8 +423,10 @@ class _TpsCreateTicketScreenState extends State<TpsCreateTicketScreen> {
               const _FieldLabel(label: 'Photo of Issue'),
               const SizedBox(height: 6),
               TicketIssuePhotoPicker(
+                label: 'Photo of Issue',
+                subtitle: 'Required. 1 to 2 verified photos.',
+                maxPhotos: TicketIssuePhotoService.maxPhotos,
                 photos: _photos,
-                uploadPreviewFile: _uploadPhoto,
                 isProcessing: _processingPhotos,
                 processingLabel: _photoProcessingLabel,
                 errorText: _photoError,

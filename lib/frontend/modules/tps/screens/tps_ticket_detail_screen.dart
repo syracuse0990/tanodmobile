@@ -118,64 +118,11 @@ class _TpsTicketDetailScreenState extends State<TpsTicketDetailScreen> {
       builder: (ctx) => _ResolveSheet(
         ticketId: widget.ticketId,
         onResolved: () {
-          context.read<TpsProvider>().fetchTicketDetail(widget.ticketId);
+          final provider = context.read<TpsProvider>();
+          provider.fetchTicketDetail(widget.ticketId);
+          provider.fetchTickets(status: provider.ticketStatusFilter);
         },
       ),
-    );
-  }
-
-  void _showCloseConfirm() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Close Ticket'),
-        content: const Text(
-          'Are you sure you want to close this ticket? This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: AppColors.mutedInk),
-            ),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              final success = await context.read<TpsProvider>().closeTicket(
-                widget.ticketId,
-              );
-              if (mounted) {
-                if (success) {
-                  AppToast.show('Ticket closed');
-                } else {
-                  AppToast.show(
-                    'Failed to close ticket',
-                    type: ToastType.error,
-                  );
-                }
-              }
-            },
-            child: const Text(
-              'Close Ticket',
-              style: TextStyle(color: AppColors.danger),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAssistanceSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => _AssistanceSheet(ticketId: widget.ticketId),
     );
   }
 
@@ -336,7 +283,6 @@ class _TpsTicketDetailScreenState extends State<TpsTicketDetailScreen> {
                                   ),
                                 ),
                               ),
-                              _PriorityBadge(priority: ticket.priority),
                             ],
                           ),
                           const SizedBox(height: 12),
@@ -441,12 +387,12 @@ class _TpsTicketDetailScreenState extends State<TpsTicketDetailScreen> {
                             child: SizedBox(
                               height: 48,
                               child: OutlinedButton.icon(
-                                onPressed: _showCloseConfirm,
+                                onPressed: () => context.go(widget.backLocation),
                                 icon: const Icon(
-                                  Icons.cancel_outlined,
+                                  Icons.arrow_back_rounded,
                                   size: 20,
                                 ),
-                                label: const Text('Close'),
+                                label: const Text('Back'),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: AppColors.mutedInk,
                                   side: BorderSide(color: Colors.grey.shade300),
@@ -463,51 +409,29 @@ class _TpsTicketDetailScreenState extends State<TpsTicketDetailScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 48,
-                        child: OutlinedButton.icon(
-                          onPressed: _showAssistanceSheet,
-                          icon: const Icon(Icons.sos_rounded, size: 20),
-                          label: const Text('Request Assistance'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.clay,
-                            side: const BorderSide(color: AppColors.clay),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            textStyle: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
+                    ],
+
+                    // ─── Nameplate photo ───
+                    if (ticket.nameplatePhotoUrl != null &&
+                        ticket.nameplatePhotoUrl!.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      const _SectionHeader(title: 'Nameplate'),
+                      const SizedBox(height: 8),
+                      TicketNetworkPhotoPreview(
+                        imageUrl: ticket.nameplatePhotoUrl!,
+                        title: 'Nameplate photo',
                       ),
                     ],
 
-                    // ─── Resolved-only: close + assistance ───
-                    if (ticket.status == 'resolved') ...[
+                    // ─── Dashboard photo ───
+                    if (ticket.dashboardPhotoUrl != null &&
+                        ticket.dashboardPhotoUrl!.isNotEmpty) ...[
                       const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 48,
-                        child: OutlinedButton.icon(
-                          onPressed: _showCloseConfirm,
-                          icon: const Icon(Icons.cancel_outlined, size: 20),
-                          label: const Text('Close Ticket'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.mutedInk,
-                            side: BorderSide(color: Colors.grey.shade300),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            textStyle: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
+                      const _SectionHeader(title: 'Dashboard (Machine Hours)'),
+                      const SizedBox(height: 8),
+                      TicketNetworkPhotoPreview(
+                        imageUrl: ticket.dashboardPhotoUrl!,
+                        title: 'Dashboard photo',
                       ),
                     ],
 
@@ -523,9 +447,27 @@ class _TpsTicketDetailScreenState extends State<TpsTicketDetailScreen> {
                       ),
                     ],
 
+                    // ─── Damaged parts photos ───
+                    if (ticket.damagePhotos != null &&
+                        ticket.damagePhotos!.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      const _SectionHeader(title: 'Damaged Parts'),
+                      const SizedBox(height: 8),
+                      ...ticket.damagePhotos!
+                          .where((p) => p.photoUrl.isNotEmpty)
+                          .map(
+                            (p) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: TicketNetworkPhotoPreview(
+                                imageUrl: p.photoUrl,
+                                title: 'Damage photo',
+                              ),
+                            ),
+                          ),
+                    ],
+
                     // ─── Resolution info ───
-                    if (ticket.status == 'resolved' ||
-                        ticket.status == 'closed') ...[
+                    if (ticket.status == 'resolved') ...[
                       const SizedBox(height: 16),
                       const _SectionHeader(title: 'Resolution'),
                       const SizedBox(height: 8),
@@ -635,164 +577,6 @@ class _TpsTicketDetailScreenState extends State<TpsTicketDetailScreen> {
   }
 }
 
-// ─── Request Assistance Bottom Sheet ─────────────
-
-class _AssistanceSheet extends StatefulWidget {
-  const _AssistanceSheet({required this.ticketId});
-
-  final int ticketId;
-
-  @override
-  State<_AssistanceSheet> createState() => _AssistanceSheetState();
-}
-
-class _AssistanceSheetState extends State<_AssistanceSheet> {
-  final _messageController = TextEditingController();
-  bool _submitting = false;
-
-  @override
-  void dispose() {
-    _messageController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    final msg = _messageController.text.trim();
-    if (msg.isEmpty) {
-      AppToast.show(
-        'Please describe what assistance you need',
-        type: ToastType.error,
-      );
-      return;
-    }
-
-    setState(() => _submitting = true);
-
-    final success = await context.read<TpsProvider>().requestAssistance(
-      ticketId: widget.ticketId,
-      message: msg,
-    );
-
-    if (!mounted) return;
-    setState(() => _submitting = false);
-
-    if (success) {
-      Navigator.pop(context);
-      AppToast.show('Assistance request sent to admin');
-    } else {
-      AppToast.show('Failed to send request', type: ToastType.error);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        20,
-        16,
-        MediaQuery.of(context).viewInsets.bottom + 16,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Request Assistance',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: AppColors.ink,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Describe what you need — parts for repair, additional hands, tools, etc. Admin will be notified via notification and SMS.',
-            style: TextStyle(fontSize: 13, color: AppColors.mutedInk),
-          ),
-          const SizedBox(height: 18),
-          TextFormField(
-            controller: _messageController,
-            maxLines: 4,
-            decoration: InputDecoration(
-              hintText:
-                  'e.g. Need replacement belt for tractor engine, requesting repair tools...',
-              hintStyle: TextStyle(
-                color: AppColors.mutedInk.withValues(alpha: 0.5),
-              ),
-              filled: true,
-              fillColor: const Color(0xFFF5F7F6),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 14,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(
-                  color: AppColors.forest,
-                  width: 1.5,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton.icon(
-              onPressed: _submitting ? null : _submit,
-              icon: _submitting
-                  ? const SizedBox.shrink()
-                  : const Icon(Icons.send_rounded, size: 20),
-              label: _submitting
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2.5,
-                      ),
-                    )
-                  : const Text('Send Request'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.clay,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: AppColors.clay.withValues(alpha: 0.5),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ─── Resolve Bottom Sheet ────────────────────────
 
 class _ResolveSheet extends StatefulWidget {
@@ -807,16 +591,31 @@ class _ResolveSheet extends StatefulWidget {
 
 class _ResolveSheetState extends State<_ResolveSheet> {
   final _notesController = TextEditingController();
+  final _chargeController = TextEditingController();
   File? _photo;
   bool _submitting = false;
 
   @override
   void dispose() {
     _notesController.dispose();
+    _chargeController.dispose();
     super.dispose();
   }
 
-  Future<void> _pickPhoto() async {
+  Future<void> _pickFromGallery() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1920,
+      maxHeight: 1920,
+      imageQuality: 80,
+    );
+    if (picked != null) {
+      setState(() => _photo = File(picked.path));
+    }
+  }
+
+  Future<void> _pickFromCamera() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: ImageSource.camera,
@@ -832,12 +631,16 @@ class _ResolveSheetState extends State<_ResolveSheet> {
   Future<void> _submit() async {
     setState(() => _submitting = true);
 
+    final chargeText = _chargeController.text.trim();
+    final serviceCharge = chargeText.isNotEmpty ? double.tryParse(chargeText) : null;
+
     final success = await context.read<TpsProvider>().resolveTicket(
       ticketId: widget.ticketId,
       resolutionNotes: _notesController.text.trim().isEmpty
           ? null
           : _notesController.text.trim(),
       resolutionPhoto: _photo,
+      serviceCharge: serviceCharge,
     );
 
     if (!mounted) return;
@@ -886,15 +689,24 @@ class _ResolveSheetState extends State<_ResolveSheet> {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Add resolution notes and a photo proof that the issue is fixed.',
+            'Add resolution notes, service charge, and a photo proof that the issue is fixed.',
             style: TextStyle(fontSize: 13, color: AppColors.mutedInk),
           ),
           const SizedBox(height: 18),
+
+          // ─── Service charge ───
           TextFormField(
-            controller: _notesController,
-            maxLines: 3,
+            controller: _chargeController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
-              hintText: 'Resolution notes (optional)',
+              prefixText: '₱ ',
+              prefixStyle: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.ink,
+              ),
+              hintText: '0.00',
+              labelText: 'Service Charge',
               hintStyle: TextStyle(
                 color: AppColors.mutedInk.withValues(alpha: 0.5),
               ),
@@ -922,68 +734,155 @@ class _ResolveSheetState extends State<_ResolveSheet> {
             ),
           ),
           const SizedBox(height: 14),
-          GestureDetector(
-            onTap: _pickPhoto,
-            child: Container(
+
+          // ─── Resolution notes ───
+          TextFormField(
+            controller: _notesController,
+            maxLines: 3,
+            decoration: InputDecoration(
+              hintText: 'Resolution notes (optional)',
+              labelText: 'Resolution Notes',
+              hintStyle: TextStyle(
+                color: AppColors.mutedInk.withValues(alpha: 0.5),
+              ),
+              filled: true,
+              fillColor: const Color(0xFFF5F7F6),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(
+                  color: AppColors.forest,
+                  width: 1.5,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // ─── Photo proof (gallery + camera, like damage photo picker) ───
+          const Text(
+            'Photo Proof',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.ink,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (_photo != null)
+            Container(
               width: double.infinity,
-              height: _photo != null ? 160 : 80,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(13),
+                    child: Image.file(
+                      _photo!,
+                      width: double.infinity,
+                      height: 180,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: GestureDetector(
+                      onTap: () => setState(() => _photo = null),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: const Color(0xFFF5F7F6),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: Colors.grey.shade300),
               ),
-              child: _photo != null
-                  ? Stack(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(13),
-                          child: Image.file(
-                            _photo!,
-                            width: double.infinity,
-                            height: 160,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        Positioned(
-                          top: 6,
-                          right: 6,
-                          child: GestureDetector(
-                            onTap: () => setState(() => _photo = null),
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: Colors.black54,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Icon(
-                                Icons.close_rounded,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.camera_alt_rounded,
-                          size: 22,
-                          color: AppColors.mutedInk.withValues(alpha: 0.4),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Take photo proof',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: AppColors.mutedInk,
-                          ),
-                        ),
-                      ],
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.add_a_photo_rounded,
+                    size: 32,
+                    color: AppColors.mutedInk.withValues(alpha: 0.4),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Add a photo showing the resolved issue',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.mutedInk,
                     ),
+                  ),
+                ],
+              ),
             ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _submitting ? null : _pickFromGallery,
+                  icon: const Icon(Icons.photo_library_rounded, size: 20),
+                  label: const Text('Gallery'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.forest,
+                    side: BorderSide(color: Colors.grey.shade300),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _submitting ? null : _pickFromCamera,
+                  icon: const Icon(Icons.camera_alt_rounded, size: 20),
+                  label: const Text('Camera'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.forest,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: AppColors.forest.withValues(alpha: 0.5),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 20),
           SizedBox(
@@ -1169,17 +1068,13 @@ class _StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final (Color bg, Color fg) = switch (status) {
       'open' => (const Color(0xFFE8F5E9), AppColors.forest),
-      'in_progress' => (const Color(0xFFFFF3E0), const Color(0xFFE65100)),
       'resolved' => (const Color(0xFFE3F2FD), const Color(0xFF1565C0)),
-      'closed' => (Colors.grey.shade100, AppColors.mutedInk),
       _ => (Colors.grey.shade100, AppColors.mutedInk),
     };
 
     final label = switch (status) {
       'open' => 'Open',
-      'in_progress' => 'In Progress',
       'resolved' => 'Resolved',
-      'closed' => 'Closed',
       _ => status,
     };
 
@@ -1197,36 +1092,3 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-class _PriorityBadge extends StatelessWidget {
-  const _PriorityBadge({required this.priority});
-
-  final String priority;
-
-  @override
-  Widget build(BuildContext context) {
-    final (Color bg, Color fg) = switch (priority) {
-      'critical' => (const Color(0xFFFFEBEE), AppColors.danger),
-      'high' => (const Color(0xFFFFF3E0), const Color(0xFFE65100)),
-      'medium' => (const Color(0xFFFFFDE7), const Color(0xFFF9A825)),
-      'low' => (const Color(0xFFE8F5E9), AppColors.forest),
-      _ => (Colors.grey.shade100, AppColors.mutedInk),
-    };
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        priority.toUpperCase(),
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: fg,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-}

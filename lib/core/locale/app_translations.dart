@@ -34,8 +34,10 @@ class AppTranslations {
     'verified': 'Verified',
     'not_verified': 'Not verified',
     'tickets': 'Tickets',
+    'repair_maintenance': 'Repair & Maintenance',
     'my_farmers': 'My Farmers',
     'maintenance': 'Maintenance',
+    'tractors': 'Tractors',
     'geo_fences': 'Geo Fences',
     'feedback': 'Feedback',
     'reports': 'Reports',
@@ -140,7 +142,7 @@ class AppTranslations {
         'Open the Home tab to see all your assigned tractors on the map. Tap on any tractor to view its live location, speed, and current status.',
     'faq_q3': 'What should I do if the tractor breaks down?',
     'faq_a3':
-        'Submit a ticket through Account > Tickets > Create Ticket. Describe the issue and include photos if possible. Your TPS technician will be notified and can coordinate the repair.',
+        'Submit a ticket through Account > Repair & Maintenance. Select your tractor and tap Record PMS or Create Ticket. Describe the issue and include photos if possible. Your TPS technician will be notified and can coordinate the repair.',
     'faq_q4': 'How do I contact my FCA coordinator?',
     'faq_a4':
         'Visit the Help Center (this page) to see your assigned FCA coordinator\'s contact information, including their phone number and email.',

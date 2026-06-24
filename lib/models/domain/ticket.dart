@@ -8,6 +8,12 @@ class Ticket {
     this.description,
     this.category,
     this.photoUrl,
+    this.nameplatePhotoUrl,
+    this.dashboardPhotoUrl,
+    this.damagePhotos,
+    this.pmsChecklist,
+    this.actionTaken,
+    this.serviceCharge,
     this.tractorId,
     this.tractorLabel,
     this.tractorBrand,
@@ -33,6 +39,12 @@ class Ticket {
   final String? description;
   final String? category;
   final String? photoUrl;
+  final String? nameplatePhotoUrl;
+  final String? dashboardPhotoUrl;
+  final List<TicketDamagePhoto>? damagePhotos;
+  final List<Map<String, dynamic>>? pmsChecklist;
+  final String? actionTaken;
+  final double? serviceCharge;
   final int? tractorId;
   final String? tractorLabel;
   final String? tractorBrand;
@@ -149,6 +161,22 @@ class Ticket {
       description: json['description']?.toString(),
       category: json['category']?.toString(),
       photoUrl: json['photo_url']?.toString(),
+      nameplatePhotoUrl: json['nameplate_photo_url']?.toString(),
+      dashboardPhotoUrl: json['dashboard_photo_url']?.toString(),
+      damagePhotos: json['damage_photos'] is List
+          ? (json['damage_photos'] as List)
+              .map((dp) => TicketDamagePhoto.fromJson(dp as Map<String, dynamic>))
+              .toList()
+          : null,
+      pmsChecklist: json['pms_checklist'] is List
+          ? (json['pms_checklist'] as List)
+              .whereType<Map<String, dynamic>>()
+              .toList()
+          : null,
+      actionTaken: json['action_taken']?.toString(),
+      serviceCharge: (json['service_charge'] != null)
+          ? double.tryParse(json['service_charge'].toString())
+          : null,
       tractorId: tractor?['id'] as int?,
       tractorLabel: tractor?['no_plate']?.toString(),
       tractorBrand: tractor?['brand']?.toString(),
@@ -187,6 +215,12 @@ class Ticket {
       description: description,
       category: category,
       photoUrl: photoUrl,
+      nameplatePhotoUrl: nameplatePhotoUrl,
+      dashboardPhotoUrl: dashboardPhotoUrl,
+      damagePhotos: damagePhotos,
+      pmsChecklist: pmsChecklist,
+      actionTaken: actionTaken,
+      serviceCharge: serviceCharge,
       tractorId: tractorId,
       tractorLabel: tractorLabel,
       tractorBrand: tractorBrand,
@@ -247,6 +281,26 @@ class TicketComment {
       userName: user?['name']?.toString(),
       attachmentUrl: json['attachment_url']?.toString(),
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
+    );
+  }
+}
+
+class TicketDamagePhoto {
+  const TicketDamagePhoto({
+    required this.id,
+    required this.photoUrl,
+    required this.sortOrder,
+  });
+
+  final int id;
+  final String photoUrl;
+  final int sortOrder;
+
+  factory TicketDamagePhoto.fromJson(Map<String, dynamic> json) {
+    return TicketDamagePhoto(
+      id: json['id'] as int,
+      photoUrl: json['photo_url']?.toString() ?? '',
+      sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
     );
   }
 }

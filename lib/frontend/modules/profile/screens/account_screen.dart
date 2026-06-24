@@ -163,7 +163,13 @@ class AccountScreen extends StatelessWidget {
                       const SizedBox(height: 8),
                       _MenuGroup(
                         items: [
-                          if (user == null || !user.roles.contains('tps'))
+                          if (user != null && user.roles.contains('fca'))
+                            _MenuItem(
+                              icon: Icons.build_circle_rounded,
+                              label: context.tr('repair_maintenance'),
+                              onTap: () => context.go('/account/tickets'),
+                            ),
+                          if (user == null || (!user.roles.contains('tps') && !user.roles.contains('fca')))
                             _MenuItem(
                               icon: Icons.confirmation_num_outlined,
                               label: context.tr('tickets'),
@@ -177,8 +183,8 @@ class AccountScreen extends StatelessWidget {
                             ),
                           if (user != null && user.roles.contains('fca'))
                             _MenuItem(
-                              icon: Icons.build_outlined,
-                              label: context.tr('maintenance'),
+                              icon: Icons.agriculture_rounded,
+                              label: context.tr('tractors'),
                               onTap: () => context.go('/account/maintenance'),
                             ),
                           if (user != null && user.roles.contains('fca'))

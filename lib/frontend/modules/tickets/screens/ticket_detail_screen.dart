@@ -182,7 +182,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
       appBar: AppBar(
-        title: const Text('Ticket Details'),
+        title: const Text('Repair & Maintenance Details'),
         backgroundColor: AppColors.forest,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -191,7 +191,9 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           onPressed: () => context.go(widget.backLocation),
         ),
       ),
-      floatingActionButton: ticket != null
+      floatingActionButton: ticket != null &&
+              ticket.status != 'resolved' &&
+              ticket.status != 'closed'
           ? Stack(
               clipBehavior: Clip.none,
               children: [
@@ -290,14 +292,13 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                   ),
                                 ),
                               ),
-                              _PriorityBadge(priority: ticket.priority),
+                              _StatusBadge(status: ticket.status),
                             ],
                           ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              _StatusBadge(status: ticket.status),
-                              if (ticket.category != null) ...[
+                          if (ticket.category != null) ...[
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
                                 const SizedBox(width: 8),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
@@ -318,9 +319,113 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                                   ),
                                 ),
                               ],
-                            ],
-                          ),
+                            ),
+                          ],
                           const SizedBox(height: 16),
+                          // ─── Resolution Type ───
+                          if (ticket.actionTaken != null &&
+                              ticket.actionTaken!.isNotEmpty) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: ticket.status == 'resolved'
+                                    ? const Color(0xFFE8F5E9)
+                                    : const Color(0xFFFFF3E0),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    ticket.status == 'resolved'
+                                        ? Icons.check_circle_rounded
+                                        : Icons.pending_rounded,
+                                    size: 16,
+                                    color: ticket.status == 'resolved'
+                                        ? AppColors.forest
+                                        : const Color(0xFFE65100),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    ticket.actionTaken!,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: ticket.status == 'resolved'
+                                          ? AppColors.forest
+                                          : const Color(0xFFE65100),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+
+                          // ─── PMS Checklist ───
+                          if (ticket.category == 'PMS' &&
+                              ticket.pmsChecklist != null &&
+                              ticket.pmsChecklist!.isNotEmpty) ...[
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF5F7F6),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'PMS Checklist',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.ink,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  ...ticket.pmsChecklist!.map((item) {
+                                    final done = item['done'] == true ||
+                                        item['done'] == '1' ||
+                                        item['done'] == 1;
+                                    return Padding(
+                                      padding:
+                                          const EdgeInsets.symmetric(vertical: 3),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            done
+                                                ? Icons.check_circle_rounded
+                                                : Icons.radio_button_unchecked_rounded,
+                                            size: 18,
+                                            color: done
+                                                ? AppColors.forest
+                                                : AppColors.mutedInk
+                                                    .withValues(alpha: 0.3),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              item['name']?.toString() ?? '',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w500,
+                                                color: done
+                                                    ? AppColors.forest
+                                                    : AppColors.ink,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
                           if (ticket.description != null) ...[
                             Text(
                               ticket.description!,
@@ -387,6 +492,30 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                       ),
                     ),
 
+                    // ─── Nameplate photo ───
+                    if (ticket.nameplatePhotoUrl != null &&
+                        ticket.nameplatePhotoUrl!.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      _SectionHeader(title: 'Nameplate'),
+                      const SizedBox(height: 8),
+                      TicketNetworkPhotoPreview(
+                        imageUrl: ticket.nameplatePhotoUrl!,
+                        title: 'Nameplate photo',
+                      ),
+                    ],
+
+                    // ─── Dashboard photo ───
+                    if (ticket.dashboardPhotoUrl != null &&
+                        ticket.dashboardPhotoUrl!.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      _SectionHeader(title: 'Dashboard (Machine Hours)'),
+                      const SizedBox(height: 8),
+                      TicketNetworkPhotoPreview(
+                        imageUrl: ticket.dashboardPhotoUrl!,
+                        title: 'Dashboard photo',
+                      ),
+                    ],
+
                     // ─── Issue photo ───
                     if (ticket.photoUrl != null &&
                         ticket.photoUrl!.isNotEmpty) ...[
@@ -396,6 +525,23 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                       TicketNetworkPhotoPreview(
                         imageUrl: ticket.photoUrl!,
                         title: 'Issue photo',
+                      ),
+                    ],
+
+                    // ─── Damaged parts photos ───
+                    if (ticket.damagePhotos != null &&
+                        ticket.damagePhotos!.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      _SectionHeader(title: 'Damaged Parts'),
+                      const SizedBox(height: 8),
+                      ...ticket.damagePhotos!.where((p) => p.photoUrl.isNotEmpty).map(
+                        (p) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: TicketNetworkPhotoPreview(
+                            imageUrl: p.photoUrl,
+                            title: 'Damage photo',
+                          ),
+                        ),
                       ),
                     ],
 
@@ -447,60 +593,63 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                       ],
                     ],
 
-                    // ─── Discussion hint ───
-                    const SizedBox(height: 16),
-                    _DetailCard(
-                      child: InkWell(
-                        onTap: _openChat,
-                        borderRadius: BorderRadius.circular(14),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: AppColors.forest.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(10),
+                    // ─── Discussion hint (hidden when resolved) ───
+                    if (ticket.status != 'resolved' &&
+                        ticket.status != 'closed') ...[
+                      const SizedBox(height: 16),
+                      _DetailCard(
+                        child: InkWell(
+                          onTap: _openChat,
+                          borderRadius: BorderRadius.circular(14),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: AppColors.forest.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.chat_rounded,
+                                  size: 20,
+                                  color: AppColors.forest,
+                                ),
                               ),
-                              child: const Icon(
-                                Icons.chat_rounded,
-                                size: 20,
-                                color: AppColors.forest,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Discussion',
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.ink,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Discussion',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.ink,
+                                      ),
                                     ),
-                                  ),
-                                  Text(
-                                    commentCount == 0
-                                        ? 'No messages yet'
-                                        : '$commentCount message${commentCount == 1 ? '' : 's'}',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: AppColors.mutedInk,
+                                    Text(
+                                      commentCount == 0
+                                          ? 'No messages yet'
+                                          : '$commentCount message${commentCount == 1 ? '' : 's'}',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: AppColors.mutedInk,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                            const Icon(
-                              Icons.chevron_right_rounded,
-                              color: AppColors.mutedInk,
-                            ),
-                          ],
+                              const Icon(
+                                Icons.chevron_right_rounded,
+                                color: AppColors.mutedInk,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
+                    ],
 
                     // Bottom spacer for FAB
                     const SizedBox(height: 80),
@@ -918,40 +1067,6 @@ class _StatusBadge extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg),
-      ),
-    );
-  }
-}
-
-class _PriorityBadge extends StatelessWidget {
-  const _PriorityBadge({required this.priority});
-
-  final String priority;
-
-  @override
-  Widget build(BuildContext context) {
-    final (Color bg, Color fg) = switch (priority) {
-      'critical' => (const Color(0xFFFFEBEE), AppColors.danger),
-      'high' => (const Color(0xFFFFF3E0), const Color(0xFFE65100)),
-      'medium' => (const Color(0xFFFFFDE7), const Color(0xFFF9A825)),
-      'low' => (const Color(0xFFE8F5E9), AppColors.forest),
-      _ => (Colors.grey.shade100, AppColors.mutedInk),
-    };
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        priority.toUpperCase(),
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: fg,
-          letterSpacing: 0.5,
-        ),
       ),
     );
   }

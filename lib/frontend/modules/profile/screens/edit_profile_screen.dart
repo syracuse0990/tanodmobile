@@ -1,12 +1,15 @@
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
+import 'package:tanodmobile/core/config/app_config.dart';
 import 'package:tanodmobile/core/errors/app_exception.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/app_toast.dart';
+import 'package:tanodmobile/models/domain/location_option.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -30,15 +33,47 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String? _existingPhotoUrl;
   bool _isSaving = false;
 
+  // Address / location
+  late final Dio _dio;
+  LocationOption? _selectedProvince;
+  LocationOption? _selectedCity;
+  LocationOption? _selectedBarangay;
+  List<LocationOption> _provinceOptions = [];
+  List<LocationOption> _cityOptions = [];
+  List<LocationOption> _barangayOptions = [];
+  bool _isLoadingProvinces = false;
+  bool _isLoadingCities = false;
+  bool _isLoadingBarangays = false;
+
   @override
   void initState() {
     super.initState();
-    final user = context.read<AuthProvider>().currentUser;
+    final authProvider = context.read<AuthProvider>();
+    final user = authProvider.currentUser;
+    final token = authProvider.session?.token ?? '';
+
+    _dio = Dio(BaseOptions(
+      baseUrl: AppConfig.apiBaseUrl,
+      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
+    ));
+
     _nameController = TextEditingController(text: user?.name ?? '');
     _emailController = TextEditingController(text: user?.email ?? '');
     _phoneController = TextEditingController(text: user?.phone ?? '');
     _selectedGender = user?.gender;
     _existingPhotoUrl = user?.profilePhotoUrl;
+
+    if (user?.province != null && user!.province!.isNotEmpty) {
+      _selectedProvince = LocationOption(code: '', name: user.province!);
+    }
+    if (user?.city != null && user!.city!.isNotEmpty) {
+      _selectedCity = LocationOption(code: '', name: user.city!);
+    }
+    if (user?.barangay != null && user!.barangay!.isNotEmpty) {
+      _selectedBarangay = LocationOption(code: '', name: user.barangay!);
+    }
+
+    _fetchProvinces();
   }
 
   @override
@@ -64,6 +99,104 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (picked != null) {
       setState(() => _pickedPhoto = File(picked.path));
     }
+  }
+
+  Future<void> _fetchProvinces() async {
+    setState(() => _isLoadingProvinces = true);
+    try {
+      final response = await _dio.get('/locations/provinces');
+      final data = response.data is Map ? response.data['data'] : response.data;
+      if (data is List) {
+        _provinceOptions = data
+            .map<LocationOption>((e) => LocationOption.fromJson(e as Map<String, dynamic>))
+            .toList();
+        debugPrint('_fetchProvinces: loaded ${_provinceOptions.length} provinces');
+        // Match existing province name to an option
+        if (_selectedProvince != null) {
+          final match = _provinceOptions.cast<LocationOption?>().firstWhere(
+            (o) => o!.name == _selectedProvince!.name,
+            orElse: () => null,
+          );
+          _selectedProvince = match;
+          // Cascade: if province matched, load cities and barangays for pre-selection
+          if (match != null && match.code.isNotEmpty) {
+            await _fetchCities(match.code);
+            if (_selectedCity != null && _selectedCity!.code.isNotEmpty) {
+              await _fetchBarangays(_selectedCity!.code);
+            }
+          }
+        }
+      } else {
+        debugPrint('_fetchProvinces: unexpected data type ${response.data.runtimeType}');
+      }
+    } catch (e) {
+      debugPrint('_fetchProvinces error: $e');
+    }
+    if (mounted) setState(() => _isLoadingProvinces = false);
+  }
+
+  Future<void> _fetchCities(String provinceCode) async {
+    setState(() {
+      _isLoadingCities = true;
+      _cityOptions = [];
+      _selectedCity = null;
+      _selectedBarangay = null;
+      _barangayOptions = [];
+    });
+    try {
+      final response = await _dio.get('/locations/cities', queryParameters: {'province_code': provinceCode});
+      final data = response.data is Map ? response.data['data'] : response.data;
+      if (data is List) {
+        _cityOptions = data
+            .map<LocationOption>((e) => LocationOption.fromJson(e as Map<String, dynamic>))
+            .toList();
+        debugPrint('_fetchCities: loaded ${_cityOptions.length} cities for province $provinceCode');
+        // Match existing city name to an option
+        final savedCity = context.read<AuthProvider>().currentUser?.city;
+        if (savedCity != null && savedCity.isNotEmpty) {
+          _selectedCity = _cityOptions.cast<LocationOption?>().firstWhere(
+            (o) => o!.name == savedCity,
+            orElse: () => null,
+          );
+        }
+      } else {
+        debugPrint('_fetchCities: unexpected data type ${response.data.runtimeType}');
+      }
+    } catch (e) {
+      debugPrint('_fetchCities error: $e');
+    }
+    if (mounted) setState(() => _isLoadingCities = false);
+  }
+
+  Future<void> _fetchBarangays(String cityCode) async {
+    setState(() {
+      _isLoadingBarangays = true;
+      _barangayOptions = [];
+      _selectedBarangay = null;
+    });
+    try {
+      final response = await _dio.get('/locations/barangays', queryParameters: {'city_municipality_code': cityCode});
+      final data = response.data is Map ? response.data['data'] : response.data;
+      if (data is List) {
+        _barangayOptions = data
+            .map<LocationOption>((e) => LocationOption.fromJson(e as Map<String, dynamic>))
+            .toList();
+        debugPrint('_fetchBarangays: loaded ${_barangayOptions.length} barangays for city $cityCode');
+        // Match existing barangay name to an option
+        final savedBarangay = context.read<AuthProvider>().currentUser?.barangay;
+        if (savedBarangay != null && savedBarangay.isNotEmpty) {
+          _selectedBarangay = _barangayOptions.cast<LocationOption?>().firstWhere(
+            (o) => o!.name == savedBarangay,
+            orElse: () => null,
+          );
+        }
+      } else {
+        debugPrint('_fetchBarangays: unexpected data type ${response.data.runtimeType}');
+      }
+    } catch (e) {
+      debugPrint('_fetchBarangays error: $e');
+    }
+    if (mounted) setState(() => _isLoadingBarangays = false);
   }
 
   void _showPhotoOptions() {
@@ -156,6 +289,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       if (_selectedGender != null) {
         fields['gender'] = _selectedGender;
+      }
+
+      if (_selectedProvince != null) {
+        fields['province'] = _selectedProvince!.name;
+      }
+      if (_selectedCity != null) {
+        fields['city'] = _selectedCity!.name;
+      }
+      if (_selectedBarangay != null) {
+        fields['barangay'] = _selectedBarangay!.name;
       }
 
       await context.read<AuthProvider>().updateProfile(
@@ -338,6 +481,62 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           selectedGender: _selectedGender,
                           onChanged: (gender) =>
                               setState(() => _selectedGender = gender),
+                        ),
+
+                        const SizedBox(height: 24),
+                        const Text(
+                          'Address',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Province
+                        _LocationDropdown(
+                          label: 'Province',
+                          hint: 'Select province',
+                          icon: Icons.map_rounded,
+                          value: _selectedProvince,
+                          options: _provinceOptions,
+                          isLoading: _isLoadingProvinces,
+                          onChanged: (v) {
+                            setState(() => _selectedProvince = v);
+                            if (v != null) {
+                              WidgetsBinding.instance.addPostFrameCallback((_) => _fetchCities(v.code));
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // City
+                        _LocationDropdown(
+                          label: 'City / Municipality',
+                          hint: 'Select city',
+                          icon: Icons.location_city_rounded,
+                          value: _selectedCity,
+                          options: _cityOptions,
+                          isLoading: _isLoadingCities,
+                          onChanged: (v) {
+                            setState(() => _selectedCity = v);
+                            if (v != null) {
+                              WidgetsBinding.instance.addPostFrameCallback((_) => _fetchBarangays(v.code));
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Barangay
+                        _LocationDropdown(
+                          label: 'Barangay',
+                          hint: 'Select barangay',
+                          icon: Icons.home_rounded,
+                          value: _selectedBarangay,
+                          options: _barangayOptions,
+                          isLoading: _isLoadingBarangays,
+                          onChanged: (v) => setState(() => _selectedBarangay = v),
                         ),
 
                         const SizedBox(height: 36),
@@ -761,6 +960,104 @@ class _PhotoOption extends StatelessWidget {
       ),
       onTap: onTap,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    );
+  }
+}
+
+// ─── Location Dropdown ──────────────────────────
+
+class _LocationDropdown extends StatelessWidget {
+  const _LocationDropdown({
+    required this.label,
+    required this.hint,
+    required this.icon,
+    required this.value,
+    required this.options,
+    required this.isLoading,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String hint;
+  final IconData icon;
+  final LocationOption? value;
+  final List<LocationOption> options;
+  final bool isLoading;
+  final ValueChanged<LocationOption?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: AppColors.mutedInk,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: AppColors.mutedInk.withValues(alpha: 0.12),
+            ),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<LocationOption>(
+              key: ValueKey('${options.length}_${value?.code ?? 'none'}'),
+              value: value,
+              hint: Row(
+                children: [
+                  Icon(icon, size: 20, color: AppColors.pine),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      hint,
+                      style: TextStyle(
+                        color: AppColors.mutedInk.withValues(alpha: 0.4),
+                        fontWeight: FontWeight.w400,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              isExpanded: true,
+              icon: isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.keyboard_arrow_down_rounded),
+              items: options.map((o) {
+                return DropdownMenuItem<LocationOption>(
+                  value: o,
+                  child: Text(
+                    o.name,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              }).toList(),
+              onChanged: options.isEmpty ? null : onChanged,
+              dropdownColor: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: AppColors.ink,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

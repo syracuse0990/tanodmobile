@@ -55,6 +55,7 @@ class TpsProvider extends ChangeNotifier {
   int _ticketsLastPage = 1;
   int _chatTicketsLastPage = 1;
   String _ticketSearchQuery = '';
+  String? _ticketStatusFilter;
 
   List<Ticket> get tickets => _tickets;
   List<Ticket> get chatTickets => _chatTickets;
@@ -65,6 +66,7 @@ class TpsProvider extends ChangeNotifier {
   bool get hasMoreTickets => _ticketsPage < _ticketsLastPage;
   bool get hasMoreChatTickets => _chatTicketsPage < _chatTicketsLastPage;
   String get ticketSearchQuery => _ticketSearchQuery;
+  String? get ticketStatusFilter => _ticketStatusFilter;
 
   // Feedbacks
   List<FarmerFeedbackItem> _feedbacks = [];
@@ -841,6 +843,16 @@ class TpsProvider extends ChangeNotifier {
     await fetchTickets(status: status);
   }
 
+  Future<void> setTicketStatusFilter(String? status) async {
+    if (_ticketStatusFilter == status) return;
+    _ticketStatusFilter = status;
+    _tickets = [];
+    _ticketsPage = 1;
+    _ticketsLastPage = 1;
+    notifyListeners();
+    await fetchTickets(status: status);
+  }
+
   Future<void> fetchChatTickets() async {
     _chatTicketsLoading = true;
     _chatTicketsError = null;
@@ -1340,8 +1352,8 @@ class TpsProvider extends ChangeNotifier {
         'subject': subject,
         'description': description,
         'priority': priority,
-        'category': ?category,
-        'tractor_id': ?tractorId,
+        'category': category,
+        'tractor_id': tractorId,
       };
 
       if (photo != null) {
@@ -1386,9 +1398,16 @@ class TpsProvider extends ChangeNotifier {
     required int ticketId,
     String? resolutionNotes,
     File? resolutionPhoto,
+    double? serviceCharge,
   }) async {
     try {
-      final formMap = <String, dynamic>{'resolution_notes': ?resolutionNotes};
+      final formMap = <String, dynamic>{
+        'resolution_notes': resolutionNotes,
+      };
+
+      if (serviceCharge != null) {
+        formMap['service_charge'] = serviceCharge.toString();
+      }
 
       if (resolutionPhoto != null) {
         formMap['resolution_photo'] = await MultipartFile.fromFile(

@@ -3,13 +3,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/modules/tickets/models/ticket_issue_photo.dart';
-import 'package:tanodmobile/frontend/modules/tickets/services/ticket_issue_photo_service.dart';
 
 class TicketIssuePhotoPicker extends StatelessWidget {
   const TicketIssuePhotoPicker({
     super.key,
+    required this.label,
+    required this.subtitle,
+    required this.maxPhotos,
     required this.photos,
-    this.uploadPreviewFile,
     required this.isProcessing,
     required this.processingLabel,
     required this.onPickGallery,
@@ -18,8 +19,10 @@ class TicketIssuePhotoPicker extends StatelessWidget {
     this.errorText,
   });
 
+  final String label;
+  final String subtitle;
+  final int maxPhotos;
   final List<TicketIssuePhoto> photos;
-  final File? uploadPreviewFile;
   final bool isProcessing;
   final String processingLabel;
   final VoidCallback onPickGallery;
@@ -29,12 +32,7 @@ class TicketIssuePhotoPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final atMax = photos.length >= TicketIssuePhotoService.maxPhotos;
-    final showUploadPreview =
-        uploadPreviewFile != null &&
-        (photos.length > 1 ||
-            photos.isEmpty ||
-            uploadPreviewFile!.path != photos.first.file.path);
+    final atMax = photos.length >= maxPhotos;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -69,9 +67,9 @@ class TicketIssuePhotoPicker extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Verified issue photos',
-                              style: TextStyle(
+                            Text(
+                              label,
+                              style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
                                 color: AppColors.ink,
@@ -79,7 +77,7 @@ class TicketIssuePhotoPicker extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Required. Select up to 2 photos.',
+                              subtitle,
                               style: TextStyle(
                                 fontSize: 12,
                                 color: AppColors.mutedInk.withValues(
@@ -100,7 +98,7 @@ class TicketIssuePhotoPicker extends StatelessWidget {
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
-                          '${photos.length}/${TicketIssuePhotoService.maxPhotos}',
+                          '${photos.length}/$maxPhotos',
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -177,87 +175,6 @@ class TicketIssuePhotoPicker extends StatelessWidget {
                         );
                       },
                     ),
-                  if (showUploadPreview) ...[
-                    const SizedBox(height: 14),
-                    const Text(
-                      'Upload preview',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.ink,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'This is the exact verified proof image that will be uploaded with the ticket.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.45,
-                        color: AppColors.mutedInk.withValues(alpha: 0.86),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    GestureDetector(
-                      onTap: () => _showFilePreview(
-                        context,
-                        uploadPreviewFile!,
-                        title: 'Verified upload preview',
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey.shade300),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Stack(
-                            children: [
-                              AspectRatio(
-                                aspectRatio: 1.08,
-                                child: Image.file(
-                                  uploadPreviewFile!,
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                              Positioned(
-                                right: 12,
-                                bottom: 12,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.54),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.zoom_out_map_rounded,
-                                        size: 14,
-                                        color: Colors.white,
-                                      ),
-                                      SizedBox(width: 6),
-                                      Text(
-                                        'Tap to preview',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 14),
                   Row(
                     children: [
@@ -297,17 +214,6 @@ class TicketIssuePhotoPicker extends StatelessWidget {
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    atMax
-                        ? 'Maximum of 2 photos reached. Remove one to replace it.'
-                        : 'When two photos are selected, the app prepares one verified proof sheet for upload.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.45,
-                      color: AppColors.mutedInk.withValues(alpha: 0.86),
-                    ),
                   ),
                 ],
               ),

@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:tanodmobile/backend/dio/api_client.dart';
 import 'package:tanodmobile/backend/endpoints/app_endpoints.dart';
 import 'package:tanodmobile/core/utils/url_helper.dart';
+import 'package:tanodmobile/frontend/modules/tickets/models/ticket_issue_photo.dart';
 import 'package:tanodmobile/models/domain/ticket.dart';
 
 class TicketProvider extends ChangeNotifier {
@@ -266,10 +267,15 @@ class TicketProvider extends ChangeNotifier {
   Future<Ticket?> createTicket({
     required String subject,
     required String description,
-    required String priority,
+    String priority = 'medium',
     String? category,
     int? tractorId,
-    File? photo,
+    File? nameplatePhoto,
+    File? dashboardPhoto,
+    List<File>? damagePhotos,
+    List<Map<String, dynamic>>? pmsChecklist,
+    bool autoResolve = false,
+    String? actionTaken,
   }) async {
     try {
       final formMap = <String, dynamic>{
@@ -280,11 +286,44 @@ class TicketProvider extends ChangeNotifier {
         'tractor_id': ?tractorId,
       };
 
-      if (photo != null) {
-        formMap['photo'] = await MultipartFile.fromFile(
-          photo.path,
-          filename: photo.path.split(Platform.pathSeparator).last,
+      if (nameplatePhoto != null) {
+        formMap['nameplate_photo'] = await MultipartFile.fromFile(
+          nameplatePhoto.path,
+          filename: nameplatePhoto.path.split(Platform.pathSeparator).last,
         );
+      }
+      if (dashboardPhoto != null) {
+        formMap['dashboard_photo'] = await MultipartFile.fromFile(
+          dashboardPhoto.path,
+          filename: dashboardPhoto.path.split(Platform.pathSeparator).last,
+        );
+      }
+      if (damagePhotos != null && damagePhotos.isNotEmpty) {
+        for (var i = 0; i < damagePhotos.length; i++) {
+          formMap['damage_photos[$i]'] = await MultipartFile.fromFile(
+            damagePhotos[i].path,
+            filename: damagePhotos[i].path.split(Platform.pathSeparator).last,
+          );
+        }
+      }
+
+      // PMS checklist
+      if (pmsChecklist != null && pmsChecklist.isNotEmpty) {
+        for (var i = 0; i < pmsChecklist.length; i++) {
+          formMap['pms_checklist[$i][name]'] = pmsChecklist[i]['name'];
+          formMap['pms_checklist[$i][done]'] = pmsChecklist[i]['done'] == true ? '1' : '0';
+          if (pmsChecklist[i]['notes'] != null) {
+            formMap['pms_checklist[$i][notes]'] = pmsChecklist[i]['notes'];
+          }
+        }
+      }
+
+      // Auto-resolve & action taken (for PMS self-service)
+      if (autoResolve) {
+        formMap['auto_resolve'] = '1';
+      }
+      if (actionTaken != null) {
+        formMap['action_taken'] = actionTaken;
       }
 
       final formData = FormData.fromMap(formMap);
@@ -346,6 +385,54 @@ class TicketProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('TicketProvider.resolveTicket error: $e');
       return false;
+    }
+  }
+
+  // ─── Validate photo (AI) ───────────────────────
+
+  Future<TicketIssuePhotoValidationResult> validatePhoto({
+    required File photo,
+    required String type,
+  }) async {
+    try {
+      final formMap = <String, dynamic>{
+        'type': type,
+      };
+
+      formMap['photo'] = await MultipartFile.fromFile(
+        photo.path,
+        filename: photo.path.split(Platform.pathSeparator).last,
+      );
+
+      final formData = FormData.fromMap(formMap);
+
+      final response = await _dio.post(
+        AppEndpoints.ticketValidatePhoto,
+        data: formData,
+        options: Options(
+          contentType: 'multipart/form-data',
+          receiveTimeout: const Duration(seconds: 30),
+          sendTimeout: const Duration(seconds: 30),
+        ),
+      );
+
+      final data = response.data as Map<String, dynamic>;
+      return TicketIssuePhotoValidationResult(
+        valid: data['valid'] == true,
+        message: data['message']?.toString() ?? '',
+      );
+    } on DioException {
+      // Fail-open on network errors
+      return const TicketIssuePhotoValidationResult(
+        valid: true,
+        message: 'Validation skipped.',
+      );
+    } catch (e) {
+      debugPrint('validatePhoto error: $e');
+      return const TicketIssuePhotoValidationResult(
+        valid: true,
+        message: 'Validation skipped.',
+      );
     }
   }
 

@@ -49,6 +49,17 @@ class _DashboardShellState extends State<DashboardShell> {
     return tabIndex >= 0 ? tabIndex : visibleBranches.length - 1;
   }
 
+  String _branchRootPath(int branchIndex, bool isTps) {
+    return switch (branchIndex) {
+      0 => '/home',
+      1 => '/alerts',
+      2 => isTps ? '/tps' : '/bookings',
+      3 => '/chat',
+      5 => '/account',
+      _ => '/home',
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final isTps = _isTps(context);
@@ -93,6 +104,17 @@ class _DashboardShellState extends State<DashboardShell> {
               ),
               onTabChange: (index) {
                 final branchIndex = _tabToBranch(index, visibleBranches);
+
+                // Tap on already-active tab → reset branch to its root
+                if (branchIndex == navigationShell.currentIndex) {
+                  final rootPath = _branchRootPath(
+                    branchIndex,
+                    isTps,
+                  );
+                  GoRouter.of(context).go(rootPath);
+                  return;
+                }
+
                 tractorProvider.setHomeVisible(branchIndex == 0);
                 navigationShell.goBranch(branchIndex);
               },
