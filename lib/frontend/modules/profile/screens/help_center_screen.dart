@@ -5,6 +5,7 @@ import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/backend/dio/api_client.dart';
 import 'package:tanodmobile/core/locale/app_localizations.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HelpCenterScreen extends StatefulWidget {
   const HelpCenterScreen({super.key});
@@ -229,10 +230,13 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
               color: AppColors.gold,
             ),
             const SizedBox(height: 10),
-            ...adminContacts.map((c) => _ContactCard(
-                  contact: c,
-                  accentColor: AppColors.gold,
-                  roleLabel: context.tr('admin_label'),
+            ...adminContacts.map((c) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _ContactCard(
+                    contact: c,
+                    accentColor: AppColors.gold,
+                    roleLabel: context.tr('admin_label'),
+                  ),
                 )),
           ],
 
@@ -449,6 +453,186 @@ class _FaqItemState extends State<_FaqItem>
   }
 }
 
+// ─── Contact Action Bottom Sheet ───
+
+void _showContactOptions(
+  BuildContext context, {
+  String? phone,
+  String? email,
+}) {
+  final sanitizedPhone = phone?.replaceAll(RegExp(r'[^\d+]'), '');
+  final hasPhone = sanitizedPhone != null && sanitizedPhone.isNotEmpty;
+  final hasEmail = email != null && email.isNotEmpty;
+
+  showModalBottomSheet(
+    context: context,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Drag handle
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.mutedInk.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            // Contact info display
+            if (hasPhone) ...[
+              Text(
+                phone!,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink,
+                ),
+              ),
+            ],
+            if (hasEmail) ...[
+              if (hasPhone) const SizedBox(height: 4),
+              Text(
+                email!,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.mutedInk,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Text(
+              context.tr('contact_action_prompt'),
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.mutedInk.withValues(alpha: 0.7),
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Call button
+            if (hasPhone) ...[
+              SizedBox(
+                width: double.infinity,
+                child: _ActionTile(
+                  icon: Icons.phone_in_talk_rounded,
+                  label: context.tr('call'),
+                  color: Colors.green,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    launchUrl(Uri.parse('tel:$sanitizedPhone'));
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Message button
+              SizedBox(
+                width: double.infinity,
+                child: _ActionTile(
+                  icon: Icons.chat_rounded,
+                  label: context.tr('message'),
+                  color: AppColors.forest,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    launchUrl(Uri.parse('sms:$sanitizedPhone'));
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            // Email button
+            if (hasEmail) ...[
+              SizedBox(
+                width: double.infinity,
+                child: _ActionTile(
+                  icon: Icons.email_rounded,
+                  label: context.tr('email'),
+                  color: AppColors.pine,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    launchUrl(Uri.parse('mailto:$email'));
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            // Cancel
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: Text(
+                  context.tr('cancel'),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: AppColors.mutedInk,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _ActionTile extends StatelessWidget {
+  const _ActionTile({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: color.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 22, color: color),
+              const SizedBox(width: 10),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Contact Card ───
 
 class _ContactCard extends StatelessWidget {
@@ -561,6 +745,11 @@ class _ContactCard extends StatelessWidget {
                       icon: Icons.phone_rounded,
                       text: phone,
                       color: accentColor,
+                      onTap: () => _showContactOptions(
+                        context,
+                        phone: phone,
+                        email: email.isNotEmpty ? email : null,
+                      ),
                     ),
                   if (email.isNotEmpty)
                     Padding(
@@ -569,6 +758,11 @@ class _ContactCard extends StatelessWidget {
                         icon: Icons.email_rounded,
                         text: email,
                         color: accentColor,
+                        onTap: () => _showContactOptions(
+                          context,
+                          phone: phone.isNotEmpty ? phone : null,
+                          email: email,
+                        ),
                       ),
                     ),
                 ],
@@ -594,28 +788,33 @@ class _InfoRow extends StatelessWidget {
     required this.icon,
     required this.text,
     required this.color,
+    this.onTap,
   });
 
   final IconData icon;
   final String text;
   final Color color;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 14, color: color.withValues(alpha: 0.6)),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.mutedInk.withValues(alpha: 0.8),
+    return GestureDetector(
+      onTap: onTap,
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: color.withValues(alpha: 0.6)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.mutedInk.withValues(alpha: 0.8),
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
