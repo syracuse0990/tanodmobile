@@ -512,7 +512,10 @@ class _TicketCard extends StatelessWidget {
           const SizedBox(height: 10),
           Row(
             children: [
-              _Badge(label: ticket.statusLabel, color: _statusColor),
+              if (ticket.isPartial)
+                _Badge(label: 'Partially Resolved', color: const Color(0xFFE65100))
+              else
+                _Badge(label: ticket.statusLabel, color: _statusColor),
               const Spacer(),
               Text(
                 ticket.timeAgo,

@@ -110,6 +110,19 @@ class AccountScreen extends StatelessWidget {
                             ),
                           ),
                         ),
+                      if (user?.organizationName != null && user!.organizationName!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            user.organizationName!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.white.withValues(alpha: 0.65),
+                              fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
                     ],
                   ),
                 ),

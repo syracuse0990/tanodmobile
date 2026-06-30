@@ -14,6 +14,7 @@ class AppUser extends Equatable {
     this.barangay,
     this.mustChangePassword = false,
     this.phoneVerifiedAt,
+    this.organizationName,
   });
 
   final int? id;
@@ -28,6 +29,7 @@ class AppUser extends Equatable {
   final String? barangay;
   final bool mustChangePassword;
   final DateTime? phoneVerifiedAt;
+  final String? organizationName;
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
     final dynamic rawRoles = json['roles'];
@@ -63,6 +65,7 @@ class AppUser extends Equatable {
       phoneVerifiedAt: json['phone_verified_at'] != null
           ? DateTime.tryParse(json['phone_verified_at'].toString())
           : null,
+      organizationName: json['organization_name']?.toString(),
     );
   }
 
@@ -80,6 +83,7 @@ class AppUser extends Equatable {
       'barangay': barangay,
       'must_change_password': mustChangePassword,
       'phone_verified_at': phoneVerifiedAt?.toIso8601String(),
+      'organization_name': organizationName,
     };
   }
 
@@ -100,5 +104,5 @@ class AppUser extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, name, email, roles, phone, gender, profilePhotoUrl, province, city, barangay, mustChangePassword, phoneVerifiedAt];
+  List<Object?> get props => [id, name, email, roles, phone, gender, profilePhotoUrl, province, city, barangay, mustChangePassword, phoneVerifiedAt, organizationName];
 }

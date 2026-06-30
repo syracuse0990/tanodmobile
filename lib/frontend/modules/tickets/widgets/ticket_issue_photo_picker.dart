@@ -17,6 +17,8 @@ class TicketIssuePhotoPicker extends StatelessWidget {
     required this.onCapture,
     required this.onRemove,
     this.errorText,
+    this.onPickVideo,
+    this.onCaptureVideo,
   });
 
   final String label;
@@ -29,6 +31,8 @@ class TicketIssuePhotoPicker extends StatelessWidget {
   final VoidCallback onCapture;
   final ValueChanged<int> onRemove;
   final String? errorText;
+  final VoidCallback? onPickVideo;
+  final VoidCallback? onCaptureVideo;
 
   @override
   Widget build(BuildContext context) {
@@ -183,8 +187,8 @@ class TicketIssuePhotoPicker extends StatelessWidget {
                           onPressed: isProcessing || atMax
                               ? null
                               : onPickGallery,
-                          icon: const Icon(Icons.photo_library_rounded),
-                          label: const Text('Gallery'),
+                          icon: const Icon(Icons.photo_library_rounded, size: 20),
+                          label: const Text('Gallery', style: TextStyle(fontSize: 12)),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppColors.forest,
                             side: BorderSide(color: Colors.grey.shade300),
@@ -195,12 +199,12 @@ class TicketIssuePhotoPicker extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: ElevatedButton.icon(
                           onPressed: isProcessing || atMax ? null : onCapture,
-                          icon: const Icon(Icons.camera_alt_rounded),
-                          label: const Text('Camera'),
+                          icon: const Icon(Icons.camera_alt_rounded, size: 20),
+                          label: const Text('Camera', style: TextStyle(fontSize: 12)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.forest,
                             foregroundColor: Colors.white,
@@ -213,6 +217,30 @@ class TicketIssuePhotoPicker extends StatelessWidget {
                           ),
                         ),
                       ),
+                      if (onPickVideo != null || onCaptureVideo != null) ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: isProcessing || atMax
+                                ? null
+                                : () => _showVideoSourceSheet(
+                                    context,
+                                    onPickVideo: onPickVideo,
+                                    onCaptureVideo: onCaptureVideo,
+                                  ),
+                            icon: const Icon(Icons.videocam_rounded, size: 20),
+                            label: const Text('Video', style: TextStyle(fontSize: 12)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF7C3AED),
+                              side: const BorderSide(color: Color(0xFFC4B5FD)),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ],
@@ -308,6 +336,8 @@ class _TicketIssuePhotoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isVideo = photo.isVideo;
+
     return Container(
       width: width,
       decoration: BoxDecoration(
@@ -328,13 +358,31 @@ class _TicketIssuePhotoCard extends StatelessWidget {
               onTap: () => _showFilePreview(
                 context,
                 photo.file,
-                title: 'Verified photo ${index + 1}',
+                title: isVideo ? 'Verified video ${index + 1}' : 'Verified photo ${index + 1}',
+                isVideo: isVideo,
               ),
               child: AspectRatio(
                 aspectRatio: 0.95,
-                child: Image.file(photo.file, fit: BoxFit.cover),
+                child: isVideo
+                    ? Container(
+                        color: const Color(0xFF1A1A2E),
+                        child: const Center(
+                          child: Icon(
+                            Icons.play_circle_fill_rounded,
+                            size: 48,
+                            color: Color(0xFF7C3AED),
+                          ),
+                        ),
+                      )
+                    : Image.file(photo.file, fit: BoxFit.cover),
               ),
             ),
+            if (isVideo)
+              const Positioned(
+                top: 10,
+                left: 10,
+                child: _VideoBadge(),
+              ),
             Positioned(
               top: 10,
               right: 10,
@@ -377,12 +425,14 @@ class _TicketIssuePhotoCard extends StatelessWidget {
                         Container(
                           width: 18,
                           height: 18,
-                          decoration: const BoxDecoration(
-                            color: AppColors.forest,
+                          decoration: BoxDecoration(
+                            color: isVideo
+                                ? const Color(0xFF7C3AED)
+                                : AppColors.forest,
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(
-                            Icons.check_rounded,
+                          child: Icon(
+                            isVideo ? Icons.videocam_rounded : Icons.check_rounded,
                             size: 12,
                             color: Colors.white,
                           ),
@@ -390,7 +440,9 @@ class _TicketIssuePhotoCard extends StatelessWidget {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Verified by TanodTractor',
+                            isVideo
+                                ? 'GPS Verified Video'
+                                : 'Verified by TanodTractor',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -428,11 +480,13 @@ class _TicketIssuePhotoCard extends StatelessWidget {
                     ],
                     const SizedBox(height: 6),
                     Text(
-                      'Photo ${index + 1} of $total',
-                      style: const TextStyle(
+                      isVideo ? 'Video ${index + 1} of $total' : 'Photo ${index + 1} of $total',
+                      style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF8DD6A5),
+                        color: isVideo
+                            ? const Color(0xFFC4B5FD)
+                            : const Color(0xFF8DD6A5),
                       ),
                     ),
                   ],
@@ -446,10 +500,115 @@ class _TicketIssuePhotoCard extends StatelessWidget {
   }
 }
 
+class _VideoBadge extends StatelessWidget {
+  const _VideoBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF7C3AED).withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.play_arrow_rounded, size: 14, color: Colors.white),
+          SizedBox(width: 2),
+          Text(
+            'VIDEO',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+void _showVideoSourceSheet(
+  BuildContext context, {
+  required VoidCallback? onPickVideo,
+  required VoidCallback? onCaptureVideo,
+}) {
+  showModalBottomSheet(
+    context: context,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (_) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Add Video',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (onPickVideo != null)
+              ListTile(
+                leading: const Icon(
+                  Icons.video_library_rounded,
+                  color: Color(0xFF7C3AED),
+                ),
+                title: const Text('Choose from Gallery'),
+                subtitle: const Text('Select an existing video (max 5 min)'),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  onPickVideo();
+                },
+              ),
+            if (onCaptureVideo != null)
+              ListTile(
+                leading: const Icon(
+                  Icons.videocam_rounded,
+                  color: Color(0xFF7C3AED),
+                ),
+                title: const Text('Record Video'),
+                subtitle: const Text('Capture a new video (max 5 min)'),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  onCaptureVideo();
+                },
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 void _showFilePreview(
   BuildContext context,
   File file, {
   required String title,
+  bool isVideo = false,
 }) {
   showDialog(
     context: context,
@@ -479,22 +638,52 @@ void _showFilePreview(
               ),
             ),
             const SizedBox(height: 12),
-            InteractiveViewer(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.file(
-                  file,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => Container(
-                    height: 220,
-                    color: Colors.grey.shade200,
-                    child: const Center(
-                      child: Icon(Icons.broken_image_rounded, size: 48),
+            if (isVideo)
+              Container(
+                height: 220,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A2E),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.play_circle_fill_rounded,
+                        size: 64,
+                        color: Color(0xFF7C3AED),
+                      ),
+                      SizedBox(height: 12),
+                      Text(
+                        'Video Preview',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              InteractiveViewer(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Image.file(
+                    file,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => Container(
+                      height: 220,
+                      color: Colors.grey.shade200,
+                      child: const Center(
+                        child: Icon(Icons.broken_image_rounded, size: 48),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),

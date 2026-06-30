@@ -328,30 +328,30 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   }
 
   Future<void> _pickDamageFromGallery() async {
-    if (_damagePhotos.length >= 3) {
-      AppToast.show('Only up to 3 damage photos are allowed.', type: ToastType.error);
+    if (_damagePhotos.length >= 10) {
+      AppToast.show('Only up to 10 damage photos are allowed.', type: ToastType.error);
       return;
     }
     await _appendPhotosForSection(
       currentPhotos: _damagePhotos,
-      maxPhotos: 3,
+      maxPhotos: 10,
       onUpdate: (v) => setState(() { _damagePhotos = v; _damageError = null; }),
       setProcessing: (v) => setState(() => _damageProcessing = v),
       setProcessingLabel: (v) => setState(() => _damageProcessingLabel = v),
       setError: (v) => setState(() => _damageError = v),
       loadingLabel: 'Applying secure watermark...',
-      action: () => _photoService.pickFromGallery(remainingSlots: 3 - _damagePhotos.length),
+      action: () => _photoService.pickFromGallery(remainingSlots: 10 - _damagePhotos.length),
     );
   }
 
   Future<void> _captureDamage() async {
-    if (_damagePhotos.length >= 3) {
-      AppToast.show('Only up to 3 damage photos are allowed.', type: ToastType.error);
+    if (_damagePhotos.length >= 10) {
+      AppToast.show('Only up to 10 damage photos are allowed.', type: ToastType.error);
       return;
     }
     await _appendPhotosForSection(
       currentPhotos: _damagePhotos,
-      maxPhotos: 3,
+      maxPhotos: 10,
       onUpdate: (v) => setState(() { _damagePhotos = v; _damageError = null; }),
       setProcessing: (v) => setState(() => _damageProcessing = v),
       setProcessingLabel: (v) => setState(() => _damageProcessingLabel = v),
@@ -370,6 +370,48 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
       _damagePhotos = nextPhotos;
       _damageError = null;
     });
+  }
+
+  // ─── Video handlers (Damage) ───
+
+  Future<void> _pickDamageVideo() async {
+    if (_damagePhotos.length >= 10) {
+      AppToast.show('Only up to 10 damage photos are allowed.', type: ToastType.error);
+      return;
+    }
+    await _appendPhotosForSection(
+      currentPhotos: _damagePhotos,
+      maxPhotos: 10,
+      onUpdate: (v) => setState(() { _damagePhotos = v; _damageError = null; }),
+      setProcessing: (v) => setState(() => _damageProcessing = v),
+      setProcessingLabel: (v) => setState(() => _damageProcessingLabel = v),
+      setError: (v) => setState(() => _damageError = v),
+      loadingLabel: 'Retrieving video...',
+      action: () async {
+        final v = await _photoService.pickVideoFromGallery();
+        return v == null ? const [] : [v];
+      },
+    );
+  }
+
+  Future<void> _captureDamageVideo() async {
+    if (_damagePhotos.length >= 10) {
+      AppToast.show('Only up to 10 damage photos are allowed.', type: ToastType.error);
+      return;
+    }
+    await _appendPhotosForSection(
+      currentPhotos: _damagePhotos,
+      maxPhotos: 10,
+      onUpdate: (v) => setState(() { _damagePhotos = v; _damageError = null; }),
+      setProcessing: (v) => setState(() => _damageProcessing = v),
+      setProcessingLabel: (v) => setState(() => _damageProcessingLabel = v),
+      setError: (v) => setState(() => _damageError = v),
+      loadingLabel: 'Recording video...',
+      action: () async {
+        final v = await _photoService.captureVideo();
+        return v == null ? const [] : [v];
+      },
+    );
   }
 
   String _friendlyPhotoError(Object error) {
@@ -393,26 +435,31 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   }
 
   Future<String?> _validatePhoto(TicketIssuePhoto photo, String type) async {
-    // TODO: Re-enable AI photo validation when ready
-    // Disabled for testing — bypasses server-side nameplate/dashboard checks
-    return null;
-    /*
     try {
       final result = await context.read<TicketProvider>().validatePhoto(
         photo: photo.file,
         type: type,
       );
       if (!result.valid) {
+        // Nameplate: less strict — warn but still accept
+        if (type == 'nameplate') {
+          if (mounted) {
+            AppToast.warning(
+              'Photo accepted, but AI note: ${result.message.isNotEmpty ? result.message : "Could not verify plate number."}',
+            );
+          }
+          return null; // allow photo even if AI isn't sure
+        }
+        // Dashboard: strict — reject if AI cannot verify
         return result.message.isNotEmpty
             ? result.message
-            : 'This photo does not appear to contain the expected content. Please try again.';
+            : 'This photo does not appear to contain the expected dashboard content. Please try again.';
       }
-      return null; // null = valid
+      return null; // valid
     } catch (e) {
       debugPrint('AI validation error: $e');
-      return null; // fail-open on unexpected errors
+      return null; // fail-open
     }
-    */
   }
 
   Future<void> _submit() async {
@@ -477,7 +524,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
     if (createdTicket != null) {
       AppToast.show('Ticket created successfully');
-      context.go('/chat/${createdTicket.id}');
+      context.go('/account/tickets');
     } else {
       AppToast.show('Failed to create ticket', type: ToastType.error);
     }
@@ -795,6 +842,8 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                 onPickGallery: _pickDamageFromGallery,
                 onCapture: _captureDamage,
                 onRemove: _removeDamageAt,
+                onPickVideo: _pickDamageVideo,
+                onCaptureVideo: _captureDamageVideo,
               ),
 
               const SizedBox(height: 28),

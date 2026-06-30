@@ -225,7 +225,7 @@ class _TicketCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                _StatusBadge(status: ticket.status),
+                _StatusBadge(ticket: ticket),
               ],
             ),
             const SizedBox(height: 8),
@@ -285,26 +285,28 @@ class _TicketCard extends StatelessWidget {
 // ─── Status Badge ────────────────────────────────
 
 class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.status});
+  const _StatusBadge({required this.ticket});
 
-  final String status;
+  final Ticket ticket;
 
   @override
   Widget build(BuildContext context) {
-    final (Color bg, Color fg) = switch (status) {
-      'open' => (const Color(0xFFE8F5E9), AppColors.forest),
+    final (Color bg, Color fg) = switch (ticket.status) {
+      'open' => ticket.isPartial
+          ? (const Color(0xFFFFF3E0), const Color(0xFFE65100))
+          : (const Color(0xFFE8F5E9), AppColors.forest),
       'in_progress' => (const Color(0xFFFFF3E0), const Color(0xFFE65100)),
       'resolved' => (const Color(0xFFE3F2FD), const Color(0xFF1565C0)),
       'closed' => (Colors.grey.shade100, AppColors.mutedInk),
       _ => (Colors.grey.shade100, AppColors.mutedInk),
     };
 
-    final label = switch (status) {
-      'open' => 'Open',
+    final label = switch (ticket.status) {
+      'open' => ticket.isPartial ? 'Partially Resolved' : 'Open',
       'in_progress' => 'In Progress',
       'resolved' => 'Resolved',
       'closed' => 'Closed',
-      _ => status,
+      _ => ticket.status,
     };
 
     return Container(

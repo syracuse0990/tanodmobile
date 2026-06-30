@@ -130,6 +130,8 @@ class AuthProvider extends ChangeNotifier {
     required String email,
     required String password,
     required String passwordConfirmation,
+    String? coopName,
+    String? phone,
   }) async {
     _status = AuthStatus.loading;
     _errorMessage = null;
@@ -142,6 +144,8 @@ class AuthProvider extends ChangeNotifier {
         email: email,
         password: password,
         passwordConfirmation: passwordConfirmation,
+        coopName: coopName,
+        phone: phone,
       );
       _session = nextSession;
       _isOfflineMode = false;
@@ -228,6 +232,7 @@ class AuthProvider extends ChangeNotifier {
         province: user.province,
         city: user.city,
         barangay: user.barangay,
+        organizationName: user.organizationName,
         savedAt: DateTime.now(),
       );
       await _syncOfflineTpsSession(_session);

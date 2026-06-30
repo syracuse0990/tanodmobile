@@ -18,6 +18,7 @@ class AppSession extends HiveObject {
     this.province,
     this.city,
     this.barangay,
+    this.organizationName,
     this.mustChangePassword = false,
     this.phoneVerifiedAt,
   });
@@ -64,6 +65,9 @@ class AppSession extends HiveObject {
   @HiveField(13)
   final String? barangay;
 
+  @HiveField(14)
+  final String? organizationName;
+
   factory AppSession.fromJson(Map<String, dynamic> json) {
     final token =
         json['token']?.toString() ?? json['access_token']?.toString() ?? '';
@@ -85,6 +89,7 @@ class AppSession extends HiveObject {
       barangay: userModel.barangay,
       mustChangePassword: userModel.mustChangePassword,
       phoneVerifiedAt: userModel.phoneVerifiedAt,
+      organizationName: userModel.organizationName,
     );
   }
 
@@ -102,6 +107,7 @@ class AppSession extends HiveObject {
       barangay: barangay,
       mustChangePassword: mustChangePassword,
       phoneVerifiedAt: phoneVerifiedAt,
+      organizationName: organizationName,
     );
   }
 
@@ -120,6 +126,7 @@ class AppSession extends HiveObject {
     String? barangay,
     bool? mustChangePassword,
     DateTime? phoneVerifiedAt,
+    String? organizationName,
   }) {
     return AppSession(
       token: token ?? this.token,
@@ -136,6 +143,7 @@ class AppSession extends HiveObject {
       barangay: barangay ?? this.barangay,
       mustChangePassword: mustChangePassword ?? this.mustChangePassword,
       phoneVerifiedAt: phoneVerifiedAt ?? this.phoneVerifiedAt,
+      organizationName: organizationName ?? this.organizationName,
     );
   }
 

@@ -111,6 +111,98 @@ class TicketIssuePhotoService {
     }
   }
 
+  /// Pick a single video from the gallery.
+  Future<TicketIssuePhoto?> pickVideoFromGallery() async {
+    try {
+      final pickedFile = await _picker.pickVideo(
+        source: ImageSource.gallery,
+        maxDuration: const Duration(minutes: 5),
+      );
+
+      if (pickedFile == null) {
+        return null;
+      }
+
+      final snapshot = await _captureSnapshot();
+      return TicketIssuePhoto(
+        file: File(pickedFile.path),
+        latitude: snapshot.latitude,
+        longitude: snapshot.longitude,
+        verifiedAt: snapshot.verifiedAt,
+        address: snapshot.address,
+        isVideo: true,
+      );
+    } on MissingPluginException {
+      throw const TicketIssuePhotoException(
+        'Restart the app once so the video tools can finish loading.',
+      );
+    } on PlatformException catch (error, stackTrace) {
+      debugPrint(
+        'TicketIssuePhotoService.pickVideoFromGallery platform error: '
+        '$error\n$stackTrace',
+      );
+
+      throw TicketIssuePhotoException(_pickerPlatformMessage(error));
+    } on TicketIssuePhotoException {
+      rethrow;
+    } catch (error, stackTrace) {
+      debugPrint(
+        'TicketIssuePhotoService.pickVideoFromGallery error: '
+        '$error\n$stackTrace',
+      );
+
+      throw const TicketIssuePhotoException(
+        'Unable to pick a video right now. Please try again.',
+      );
+    }
+  }
+
+  /// Capture a video using the camera.
+  Future<TicketIssuePhoto?> captureVideo() async {
+    try {
+      final pickedFile = await _picker.pickVideo(
+        source: ImageSource.camera,
+        maxDuration: const Duration(minutes: 5),
+      );
+
+      if (pickedFile == null) {
+        return null;
+      }
+
+      final snapshot = await _captureSnapshot();
+      return TicketIssuePhoto(
+        file: File(pickedFile.path),
+        latitude: snapshot.latitude,
+        longitude: snapshot.longitude,
+        verifiedAt: snapshot.verifiedAt,
+        address: snapshot.address,
+        isVideo: true,
+      );
+    } on MissingPluginException {
+      throw const TicketIssuePhotoException(
+        'Restart the app once so the video tools can finish loading.',
+      );
+    } on PlatformException catch (error, stackTrace) {
+      debugPrint(
+        'TicketIssuePhotoService.captureVideo platform error: '
+        '$error\n$stackTrace',
+      );
+
+      throw TicketIssuePhotoException(_pickerPlatformMessage(error));
+    } on TicketIssuePhotoException {
+      rethrow;
+    } catch (error, stackTrace) {
+      debugPrint(
+        'TicketIssuePhotoService.captureVideo error: '
+        '$error\n$stackTrace',
+      );
+
+      throw const TicketIssuePhotoException(
+        'Unable to capture video right now. Please try again.',
+      );
+    }
+  }
+
   Future<File?> buildUploadPhoto(List<TicketIssuePhoto> photos) async {
     if (photos.isEmpty) {
       return null;

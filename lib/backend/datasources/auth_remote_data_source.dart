@@ -65,18 +65,28 @@ class AuthRemoteDataSource {
     required String email,
     required String password,
     required String passwordConfirmation,
+    String? coopName,
+    String? phone,
   }) async {
     try {
+      final data = <String, dynamic>{
+        'role': role,
+        'name': name,
+        'email': email,
+        'password': password,
+        'password_confirmation': passwordConfirmation,
+        'device_name': AppConfig.appName,
+      };
+      if (coopName != null && coopName.isNotEmpty) {
+        data['organization_name'] = coopName;
+      }
+      if (phone != null && phone.isNotEmpty) {
+        data['phone'] = phone;
+      }
+
       final payload = await _apiClient.post(
         AppEndpoints.register,
-        data: {
-          'role': role,
-          'name': name,
-          'email': email,
-          'password': password,
-          'password_confirmation': passwordConfirmation,
-          'device_name': AppConfig.appName,
-        },
+        data: data,
       );
 
       return AppSession.fromJson(payload);

@@ -27,6 +27,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
   late final TextEditingController _phoneController;
+  late final TextEditingController _orgNameController;
 
   String? _selectedGender;
   File? _pickedPhoto;
@@ -61,6 +62,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _emailController = TextEditingController(text: user?.email ?? '');
     _phoneController = TextEditingController(text: user?.phone ?? '');
     _selectedGender = user?.gender;
+    _orgNameController = TextEditingController(text: user?.organizationName ?? '');
     _existingPhotoUrl = user?.profilePhotoUrl;
 
     if (user?.province != null && user!.province!.isNotEmpty) {
@@ -81,6 +83,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _orgNameController.dispose();
     _nameFocus.dispose();
     _emailFocus.dispose();
     _phoneFocus.dispose();
@@ -301,6 +304,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         fields['barangay'] = _selectedBarangay!.name;
       }
 
+      final orgName = _orgNameController.text.trim();
+      if (orgName.isNotEmpty) {
+        fields['organization_name'] = orgName;
+      }
+
       await context.read<AuthProvider>().updateProfile(
         fields: fields,
         photo: _pickedPhoto,
@@ -481,6 +489,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           selectedGender: _selectedGender,
                           onChanged: (gender) =>
                               setState(() => _selectedGender = gender),
+                        ),
+                        const SizedBox(height: 20),
+                        _ProfileField(
+                          controller: _orgNameController,
+                          focusNode: FocusNode(),
+                          label: 'Cooperative / Organization',
+                          hint: 'Enter your cooperative or organization name',
+                          icon: Icons.business_rounded,
+                          textCapitalization: TextCapitalization.words,
+                          textInputAction: TextInputAction.next,
                         ),
 
                         const SizedBox(height: 24),

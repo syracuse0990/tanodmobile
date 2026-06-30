@@ -27,6 +27,8 @@ abstract class AuthRepository {
     required String email,
     required String password,
     required String passwordConfirmation,
+    String? coopName,
+    String? phone,
   });
 
   Future<List<RegistrationRole>> fetchRegistrationRoles();

@@ -390,14 +390,14 @@ class _PmsRecordScreenState extends State<PmsRecordScreen> {
   // ── Damaged Parts ──
 
   Future<void> _pickDamageFromGallery() async {
-    if (_damagePhotos.length >= 3) {
-      AppToast.show('Only up to 3 damage photos are allowed.',
+    if (_damagePhotos.length >= 10) {
+      AppToast.show('Only up to 10 damage photos are allowed.',
           type: ToastType.error);
       return;
     }
     await _appendPhotosForSection(
       currentPhotos: _damagePhotos,
-      maxPhotos: 3,
+      maxPhotos: 10,
       onUpdate: (v) => setState(() => _damagePhotos = v),
       setProcessing: (v) => setState(() => _damageProcessing = v),
       setProcessingLabel: (v) =>
@@ -405,20 +405,20 @@ class _PmsRecordScreenState extends State<PmsRecordScreen> {
       setError: (v) => setState(() => _damageError = v),
       loadingLabel: 'Applying secure watermark...',
       action: () => _photoService.pickFromGallery(
-        remainingSlots: 3 - _damagePhotos.length,
+        remainingSlots: 10 - _damagePhotos.length,
       ),
     );
   }
 
   Future<void> _captureDamage() async {
-    if (_damagePhotos.length >= 3) {
-      AppToast.show('Only up to 3 damage photos are allowed.',
+    if (_damagePhotos.length >= 10) {
+      AppToast.show('Only up to 10 damage photos are allowed.',
           type: ToastType.error);
       return;
     }
     await _appendPhotosForSection(
       currentPhotos: _damagePhotos,
-      maxPhotos: 3,
+      maxPhotos: 10,
       onUpdate: (v) => setState(() => _damagePhotos = v),
       setProcessing: (v) => setState(() => _damageProcessing = v),
       setProcessingLabel: (v) =>

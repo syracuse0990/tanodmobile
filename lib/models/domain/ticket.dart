@@ -4,6 +4,7 @@ class Ticket {
     required this.id,
     required this.subject,
     required this.status,
+    this.isPartial = false,
     required this.priority,
     this.description,
     this.category,
@@ -14,6 +15,8 @@ class Ticket {
     this.pmsChecklist,
     this.actionTaken,
     this.serviceCharge,
+    this.downPayment,
+    this.installments,
     this.tractorId,
     this.tractorLabel,
     this.tractorBrand,
@@ -22,6 +25,7 @@ class Ticket {
     this.submittedByName,
     this.resolutionNotes,
     this.resolutionPhotoUrl,
+    this.drPhotoUrls,
     this.resolvedById,
     this.resolvedByName,
     this.resolvedAt,
@@ -30,11 +34,13 @@ class Ticket {
     this.lastComment,
     this.lastActivityAt,
     this.createdAt,
+    this.tractorParts,
   });
 
   final int id;
   final String subject;
   final String status;
+  final bool isPartial;
   final String priority;
   final String? description;
   final String? category;
@@ -45,6 +51,8 @@ class Ticket {
   final List<Map<String, dynamic>>? pmsChecklist;
   final String? actionTaken;
   final double? serviceCharge;
+  final double? downPayment;
+  final int? installments;
   final int? tractorId;
   final String? tractorLabel;
   final String? tractorBrand;
@@ -53,6 +61,7 @@ class Ticket {
   final String? submittedByName;
   final String? resolutionNotes;
   final String? resolutionPhotoUrl;
+  final List<String>? drPhotoUrls;
   final int? resolvedById;
   final String? resolvedByName;
   final DateTime? resolvedAt;
@@ -61,6 +70,7 @@ class Ticket {
   final TicketComment? lastComment;
   final DateTime? lastActivityAt;
   final DateTime? createdAt;
+  final List<TicketTractorPart>? tractorParts;
 
   String get statusLabel {
     switch (status) {
@@ -157,6 +167,7 @@ class Ticket {
       id: json['id'] as int,
       subject: json['subject']?.toString() ?? '',
       status: json['status']?.toString() ?? 'open',
+      isPartial: json['is_partial'] == true,
       priority: json['priority']?.toString() ?? 'medium',
       description: json['description']?.toString(),
       category: json['category']?.toString(),
@@ -177,6 +188,10 @@ class Ticket {
       serviceCharge: (json['service_charge'] != null)
           ? double.tryParse(json['service_charge'].toString())
           : null,
+      downPayment: (json['down_payment'] != null)
+          ? double.tryParse(json['down_payment'].toString())
+          : null,
+      installments: (json['installments'] as num?)?.toInt(),
       tractorId: tractor?['id'] as int?,
       tractorLabel: tractor?['no_plate']?.toString(),
       tractorBrand: tractor?['brand']?.toString(),
@@ -185,6 +200,7 @@ class Ticket {
       submittedByName: submitter?['name']?.toString(),
       resolutionNotes: json['resolution_notes']?.toString(),
       resolutionPhotoUrl: json['resolution_photo_url']?.toString(),
+      drPhotoUrls: (json['dr_photo_urls'] as List?)?.map((e) => e.toString()).toList(),
       resolvedById: resolver?['id'] as int?,
       resolvedByName: resolver?['name']?.toString(),
       resolvedAt: DateTime.tryParse(json['resolved_at']?.toString() ?? ''),
@@ -203,6 +219,11 @@ class Ticket {
         json['last_activity_at']?.toString() ?? '',
       ),
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
+      tractorParts: json['tractor_parts'] is List
+          ? (json['tractor_parts'] as List)
+              .map((p) => TicketTractorPart.fromJson(p as Map<String, dynamic>))
+              .toList()
+          : null,
     );
   }
 
@@ -211,6 +232,7 @@ class Ticket {
       id: id,
       subject: subject,
       status: status,
+      isPartial: isPartial,
       priority: priority,
       description: description,
       category: category,
@@ -221,6 +243,8 @@ class Ticket {
       pmsChecklist: pmsChecklist,
       actionTaken: actionTaken,
       serviceCharge: serviceCharge,
+      downPayment: downPayment,
+      installments: installments,
       tractorId: tractorId,
       tractorLabel: tractorLabel,
       tractorBrand: tractorBrand,
@@ -229,6 +253,7 @@ class Ticket {
       submittedByName: submittedByName,
       resolutionNotes: resolutionNotes,
       resolutionPhotoUrl: resolutionPhotoUrl,
+      drPhotoUrls: drPhotoUrls,
       resolvedById: resolvedById,
       resolvedByName: resolvedByName,
       resolvedAt: resolvedAt,
@@ -237,6 +262,32 @@ class Ticket {
       lastComment: comment,
       lastActivityAt: comment.createdAt ?? DateTime.now(),
       createdAt: createdAt,
+      tractorParts: tractorParts,
+    );
+  }
+}
+
+class TicketTractorPart {
+  const TicketTractorPart({
+    required this.id,
+    required this.name,
+    required this.amount,
+    this.quantity = 1,
+  });
+
+  final int id;
+  final String name;
+  final double amount;
+  final int quantity;
+
+  factory TicketTractorPart.fromJson(Map<String, dynamic> json) {
+    return TicketTractorPart(
+      id: json['id'] as int,
+      name: json['name']?.toString() ?? '',
+      amount: (json['amount'] != null)
+          ? double.tryParse(json['amount'].toString()) ?? 0
+          : 0,
+      quantity: (json['quantity'] as num?)?.toInt() ?? 1,
     );
   }
 }

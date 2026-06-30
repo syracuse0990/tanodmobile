@@ -86,6 +86,8 @@ class AuthRepositoryImpl implements AuthRepository {
     required String email,
     required String password,
     required String passwordConfirmation,
+    String? coopName,
+    String? phone,
   }) async {
     final isOnline = await _connectivityService.isConnected();
 
@@ -101,6 +103,8 @@ class AuthRepositoryImpl implements AuthRepository {
       email: email,
       password: password,
       passwordConfirmation: passwordConfirmation,
+      coopName: coopName,
+      phone: phone,
     );
     await _localDataSource.persistSession(session);
 
@@ -129,6 +133,10 @@ class AuthRepositoryImpl implements AuthRepository {
       phone: user.phone,
       gender: user.gender,
       profilePhotoUrl: user.profilePhotoUrl,
+      province: user.province,
+      city: user.city,
+      barangay: user.barangay,
+      organizationName: user.organizationName,
       mustChangePassword: user.mustChangePassword,
       phoneVerifiedAt: user.phoneVerifiedAt,
       savedAt: DateTime.now(),

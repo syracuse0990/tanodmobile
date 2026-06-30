@@ -7,6 +7,8 @@ class TicketIssuePhoto {
     required this.longitude,
     required this.verifiedAt,
     this.address,
+    this.isVideo = false,
+    this.durationSeconds,
   });
 
   final File file;
@@ -14,6 +16,8 @@ class TicketIssuePhoto {
   final double longitude;
   final DateTime verifiedAt;
   final String? address;
+  final bool isVideo;
+  final int? durationSeconds;
 
   String get locationLabel {
     return 'Lat ${latitude.toStringAsFixed(6)} | Lng ${longitude.toStringAsFixed(6)}';

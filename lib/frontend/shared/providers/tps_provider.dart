@@ -1399,14 +1399,36 @@ class TpsProvider extends ChangeNotifier {
     String? resolutionNotes,
     File? resolutionPhoto,
     double? serviceCharge,
+    double? downPayment,
+    int? installments,
+    bool partial = false,
+    List<Map<String, dynamic>>? parts,
+    List<File>? drPhotos,
+    List<String>? keepDrPhotos,
   }) async {
     try {
       final formMap = <String, dynamic>{
         'resolution_notes': resolutionNotes,
+        if (partial) 'partial': '1',
       };
 
       if (serviceCharge != null) {
         formMap['service_charge'] = serviceCharge.toString();
+      }
+
+      if (downPayment != null) {
+        formMap['down_payment'] = downPayment.toString();
+      }
+
+      if (installments != null) {
+        formMap['installments'] = installments.toString();
+      }
+
+      if (parts != null && parts.isNotEmpty) {
+        for (var i = 0; i < parts.length; i++) {
+          formMap['parts[$i][id]'] = parts[i]['id'].toString();
+          formMap['parts[$i][amount]'] = parts[i]['amount'].toString();
+        }
       }
 
       if (resolutionPhoto != null) {
@@ -1414,6 +1436,23 @@ class TpsProvider extends ChangeNotifier {
           resolutionPhoto.path,
           filename: resolutionPhoto.path.split(Platform.pathSeparator).last,
         );
+      }
+
+      if (drPhotos != null && drPhotos.isNotEmpty) {
+        debugPrint('TpsProvider.resolveTicket: attaching ${drPhotos.length} new DR photo(s)');
+        for (var i = 0; i < drPhotos.length; i++) {
+          formMap['dr_photos[$i]'] = await MultipartFile.fromFile(
+            drPhotos[i].path,
+            filename: drPhotos[i].path.split(Platform.pathSeparator).last,
+          );
+        }
+      }
+
+      if (keepDrPhotos != null && keepDrPhotos.isNotEmpty) {
+        debugPrint('TpsProvider.resolveTicket: preserving ${keepDrPhotos.length} existing DR photo URL(s)');
+        for (var i = 0; i < keepDrPhotos.length; i++) {
+          formMap['keep_dr_photos[$i]'] = keepDrPhotos[i];
+        }
       }
 
       final formData = FormData.fromMap(formMap);

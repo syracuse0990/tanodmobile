@@ -29,6 +29,7 @@ class AppSessionAdapter extends TypeAdapter<AppSession> {
       province: fields[11] as String?,
       city: fields[12] as String?,
       barangay: fields[13] as String?,
+      organizationName: fields[14] as String?,
       mustChangePassword: fields[9] == null ? false : fields[9] as bool,
       phoneVerifiedAt: fields[10] as DateTime?,
     );
@@ -37,7 +38,7 @@ class AppSessionAdapter extends TypeAdapter<AppSession> {
   @override
   void write(BinaryWriter writer, AppSession obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(15)
       ..writeByte(0)
       ..write(obj.token)
       ..writeByte(1)
@@ -65,7 +66,9 @@ class AppSessionAdapter extends TypeAdapter<AppSession> {
       ..writeByte(12)
       ..write(obj.city)
       ..writeByte(13)
-      ..write(obj.barangay);
+      ..write(obj.barangay)
+      ..writeByte(14)
+      ..write(obj.organizationName);
   }
 
   @override

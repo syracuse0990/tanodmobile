@@ -73,6 +73,12 @@ class AppRouter {
         final requiresSync = authProvider.requiresTpsOfflineSync && !authProvider.isOfflineMode;
 
         if (status == AuthStatus.initial || status == AuthStatus.loading) {
+          // Stay on the login screen during sign-in/sign-up attempts so
+          // the form and its entered data are preserved. Only redirect
+          // to the splash screen during the initial app bootstrap.
+          if (state.matchedLocation == '/login') {
+            return null;
+          }
           return '/splash';
         }
 
