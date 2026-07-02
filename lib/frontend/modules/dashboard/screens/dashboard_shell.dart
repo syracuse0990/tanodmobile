@@ -85,69 +85,31 @@ class _DashboardShellState extends State<DashboardShell> {
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: GNav(
-              selectedIndex: _branchToTab(
-                navigationShell.currentIndex,
-                visibleBranches,
-              ),
-              onTabChange: (index) {
-                final branchIndex = _tabToBranch(index, visibleBranches);
-                tractorProvider.setHomeVisible(branchIndex == 0);
-                navigationShell.goBranch(branchIndex);
-              },
-              gap: 8,
-              activeColor: AppColors.forest,
-              iconSize: 22,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              duration: const Duration(milliseconds: 400),
-              tabBackgroundColor: AppColors.forest.withValues(alpha: 0.08),
-              color: AppColors.mutedInk,
-              tabBorderRadius: 16,
-              tabs: [
-                GButton(
-                  icon: Icons.home_rounded,
-                  text: context.tr('nav_home'),
-                  iconActiveColor: AppColors.forest,
-                  textStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.forest,
-                  ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: GNav(
+                selectedIndex: _branchToTab(
+                  navigationShell.currentIndex,
+                  visibleBranches,
                 ),
-                GButton(
-                  icon: Icons.notifications_active_rounded,
-                  text: context.tr('nav_alerts'),
-                  iconActiveColor: AppColors.forest,
-                  textStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.forest,
-                  ),
-                ),
-                GButton(
-                  icon: isTps
-                      ? Icons.build_circle_rounded
-                      : Icons.calendar_month_rounded,
-                  text: isTps
-                      ? context.tr('nav_tps')
-                      : context.tr('nav_booking'),
-                  iconActiveColor: AppColors.forest,
-                  textStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.forest,
-                  ),
-                ),
-                if (showChat)
+                onTabChange: (index) {
+                  final branchIndex = _tabToBranch(index, visibleBranches);
+                  tractorProvider.setHomeVisible(branchIndex == 0);
+                  navigationShell.goBranch(branchIndex);
+                },
+                gap: 8,
+                activeColor: AppColors.forest,
+                iconSize: 22,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                duration: const Duration(milliseconds: 400),
+                tabBackgroundColor: AppColors.forest.withValues(alpha: 0.08),
+                color: AppColors.mutedInk,
+                tabBorderRadius: 16,
+                tabs: [
                   GButton(
-                    icon: Icons.forum_rounded,
-                    text: context.tr('nav_chat'),
-                    leading: _BottomNavIcon(
-                      icon: Icons.forum_rounded,
-                      unreadCount: chatUnreadCount,
-                      active: navigationShell.currentIndex == 3,
-                    ),
+                    icon: Icons.home_rounded,
+                    text: context.tr('nav_home'),
                     iconActiveColor: AppColors.forest,
                     textStyle: const TextStyle(
                       fontSize: 13,
@@ -155,17 +117,58 @@ class _DashboardShellState extends State<DashboardShell> {
                       color: AppColors.forest,
                     ),
                   ),
-                GButton(
-                  icon: Icons.person_rounded,
-                  text: context.tr('nav_account'),
-                  iconActiveColor: AppColors.forest,
-                  textStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.forest,
+                  GButton(
+                    icon: Icons.notifications_active_rounded,
+                    text: context.tr('nav_alerts'),
+                    iconActiveColor: AppColors.forest,
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.forest,
+                    ),
                   ),
-                ),
-              ],
+                  GButton(
+                    icon: isTps
+                        ? Icons.build_circle_rounded
+                        : Icons.calendar_month_rounded,
+                    text: isTps
+                        ? context.tr('nav_tps')
+                        : context.tr('nav_booking'),
+                    iconActiveColor: AppColors.forest,
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.forest,
+                    ),
+                  ),
+                  if (showChat)
+                    GButton(
+                      icon: Icons.forum_rounded,
+                      text: context.tr('nav_chat'),
+                      leading: _BottomNavIcon(
+                        icon: Icons.forum_rounded,
+                        unreadCount: chatUnreadCount,
+                        active: navigationShell.currentIndex == 3,
+                      ),
+                      iconActiveColor: AppColors.forest,
+                      textStyle: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.forest,
+                      ),
+                    ),
+                  GButton(
+                    icon: Icons.person_rounded,
+                    text: context.tr('nav_account'),
+                    iconActiveColor: AppColors.forest,
+                    textStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.forest,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

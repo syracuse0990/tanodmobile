@@ -163,7 +163,7 @@ class _TpsScreenState extends State<TpsScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'TPS Dashboard',
+                          'TSR Dashboard',
                           style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.w800,

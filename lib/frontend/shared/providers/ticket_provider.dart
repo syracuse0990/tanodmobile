@@ -322,15 +322,44 @@ class TicketProvider extends ChangeNotifier {
     required int ticketId,
     String? resolutionNotes,
     File? resolutionPhoto,
+    double? serviceCharge,
+    double? downPayment,
+    int? installments,
+    List<Map<String, dynamic>>? parts,
+    List<File>? drPhotos,
   }) async {
     try {
-      final formMap = <String, dynamic>{'resolution_notes': ?resolutionNotes};
+      final formMap = <String, dynamic>{
+        'resolution_notes': ?resolutionNotes,
+        if (serviceCharge != null) 'service_charge': serviceCharge.toString(),
+        if (downPayment != null) 'down_payment': downPayment.toString(),
+        if (installments != null) 'installments': installments.toString(),
+      };
 
       if (resolutionPhoto != null) {
         formMap['resolution_photo'] = await MultipartFile.fromFile(
           resolutionPhoto.path,
           filename: resolutionPhoto.path.split(Platform.pathSeparator).last,
         );
+      }
+
+      if (parts != null && parts.isNotEmpty) {
+        for (var i = 0; i < parts.length; i++) {
+          final p = parts[i];
+          formMap['parts[$i][name]'] = p['name'];
+          formMap['parts[$i][amount]'] = (p['amount'] ?? 0).toString();
+          formMap['parts[$i][quantity]'] = (p['quantity'] ?? 1).toString();
+          if (p['id'] != null) formMap['parts[$i][id]'] = p['id'].toString();
+        }
+      }
+
+      if (drPhotos != null && drPhotos.isNotEmpty) {
+        for (var i = 0; i < drPhotos.length; i++) {
+          formMap['dr_photos[$i]'] = await MultipartFile.fromFile(
+            drPhotos[i].path,
+            filename: drPhotos[i].path.split(Platform.pathSeparator).last,
+          );
+        }
       }
 
       final formData = FormData.fromMap(formMap);
@@ -346,6 +375,22 @@ class TicketProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('TicketProvider.resolveTicket error: $e');
       return false;
+    }
+  }
+
+  // ─── Tractor Parts ─────────────────────────────
+
+  List<Map<String, dynamic>> _tractorParts = [];
+  List<Map<String, dynamic>> get tractorParts => _tractorParts;
+
+  Future<void> fetchTractorParts() async {
+    try {
+      final response = await _apiClient.get(AppEndpoints.tractorParts);
+      final data = (response is Map ? response['data'] : null) as List<dynamic>? ?? [];
+      _tractorParts = data.whereType<Map<String, dynamic>>().toList();
+    } catch (e) {
+      debugPrint('TicketProvider.fetchTractorParts error: $e');
+      _tractorParts = [];
     }
   }
 

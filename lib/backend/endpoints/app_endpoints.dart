@@ -58,5 +58,8 @@ class AppEndpoints {
   static const String tpsFcaLocationBarangays = '/tps/fca-locations/barangays';
   static const String tpsTractors = '/tps/tractors';
   static const String tpsDistributions = '/tps/distributions';
+
+  // Parts / Miscellaneous
+  static const String tractorParts = '/tractor-parts';
   static const String tpsDistributionFormData = '/tps/distributions/form-data';
 }

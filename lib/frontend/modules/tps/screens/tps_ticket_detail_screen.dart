@@ -807,12 +807,79 @@ class _ResolveSheet extends StatefulWidget {
 
 class _ResolveSheetState extends State<_ResolveSheet> {
   final _notesController = TextEditingController();
+  final _serviceChargeController = TextEditingController();
+  final _downPaymentController = TextEditingController();
   File? _photo;
   bool _submitting = false;
+  bool _loadingParts = false;
+
+  // Parts
+  List<Map<String, dynamic>> _availableParts = [];
+  Map<String, dynamic>? _selectedPart;
+  final _partQtyController = TextEditingController(text: '1');
+  final List<Map<String, dynamic>> _parts = [];
+
+  // Installments dropdown
+  int? _selectedInstallments;
+
+  // DR photos
+  final List<File> _drPhotos = [];
+
+  // Payment type: 'full' or 'installment'
+  String _paymentType = 'full';
+
+  // ── Computed totals ──
+  double get _partsTotal {
+    return _parts.fold<double>(0, (sum, p) {
+      final amt = (p['amount'] is num)
+          ? (p['amount'] as num).toDouble()
+          : double.tryParse(p['amount']?.toString() ?? '') ?? 0;
+      final qty = (p['quantity'] is num)
+          ? (p['quantity'] as num).toDouble()
+          : double.tryParse(p['quantity']?.toString() ?? '') ?? 1;
+      return sum + amt * qty;
+    });
+  }
+
+  double get _serviceCharge {
+    return double.tryParse(_serviceChargeController.text.trim()) ?? 0;
+  }
+
+  double get _totalAmount => _serviceCharge + _partsTotal;
+
+  double get _downPayment {
+    return double.tryParse(_downPaymentController.text.trim()) ?? 0;
+  }
+
+  double? get _monthlyPayment {
+    if (_paymentType != 'installment' || _selectedInstallments == null || _selectedInstallments! <= 0) return null;
+    final balance = _totalAmount - _downPayment;
+    if (balance <= 0) return 0;
+    return balance / _selectedInstallments!;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchParts();
+  }
+
+  Future<void> _fetchParts() async {
+    setState(() => _loadingParts = true);
+    final provider = context.read<TpsProvider>();
+    await provider.fetchTractorParts();
+    setState(() {
+      _availableParts = provider.tractorParts;
+      _loadingParts = false;
+    });
+  }
 
   @override
   void dispose() {
     _notesController.dispose();
+    _serviceChargeController.dispose();
+    _downPaymentController.dispose();
+    _partQtyController.dispose();
     super.dispose();
   }
 
@@ -829,6 +896,41 @@ class _ResolveSheetState extends State<_ResolveSheet> {
     }
   }
 
+  Future<void> _pickDrPhoto() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: 1920,
+      maxHeight: 1920,
+      imageQuality: 80,
+    );
+    if (picked != null && _drPhotos.length < 3) {
+      setState(() => _drPhotos.add(File(picked.path)));
+    }
+  }
+
+  void _addPart() {
+    if (_selectedPart == null) return;
+    final qty = int.tryParse(_partQtyController.text.trim()) ?? 1;
+    final amount = (_selectedPart!['amount'] is num)
+        ? (_selectedPart!['amount'] as num).toDouble()
+        : double.tryParse(_selectedPart!['amount'].toString()) ?? 0;
+    setState(() {
+      _parts.add({
+        'id': _selectedPart!['id'],
+        'name': _selectedPart!['name'],
+        'amount': amount,
+        'quantity': qty,
+      });
+      _selectedPart = null;
+      _partQtyController.text = '1';
+    });
+  }
+
+  void _removePart(int index) {
+    setState(() => _parts.removeAt(index));
+  }
+
   Future<void> _submit() async {
     setState(() => _submitting = true);
 
@@ -838,6 +940,11 @@ class _ResolveSheetState extends State<_ResolveSheet> {
           ? null
           : _notesController.text.trim(),
       resolutionPhoto: _photo,
+      serviceCharge: double.tryParse(_serviceChargeController.text.trim()),
+      downPayment: double.tryParse(_downPaymentController.text.trim()),
+      installments: _selectedInstallments,
+      parts: _parts.isNotEmpty ? _parts : null,
+      drPhotos: _drPhotos.isNotEmpty ? _drPhotos : null,
     );
 
     if (!mounted) return;
@@ -861,163 +968,712 @@ class _ResolveSheetState extends State<_ResolveSheet> {
         16,
         MediaQuery.of(context).viewInsets.bottom + 16,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Resolve Ticket',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: AppColors.ink,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Add resolution notes and a photo proof that the issue is fixed.',
-            style: TextStyle(fontSize: 13, color: AppColors.mutedInk),
-          ),
-          const SizedBox(height: 18),
-          TextFormField(
-            controller: _notesController,
-            maxLines: 3,
-            decoration: InputDecoration(
-              hintText: 'Resolution notes (optional)',
-              hintStyle: TextStyle(
-                color: AppColors.mutedInk.withValues(alpha: 0.5),
-              ),
-              filled: true,
-              fillColor: const Color(0xFFF5F7F6),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 14,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(
-                  color: AppColors.forest,
-                  width: 1.5,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 14),
-          GestureDetector(
-            onTap: _pickPhoto,
-            child: Container(
-              width: double.infinity,
-              height: _photo != null ? 160 : 80,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF5F7F6),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            const Text(
+              'Resolve Ticket',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
               ),
-              child: _photo != null
-                  ? Stack(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(13),
-                          child: Image.file(
-                            _photo!,
-                            width: double.infinity,
-                            height: 160,
-                            fit: BoxFit.cover,
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Add resolution details, billing info and photo proof.',
+              style: TextStyle(fontSize: 13, color: AppColors.mutedInk),
+            ),
+            const SizedBox(height: 18),
+
+            // ── Resolution notes ──
+            TextFormField(
+              controller: _notesController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: 'Resolution notes (optional)',
+                hintStyle: TextStyle(
+                  color: AppColors.mutedInk.withValues(alpha: 0.5),
+                ),
+                filled: true,
+                fillColor: const Color(0xFFF5F7F6),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(
+                    color: AppColors.forest,
+                    width: 1.5,
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // ── Resolution Photo ──
+            GestureDetector(
+              onTap: _pickPhoto,
+              child: Container(
+                width: double.infinity,
+                height: _photo != null ? 160 : 80,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F7F6),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: _photo != null
+                    ? Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(13),
+                            child: Image.file(
+                              _photo!,
+                              width: double.infinity,
+                              height: 160,
+                              fit: BoxFit.cover,
+                            ),
                           ),
-                        ),
-                        Positioned(
-                          top: 6,
-                          right: 6,
-                          child: GestureDetector(
-                            onTap: () => setState(() => _photo = null),
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: Colors.black54,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Icon(
-                                Icons.close_rounded,
-                                color: Colors.white,
-                                size: 16,
+                          Positioned(
+                            top: 6,
+                            right: 6,
+                            child: GestureDetector(
+                              onTap: () => setState(() => _photo = null),
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.black54,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Icon(
+                                  Icons.close_rounded,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.camera_alt_rounded,
-                          size: 22,
-                          color: AppColors.mutedInk.withValues(alpha: 0.4),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Take photo proof',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: AppColors.mutedInk,
+                        ],
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.camera_alt_rounded,
+                            size: 22,
+                            color: AppColors.mutedInk.withValues(alpha: 0.4),
                           ),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Take photo proof',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.mutedInk,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
-              onPressed: _submitting ? null : _submit,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.success,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: AppColors.success.withValues(
-                  alpha: 0.5,
+
+            const SizedBox(height: 20),
+
+            // ── Billing Section ──
+            const Text(
+              'Billing',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Service Charge
+            TextFormField(
+              controller: _serviceChargeController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'Service / Labor Charge',
+                prefixText: '₱ ',
+                hintText: '0.00',
+                hintStyle: TextStyle(
+                  color: AppColors.mutedInk.withValues(alpha: 0.5),
                 ),
-                shape: RoundedRectangleBorder(
+                filled: true,
+                fillColor: const Color(0xFFF5F7F6),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
                 ),
-                textStyle: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(
+                    color: AppColors.forest,
+                    width: 1.5,
+                  ),
                 ),
               ),
-              child: _submitting
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2.5,
-                      ),
-                    )
-                  : const Text('Mark as Resolved'),
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+
+            // ── Parts Section ──
+            const Text(
+              'Parts Used',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Parts list
+            ..._parts.asMap().entries.map((entry) {
+              final i = entry.key;
+              final p = entry.value;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F7F6),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            p['name'],
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '₱${p['amount']} × ${p['quantity']}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.mutedInk,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => _removePart(i),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: Colors.red.shade400,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+
+            // Add part form
+            Row(
+              children: [
+                Expanded(
+                  flex: 4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5F7F6),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<Map<String, dynamic>>(
+                        value: _selectedPart,
+                        isExpanded: true,
+                        hint: Text(
+                          _loadingParts ? 'Loading...' : 'Select part',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.mutedInk.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        items: _availableParts.map((p) {
+                          return DropdownMenuItem<Map<String, dynamic>>(
+                            value: p,
+                            child: Text(
+                              '${p['name']}  (₱${p['amount']})',
+                              style: const TextStyle(fontSize: 13),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (v) => setState(() => _selectedPart = v),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                SizedBox(
+                  width: 50,
+                  child: TextFormField(
+                    controller: _partQtyController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      hintText: 'Qty',
+                      isDense: true,
+                      filled: true,
+                      fillColor: const Color(0xFFF5F7F6),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 10,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: _selectedPart != null ? _addPart : null,
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: _selectedPart != null
+                          ? AppColors.forest
+                          : Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.add_rounded,
+                      color: _selectedPart != null ? Colors.white : Colors.grey.shade500,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // ── Total Amount ──
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.forest.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.forest.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Total Amount',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.forest,
+                    ),
+                  ),
+                  Text(
+                    '₱${_totalAmount.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.forest,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // ── Payment Type ──
+            const Text(
+              'Payment',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() {
+                      _paymentType = 'full';
+                      _selectedInstallments = null;
+                      _downPaymentController.clear();
+                    }),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: _paymentType == 'full'
+                            ? AppColors.success
+                            : const Color(0xFFF5F7F6),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _paymentType == 'full'
+                              ? AppColors.success
+                              : Colors.grey.shade300,
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'Full Payment',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _paymentType == 'full'
+                                ? Colors.white
+                                : AppColors.ink,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _paymentType = 'installment'),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: _paymentType == 'installment'
+                            ? AppColors.forest
+                            : const Color(0xFFF5F7F6),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _paymentType == 'installment'
+                              ? AppColors.forest
+                              : Colors.grey.shade300,
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'Installment',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _paymentType == 'installment'
+                                ? Colors.white
+                                : AppColors.ink,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            // ── Installment options ──
+            if (_paymentType == 'installment') ...[
+              const SizedBox(height: 12),
+
+              // Installments dropdown
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F7F6),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int?>(
+                    value: _selectedInstallments,
+                    isExpanded: true,
+                    hint: Text(
+                      'Number of months',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppColors.mutedInk.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    items: List.generate(12, (i) => i + 1).map((m) {
+                      return DropdownMenuItem<int>(
+                        value: m,
+                        child: Text('$m month${m > 1 ? 's' : ''}',
+                          style: const TextStyle(fontSize: 14, color: AppColors.ink),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (v) => setState(() => _selectedInstallments = v),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // Down Payment
+              TextFormField(
+                controller: _downPaymentController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: 'Down Payment',
+                  prefixText: '₱ ',
+                  hintText: '0.00',
+                  hintStyle: TextStyle(
+                    color: AppColors.mutedInk.withValues(alpha: 0.5),
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF5F7F6),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(
+                      color: AppColors.forest,
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+
+              // Monthly payment display
+              if (_selectedInstallments != null && _totalAmount > 0) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.forest.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.forest.withValues(alpha: 0.15)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Monthly Payment',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.forest,
+                            ),
+                          ),
+                          Text(
+                            _monthlyPayment != null
+                                ? '₱${_monthlyPayment!.toStringAsFixed(2)}'
+                                : '—',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.forest,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_downPayment > 0) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '$_selectedInstallments mos. × ₱${(_monthlyPayment ?? 0).toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppColors.mutedInk,
+                              ),
+                            ),
+                            Text(
+                              '= ₱${((_monthlyPayment ?? 0) * _selectedInstallments!).toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppColors.mutedInk,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ],
+
+            const SizedBox(height: 20),
+
+            // ── DR Photos Section ──
+            const Text(
+              'DR / SI / CR Photos',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            SizedBox(
+              height: 80,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _drPhotos.length + 1,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  if (index == _drPhotos.length) {
+                    return GestureDetector(
+                      onTap: _drPhotos.length < 3 ? _pickDrPhoto : null,
+                      child: Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5F7F6),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _drPhotos.length < 3
+                                ? Colors.grey.shade300
+                                : Colors.grey.shade200,
+                          ),
+                        ),
+                        child: Center(
+                          child: Icon(
+                            Icons.add_rounded,
+                            size: 28,
+                            color: _drPhotos.length < 3
+                                ? AppColors.mutedInk.withValues(alpha: 0.5)
+                                : Colors.grey.shade200,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  return Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.file(
+                          _drPhotos[index],
+                          width: 80,
+                          height: 80,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        top: 2,
+                        right: 2,
+                        child: GestureDetector(
+                          onTap: () => setState(() => _drPhotos.removeAt(index)),
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // ── Submit Button ──
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: _submitting ? null : _submit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: AppColors.success.withValues(
+                    alpha: 0.5,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                child: _submitting
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2.5,
+                        ),
+                      )
+                    : const Text('Mark as Resolved'),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
