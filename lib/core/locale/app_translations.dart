@@ -103,10 +103,6 @@ class AppTranslations {
     'tps_label': 'TPS',
     'admin_label': 'SUPPORT',
     'quick_help': 'Quick Help',
-    'call': 'Call',
-    'message': 'Message',
-    'email': 'Email',
-    'contact_action_prompt': 'Choose an action',
 
     // TPS Distribution
     'distribute_tractor': 'Distribute Tractor',
@@ -347,10 +343,6 @@ class AppTranslations {
     'tps_label': 'TPS',
     'admin_label': 'SUPPORT',
     'quick_help': 'Mabilis na Tulong',
-    'call': 'Tumawag',
-    'message': 'Mag-text',
-    'email': 'Mag-email',
-    'contact_action_prompt': 'Pumili ng aksyon',
 
     // TPS Distribution
     'distribute_tractor': 'Ipamahagi ang Tractor',
