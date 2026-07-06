@@ -1567,6 +1567,10 @@ class TpsProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint('TpsProvider.addComment error: $e');
+      if (e is DioException) {
+        debugPrint('  status: ${e.response?.statusCode}');
+        debugPrint('  body: ${e.response?.data}');
+      }
       return false;
     }
   }

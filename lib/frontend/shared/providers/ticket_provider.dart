@@ -547,6 +547,10 @@ class TicketProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint('TicketProvider.addComment error: $e');
+      if (e is DioException) {
+        debugPrint('  status: ${e.response?.statusCode}');
+        debugPrint('  body: ${e.response?.data}');
+      }
       return false;
     }
   }
