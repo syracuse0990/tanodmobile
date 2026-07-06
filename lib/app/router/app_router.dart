@@ -30,6 +30,8 @@ import 'package:tanodmobile/frontend/modules/profile/screens/about_screen.dart';
 import 'package:tanodmobile/frontend/modules/profile/screens/terms_privacy_screen.dart';
 import 'package:tanodmobile/frontend/modules/profile/screens/delete_account_screen.dart';
 import 'package:tanodmobile/frontend/modules/reports/screens/reports_screen.dart';
+import 'package:tanodmobile/frontend/modules/reports/screens/ticket_reports_screen.dart';
+import 'package:tanodmobile/frontend/modules/reports/screens/ticket_report_detail_screen.dart';
 import 'package:tanodmobile/frontend/modules/tps/screens/tps_screen.dart';
 import 'package:tanodmobile/frontend/modules/tps/screens/distribute_tractor_screen.dart';
 import 'package:tanodmobile/frontend/modules/tps/screens/tps_create_fca_screen.dart';
@@ -391,6 +393,22 @@ class AppRouter {
                     GoRoute(
                       path: 'reports',
                       builder: (context, state) => const ReportsScreen(),
+                    ),
+                    GoRoute(
+                      path: 'ticket-reports',
+                      builder: (context, state) =>
+                          const TicketReportsScreen(),
+                      routes: [
+                        GoRoute(
+                          path: ':id',
+                          builder: (context, state) {
+                            final id =
+                                int.parse(state.pathParameters['id']!);
+                            return TicketReportDetailScreen(
+                                reportId: id);
+                          },
+                        ),
+                      ],
                     ),
                     GoRoute(
                       path: 'help-center',

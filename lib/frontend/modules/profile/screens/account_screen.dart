@@ -217,6 +217,13 @@ class AccountScreen extends StatelessWidget {
                             label: context.tr('reports'),
                             onTap: () => context.go('/account/reports'),
                           ),
+                          if (user != null && user.roles.contains('tps'))
+                            _MenuItem(
+                              icon: Icons.assignment_rounded,
+                              label: 'Ticket Reports',
+                              subtitle: 'Service reports from resolved tickets',
+                              onTap: () => context.go('/account/ticket-reports'),
+                            ),
                         ],
                       ),
 

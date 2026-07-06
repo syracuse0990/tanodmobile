@@ -63,4 +63,10 @@ class AppEndpoints {
   // Parts / Miscellaneous
   static const String tractorParts = '/tractor-parts';
   static const String tpsDistributionFormData = '/tps/distributions/form-data';
+
+  // Ticket Reports (TPS)
+  static const String tpsTicketReports = '/tps/ticket-reports';
+  static String tpsTicketReport(int id) => '/tps/ticket-reports/$id';
+  static String tpsTicketReportPdf(int id) => '/tps/ticket-reports/$id/pdf';
+  static String tpsTicketReportFormData(int ticketId) => '/tps/tickets/$ticketId/report-form-data';
 }

@@ -124,7 +124,7 @@ class TanodMobileApp extends StatelessWidget {
         ),
         ChangeNotifierProvider<ReportProvider>(
           create: (context) =>
-              ReportProvider(apiClient: context.read<ApiClient>()),
+              ReportProvider(apiClient: context.read<ApiClient>(), dio: context.read<Dio>()),
         ),
         ChangeNotifierProxyProvider<AuthProvider, RealtimeProvider>(
           create: (context) => RealtimeProvider(
