@@ -3,14 +3,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/modules/tickets/models/ticket_issue_photo.dart';
-import 'package:tanodmobile/frontend/modules/tickets/services/ticket_issue_photo_service.dart';
 
 class FcaVerifiedPhotoSection extends StatelessWidget {
   const FcaVerifiedPhotoSection({
     super.key,
     required this.title,
     required this.subtitle,
-    this.maxPhotos = TicketIssuePhotoService.maxPhotos,
+    this.maxPhotos = 2,
     required this.photos,
     required this.isProcessing,
     required this.processingLabel,

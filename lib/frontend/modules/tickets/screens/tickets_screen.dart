@@ -40,7 +40,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
       appBar: AppBar(
-        title: const Text('Tickets'),
+        title: const Text('Repair & Maintenance'),
         backgroundColor: AppColors.forest,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -60,41 +60,32 @@ class _TicketsScreenState extends State<TicketsScreen> {
           Container(
             color: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _FilterChip(
+            child: Row(
+              children: [
+                Expanded(
+                  child: _FilterChip(
                     label: 'All',
                     selected: provider.statusFilter == null,
                     onTap: () => provider.setFilter(null),
                   ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _FilterChip(
                     label: 'Open',
                     selected: provider.statusFilter == 'open',
                     onTap: () => provider.setFilter('open'),
                   ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
-                    label: 'In Progress',
-                    selected: provider.statusFilter == 'in_progress',
-                    onTap: () => provider.setFilter('in_progress'),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _FilterChip(
                     label: 'Resolved',
                     selected: provider.statusFilter == 'resolved',
                     onTap: () => provider.setFilter('resolved'),
                   ),
-                  const SizedBox(width: 8),
-                  _FilterChip(
-                    label: 'Closed',
-                    selected: provider.statusFilter == 'closed',
-                    onTap: () => provider.setFilter('closed'),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
 
@@ -171,7 +162,8 @@ class _FilterChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: selected ? AppColors.forest : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(20),
@@ -217,7 +209,7 @@ class _TicketCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header row: subject + priority
+            // Header row: subject + status
             Row(
               children: [
                 Expanded(
@@ -233,7 +225,7 @@ class _TicketCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                _PriorityBadge(priority: ticket.priority),
+                _StatusBadge(ticket: ticket),
               ],
             ),
             const SizedBox(height: 8),
@@ -254,12 +246,10 @@ class _TicketCard extends StatelessWidget {
                 ),
               ),
 
-            // Footer: status + tractor + time
+            // Footer: tractor + time
             Row(
               children: [
-                _StatusBadge(status: ticket.status),
                 if (ticket.tractorLabel != null) ...[
-                  const SizedBox(width: 8),
                   Icon(Icons.agriculture_rounded,
                       size: 14, color: AppColors.mutedInk),
                   const SizedBox(width: 4),
@@ -273,6 +263,7 @@ class _TicketCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  const SizedBox(width: 8),
                 ],
                 const SizedBox(width: 8),
                 Text(
@@ -294,26 +285,28 @@ class _TicketCard extends StatelessWidget {
 // ─── Status Badge ────────────────────────────────
 
 class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.status});
+  const _StatusBadge({required this.ticket});
 
-  final String status;
+  final Ticket ticket;
 
   @override
   Widget build(BuildContext context) {
-    final (Color bg, Color fg) = switch (status) {
-      'open' => (const Color(0xFFE8F5E9), AppColors.forest),
+    final (Color bg, Color fg) = switch (ticket.status) {
+      'open' => ticket.isPartial
+          ? (const Color(0xFFFFF3E0), const Color(0xFFE65100))
+          : (const Color(0xFFE8F5E9), AppColors.forest),
       'in_progress' => (const Color(0xFFFFF3E0), const Color(0xFFE65100)),
       'resolved' => (const Color(0xFFE3F2FD), const Color(0xFF1565C0)),
       'closed' => (Colors.grey.shade100, AppColors.mutedInk),
       _ => (Colors.grey.shade100, AppColors.mutedInk),
     };
 
-    final label = switch (status) {
-      'open' => 'Open',
+    final label = switch (ticket.status) {
+      'open' => ticket.isPartial ? 'Partially Resolved' : 'Open',
       'in_progress' => 'In Progress',
       'resolved' => 'Resolved',
       'closed' => 'Closed',
-      _ => status,
+      _ => ticket.status,
     };
 
     return Container(
@@ -325,42 +318,6 @@ class _StatusBadge extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fg),
-      ),
-    );
-  }
-}
-
-// ─── Priority Badge ──────────────────────────────
-
-class _PriorityBadge extends StatelessWidget {
-  const _PriorityBadge({required this.priority});
-
-  final String priority;
-
-  @override
-  Widget build(BuildContext context) {
-    final (Color bg, Color fg) = switch (priority) {
-      'critical' => (const Color(0xFFFFEBEE), AppColors.danger),
-      'high' => (const Color(0xFFFFF3E0), const Color(0xFFE65100)),
-      'medium' => (const Color(0xFFFFFDE7), const Color(0xFFF9A825)),
-      'low' => (const Color(0xFFE8F5E9), AppColors.forest),
-      _ => (Colors.grey.shade100, AppColors.mutedInk),
-    };
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        priority.toUpperCase(),
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: fg,
-          letterSpacing: 0.5,
-        ),
       ),
     );
   }

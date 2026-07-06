@@ -9,7 +9,6 @@ import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/maintenance_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tps_provider.dart';
 import 'package:tanodmobile/models/domain/distribution.dart';
-import 'package:tanodmobile/models/domain/farmer_feedback.dart';
 import 'package:tanodmobile/models/domain/maintenance_tractor.dart';
 import 'package:tanodmobile/models/domain/ticket.dart';
 import 'package:tanodmobile/models/domain/tps_fca.dart';
@@ -30,7 +29,7 @@ class _TpsScreenState extends State<TpsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     context.read<TpsProvider>().loadAll();
     context.read<MaintenanceProvider>().fetchTractors(pageSize: 20);
   }
@@ -206,12 +205,10 @@ class _TpsScreenState extends State<TpsScreen>
                                 fontWeight: FontWeight.w500,
                               ),
                               tabs: const [
-                                Tab(text: 'Tickets'),
+                                Tab(text: 'Repair & Maintenance'),
                                 Tab(text: 'Distributions'),
                                 Tab(text: 'FCAs'),
                                 Tab(text: 'Tractors'),
-                                Tab(text: 'Maintenance'),
-                                Tab(text: 'Feedbacks'),
                               ],
                             ),
                           ),
@@ -227,9 +224,7 @@ class _TpsScreenState extends State<TpsScreen>
                   _TicketsTab(provider: provider),
                   _DistributionsTab(provider: provider),
                   _FcasTab(provider: provider),
-                  _TractorsTab(provider: provider),
                   const _MaintenanceTab(),
-                  _FeedbacksTab(provider: provider),
                 ],
               ),
             ),
@@ -248,12 +243,8 @@ class _SummaryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (provider.ticketsLoading &&
-        provider.feedbacksLoading &&
-        provider.tractorsLoading &&
         provider.distributionsLoading &&
         provider.tickets.isEmpty &&
-        provider.feedbacks.isEmpty &&
-        provider.tractors.isEmpty &&
         provider.distributions.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 20),
@@ -283,7 +274,7 @@ class _SummaryRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           _StatChip(
-            label: 'Open Tickets',
+            label: 'Open R&M',
             value: provider.openTickets.toString(),
             icon: Icons.confirmation_number_rounded,
             color: AppColors.warning,
@@ -362,7 +353,7 @@ class _StatChip extends StatelessWidget {
   }
 }
 
-// ─── Tickets Tab ────────────────────────────────
+// ─── Repair & Maintenance Tab ──────────────────
 
 class _TicketsTab extends StatelessWidget {
   const _TicketsTab({required this.provider});
@@ -370,21 +361,56 @@ class _TicketsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _PagedSearchList<Ticket>(
-      items: provider.tickets,
-      loading: provider.ticketsLoading,
-      hasMore: provider.hasMoreTickets,
-      searchQuery: provider.ticketSearchQuery,
-      searchHint: 'Search ticket, tractor, or assignee',
-      emptyIcon: Icons.confirmation_number_outlined,
-      emptyMessage: 'No tickets',
-      onRefresh: () => provider.fetchTickets(),
-      onLoadMore: provider.fetchMoreTickets,
-      onSearchChanged: (query) => provider.setTicketSearchQuery(query),
-      itemBuilder: (context, ticket) => GestureDetector(
-        onTap: () => context.go('/tps/tickets/${ticket.id}'),
-        child: _TicketCard(ticket: ticket),
-      ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Row(
+            children: [
+              _FilterChip(
+                label: 'All',
+                selected: provider.ticketStatusFilter == null,
+                onTap: () => provider.setTicketStatusFilter(null),
+              ),
+              const SizedBox(width: 8),
+              _FilterChip(
+                label: 'Open',
+                selected: provider.ticketStatusFilter == 'open',
+                onTap: () => provider.setTicketStatusFilter('open'),
+              ),
+              const SizedBox(width: 8),
+              _FilterChip(
+                label: 'Resolved',
+                selected: provider.ticketStatusFilter == 'resolved',
+                onTap: () => provider.setTicketStatusFilter('resolved'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: _PagedSearchList<Ticket>(
+            items: provider.tickets,
+            loading: provider.ticketsLoading,
+            hasMore: provider.hasMoreTickets,
+            searchQuery: provider.ticketSearchQuery,
+            searchHint: 'Search ticket, tractor, or assignee',
+            emptyIcon: Icons.confirmation_number_outlined,
+            emptyMessage: 'No tickets',
+            onRefresh: () =>
+                provider.fetchTickets(status: provider.ticketStatusFilter),
+            onLoadMore: provider.fetchMoreTickets,
+            onSearchChanged: (query) => provider.setTicketSearchQuery(
+              query,
+              status: provider.ticketStatusFilter,
+            ),
+            itemBuilder: (context, ticket) => GestureDetector(
+              onTap: () => context.go('/tps/tickets/${ticket.id}'),
+              child: _TicketCard(ticket: ticket),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -403,21 +429,6 @@ class _TicketCard extends StatelessWidget {
         return AppColors.success;
       case 'closed':
         return AppColors.mutedInk;
-      default:
-        return AppColors.mutedInk;
-    }
-  }
-
-  Color get _priorityColor {
-    switch (ticket.priority) {
-      case 'critical':
-        return AppColors.danger;
-      case 'high':
-        return AppColors.clay;
-      case 'medium':
-        return AppColors.warning;
-      case 'low':
-        return AppColors.success;
       default:
         return AppColors.mutedInk;
     }
@@ -447,13 +458,13 @@ class _TicketCard extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: _priorityColor.withValues(alpha: 0.10),
+                  color: _statusColor.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   Icons.confirmation_number_rounded,
                   size: 20,
-                  color: _priorityColor,
+                  color: _statusColor,
                 ),
               ),
               const SizedBox(width: 12),
@@ -483,7 +494,6 @@ class _TicketCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              _Badge(label: ticket.statusLabel, color: _statusColor),
             ],
           ),
           if (ticket.description != null) ...[
@@ -502,7 +512,10 @@ class _TicketCard extends StatelessWidget {
           const SizedBox(height: 10),
           Row(
             children: [
-              _Badge(label: ticket.priorityLabel, color: _priorityColor),
+              if (ticket.isPartial)
+                _Badge(label: 'Partially Resolved', color: const Color(0xFFE65100))
+              else
+                _Badge(label: ticket.statusLabel, color: _statusColor),
               const Spacer(),
               Text(
                 ticket.timeAgo,
@@ -824,219 +837,6 @@ class _FcaCard extends StatelessWidget {
   }
 }
 
-// ─── Feedbacks Tab ──────────────────────────────
-
-class _FeedbacksTab extends StatelessWidget {
-  const _FeedbacksTab({required this.provider});
-  final TpsProvider provider;
-
-  @override
-  Widget build(BuildContext context) {
-    return _PagedSearchList<FarmerFeedbackItem>(
-      items: provider.feedbacks,
-      loading: provider.feedbacksLoading,
-      hasMore: provider.hasMoreFeedbacks,
-      searchQuery: provider.feedbackSearchQuery,
-      searchHint: 'Search feedback, tractor, or farmer',
-      emptyIcon: Icons.rate_review_outlined,
-      emptyMessage: 'No feedbacks',
-      onRefresh: () => provider.fetchFeedbacks(),
-      onLoadMore: provider.fetchMoreFeedbacks,
-      onSearchChanged: (query) => provider.setFeedbackSearchQuery(query),
-      itemBuilder: (_, feedback) => _FeedbackCard(feedback: feedback),
-    );
-  }
-}
-
-class _FeedbackCard extends StatelessWidget {
-  const _FeedbackCard({required this.feedback});
-  final FarmerFeedbackItem feedback;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.ink.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              // Star rating
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: List.generate(5, (i) {
-                  final r = feedback.rating ?? 0;
-                  return Icon(
-                    i < r ? Icons.star_rounded : Icons.star_border_rounded,
-                    size: 18,
-                    color: i < r
-                        ? AppColors.gold
-                        : AppColors.mutedInk.withValues(alpha: 0.3),
-                  );
-                }),
-              ),
-              const Spacer(),
-              Text(
-                feedback.timeAgo,
-                style: const TextStyle(fontSize: 11, color: AppColors.mutedInk),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (feedback.feedback != null)
-            Text(
-              feedback.feedback!,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.ink,
-                height: 1.4,
-              ),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-            ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 8,
-            children: [
-              if (feedback.tractorLabel != null)
-                _InfoChip(
-                  icon: Icons.agriculture_rounded,
-                  text: feedback.tractorLabel!,
-                ),
-              if (feedback.submitterName != null)
-                _InfoChip(
-                  icon: Icons.person_outline_rounded,
-                  text: feedback.submitterName!,
-                ),
-              if (feedback.category != null)
-                _InfoChip(
-                  icon: Icons.category_outlined,
-                  text: feedback.category!,
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Tractors Tab ───────────────────────────────
-
-class _TractorsTab extends StatelessWidget {
-  const _TractorsTab({required this.provider});
-  final TpsProvider provider;
-
-  @override
-  Widget build(BuildContext context) {
-    return _PagedSearchList<Map<String, dynamic>>(
-      items: provider.tractors,
-      loading: provider.tractorsLoading,
-      hasMore: provider.hasMoreTractors,
-      searchQuery: provider.tractorSearchQuery,
-      searchHint: 'Search plate, IMEI, brand, or group',
-      emptyIcon: Icons.agriculture_outlined,
-      emptyMessage: 'No tractors available',
-      onRefresh: () => provider.fetchTractors(),
-      onLoadMore: provider.fetchMoreTractors,
-      onSearchChanged: (query) => provider.setTractorSearchQuery(query),
-      itemBuilder: (_, t) {
-        final plate = t['no_plate']?.toString() ?? 'N/A';
-        final brand = t['brand']?.toString() ?? '';
-        final model = t['model']?.toString() ?? '';
-        final status = t['status']?.toString() ?? 'unknown';
-        final year = t['year']?.toString();
-        final group = (t['groups'] is List && (t['groups'] as List).isNotEmpty)
-            ? (t['groups'] as List).first['name']?.toString()
-            : null;
-
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.ink.withValues(alpha: 0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppColors.forest.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.agriculture_rounded,
-                  color: AppColors.forest,
-                  size: 26,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      plate,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.ink,
-                      ),
-                    ),
-                    Text(
-                      '$brand $model${year != null ? ' ($year)' : ''}'.trim(),
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.mutedInk,
-                      ),
-                    ),
-                    if (group != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: _InfoChip(
-                          icon: Icons.group_work_rounded,
-                          text: group,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              _Badge(
-                label: status[0].toUpperCase() + status.substring(1),
-                color: status == 'active'
-                    ? AppColors.success
-                    : status == 'maintenance'
-                    ? AppColors.warning
-                    : AppColors.mutedInk,
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
 // ─── Maintenance Tab ────────────────────────────
 
 class _MaintenanceTab extends StatelessWidget {
@@ -1087,18 +887,6 @@ class _MaintenanceTab extends StatelessWidget {
                 ctx.push('/account/maintenance/history', extra: tractor);
               },
             ),
-            ListTile(
-              leading: const Icon(
-                Icons.checklist_rounded,
-                color: AppColors.forest,
-              ),
-              title: const Text('Record PMS'),
-              subtitle: const Text('Perform PMS checklist'),
-              onTap: () {
-                Navigator.pop(sheetCtx);
-                ctx.push('/account/maintenance/record', extra: tractor);
-              },
-            ),
             const SizedBox(height: 8),
             const SizedBox(height: 8),
           ],
@@ -1145,27 +933,13 @@ class _MaintenanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (
-      Color badgeBg,
-      Color badgeFg,
-      String badgeText,
-    ) = switch (tractor.pmsStatus) {
-      'due' => (const Color(0xFFFFEBEE), AppColors.danger, 'PMS DUE'),
-      'upcoming' => (
-        const Color(0xFFFFF3E0),
-        const Color(0xFFE65100),
-        'UPCOMING',
-      ),
-      _ => (const Color(0xFFE8F5E9), AppColors.forest, 'OK'),
-    };
-
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: AppColors.ink.withValues(alpha: 0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1182,106 +956,125 @@ class _MaintenanceCard extends StatelessWidget {
               )
             : null,
       ),
-      padding: const EdgeInsets.all(16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.forest.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
+          // ─── Header row ───
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Row(
+              children: [
+                // Tractor icon
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColors.forest.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: tractor.imageUrl != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            tractor.imageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => const Icon(
+                              Icons.agriculture_rounded,
+                              color: AppColors.forest,
+                              size: 24,
+                            ),
+                          ),
+                        )
+                      : const Icon(
+                          Icons.agriculture_rounded,
+                          color: AppColors.forest,
+                          size: 24,
+                        ),
                 ),
-                child: tractor.imageUrl != null
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.network(
-                          tractor.imageUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => const Icon(
-                            Icons.agriculture_rounded,
-                            color: AppColors.forest,
-                            size: 24,
+                const SizedBox(width: 12),
+                // Tractor info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        tractor.label,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (tractor.brandModel.isNotEmpty)
+                        Text(
+                          tractor.brandModel,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.mutedInk,
                           ),
                         ),
-                      )
-                    : const Icon(
-                        Icons.agriculture_rounded,
-                        color: AppColors.forest,
-                        size: 24,
-                      ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      tractor.label,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.ink,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (tractor.brandModel.isNotEmpty)
-                      Text(
-                        tractor.brandModel,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.mutedInk,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: badgeBg,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  badgeText,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: badgeFg,
-                    letterSpacing: 0.5,
+                    ],
                   ),
                 ),
-              ),
-            ],
+                // PMS badge
+                _PmsBadge(status: tractor.pmsStatus),
+              ],
+            ),
           ),
+
           const SizedBox(height: 12),
-          Row(
-            children: [
-              _InfoChip(
-                icon: Icons.schedule_rounded,
-                text:
-                    '${tractor.totalRunningHours.toStringAsFixed(1)}h running',
-              ),
-              const SizedBox(width: 12),
-              _InfoChip(
-                icon: Icons.straighten_rounded,
-                text: '${tractor.totalDistance.toStringAsFixed(1)} km',
-              ),
-            ],
+
+          // ─── Stats row ───
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                _StatTile(
+                  icon: Icons.schedule_rounded,
+                  label: 'Running Hours',
+                  value: '${tractor.totalRunningHours.toStringAsFixed(1)}h',
+                ),
+                const SizedBox(width: 12),
+                _StatTile(
+                  icon: Icons.straighten_rounded,
+                  label: 'Distance',
+                  value: '${tractor.totalDistance.toStringAsFixed(1)} km',
+                ),
+              ],
+            ),
           ),
+
+          const SizedBox(height: 10),
+
+          // ─── PMS progress ───
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _PmsProgress(tractor: tractor),
+          ),
+
+          // ─── Assignee ───
           if (tractor.assigneeName != null) ...[
             const SizedBox(height: 8),
-            _InfoChip(
-              icon: Icons.person_outline_rounded,
-              text: tractor.assigneeName!,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.person_outline_rounded,
+                    size: 14,
+                    color: AppColors.mutedInk.withValues(alpha: 0.6),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    tractor.assigneeName!,
+                    style: TextStyle(fontSize: 12, color: AppColors.mutedInk),
+                  ),
+                ],
+              ),
             ),
           ],
+
+          const SizedBox(height: 14),
         ],
       ),
     );
@@ -1644,6 +1437,39 @@ Widget _buildEmpty(IconData icon, String message) {
   );
 }
 
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.forest : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : AppColors.mutedInk,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Badge extends StatelessWidget {
   const _Badge({required this.label, required this.color});
   final String label;
@@ -1808,6 +1634,163 @@ class _InfoChip extends StatelessWidget {
             text,
             style: const TextStyle(fontSize: 12, color: AppColors.mutedInk),
             overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Tractor card helpers ───────────────────────
+
+class _PmsBadge extends StatelessWidget {
+  const _PmsBadge({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final (Color bg, Color fg, String text) = switch (status) {
+      'due' => (const Color(0xFFFFEBEE), AppColors.danger, 'PMS DUE'),
+      'upcoming' => (
+        const Color(0xFFFFF3E0),
+        const Color(0xFFE65100),
+        'UPCOMING',
+      ),
+      _ => (const Color(0xFFE8F5E9), AppColors.forest, 'OK'),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: fg,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F7F6),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: AppColors.mutedInk),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(fontSize: 10, color: AppColors.mutedInk),
+                  ),
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PmsProgress extends StatelessWidget {
+  const _PmsProgress({required this.tractor});
+
+  final MaintenanceTractor tractor;
+
+  @override
+  Widget build(BuildContext context) {
+    final nextPms = tractor.nextPmsHours;
+    if (nextPms == null) return const SizedBox.shrink();
+
+    const milestones = [0, 50, 100, 200, 300];
+    double prevMilestone = 0;
+    for (final m in milestones) {
+      if (m < nextPms) {
+        prevMilestone = m.toDouble();
+      }
+    }
+    if (nextPms > 300) {
+      prevMilestone = nextPms - 300;
+    }
+
+    final range = nextPms - prevMilestone;
+    final progress = range > 0
+        ? ((tractor.totalRunningHours - prevMilestone) / range).clamp(0.0, 1.0)
+        : 0.0;
+
+    final progressColor = tractor.isPmsDue
+        ? AppColors.danger
+        : tractor.isPmsUpcoming
+        ? const Color(0xFFE65100)
+        : AppColors.forest;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Next PMS at ${nextPms.toStringAsFixed(0)}h',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: progressColor,
+              ),
+            ),
+            Text(
+              tractor.hoursUntilNextPms.isFinite
+                  ? '${tractor.hoursUntilNextPms.toStringAsFixed(1)}h remaining'
+                  : '',
+              style: TextStyle(fontSize: 11, color: AppColors.mutedInk),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 6,
+            backgroundColor: progressColor.withValues(alpha: 0.12),
+            valueColor: AlwaysStoppedAnimation<Color>(progressColor),
           ),
         ),
       ],

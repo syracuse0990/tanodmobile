@@ -6,6 +6,10 @@ import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/core/errors/app_exception.dart';
 import 'package:tanodmobile/core/locale/app_localizations.dart';
 import 'package:tanodmobile/frontend/shared/providers/tps_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
+import 'package:tanodmobile/models/domain/location_option.dart';
+import 'package:tanodmobile/core/config/app_config.dart';
+import 'package:dio/dio.dart';
 import 'package:tanodmobile/frontend/shared/widgets/app_toast.dart';
 
 class DistributeTractorScreen extends StatefulWidget {
@@ -28,6 +32,10 @@ class _DistributeTractorScreenState extends State<DistributeTractorScreen> {
   DateTime _distributionDate = DateTime.now();
   bool _isLoading = true;
   bool _isSaving = false;
+
+  List<LocationOption> _provinceOptions = [];
+  LocationOption? _selectedProvince;
+  bool _isLoadingProvinces = false;
 
   @override
   void initState() {
@@ -61,6 +69,7 @@ class _DistributeTractorScreenState extends State<DistributeTractorScreen> {
           _isLoading = false;
         });
       }
+      _fetchProvinces();
     } on AppException catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -69,6 +78,30 @@ class _DistributeTractorScreenState extends State<DistributeTractorScreen> {
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _fetchProvinces() async {
+    if (_provinceOptions.isNotEmpty) return;
+    setState(() => _isLoadingProvinces = true);
+    try {
+      final dio = Dio(BaseOptions(
+        baseUrl: AppConfig.apiBaseUrl,
+        headers: {
+          'Authorization':
+              'Bearer ${context.read<AuthProvider>().session?.token ?? ''}',
+          'Accept': 'application/json',
+        },
+      ));
+      final response = await dio.get('/locations/provinces');
+      final data = response.data is Map ? response.data['data'] : response.data;
+      if (data is List) {
+        _provinceOptions = data
+            .map<LocationOption>(
+                (e) => LocationOption.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _isLoadingProvinces = false);
   }
 
   Future<void> _pickDate() async {
@@ -115,7 +148,7 @@ class _DistributeTractorScreenState extends State<DistributeTractorScreen> {
       await provider.storeDistribution(data: {
         'tractor_id': _selectedTractor!['id'],
         'distributed_to': _selectedFca!['id'],
-        'area': _areaController.text.trim(),
+        'area': _selectedProvince?.name ?? _areaController.text.trim(),
         'distribution_date':
             DateFormat('yyyy-MM-dd').format(_distributionDate),
         'notes': _notesController.text.trim().isNotEmpty
@@ -217,38 +250,81 @@ class _DistributeTractorScreenState extends State<DistributeTractorScreen> {
             // Tractor selector
             _SectionLabel(label: context.tr('select_tractor')),
             const SizedBox(height: 8),
-            _TractorSelector(
-              tractors: _tractors,
+            _SearchableSelector<Map<String, dynamic>>(
+              items: _tractors.where((t) => t['is_distributed'] != true).toList(),
               selected: _selectedTractor,
               hint: context.tr('select_tractor_hint'),
-              distributedLabel: context.tr('tractor_already_distributed'),
+              searchLabel: 'Search plate, IMEI, or brand...',
+              displayName: (t) {
+                final plate = t['no_plate']?.toString() ?? '';
+                final imei = t['imei']?.toString() ?? '';
+                final brand = t['brand']?.toString() ?? '';
+                final model = t['model']?.toString() ?? '';
+                final header = imei.isNotEmpty ? '$plate - $imei' : plate;
+                final sub = [brand, model].where((s) => s.isNotEmpty).join(' ');
+                return sub.isNotEmpty ? '$header ($sub)' : header;
+              },
+              filter: (t, query) {
+                final q = query.toLowerCase();
+                return (t['no_plate']?.toString().toLowerCase().contains(q) == true) ||
+                       (t['imei']?.toString().toLowerCase().contains(q) == true) ||
+                       (t['brand']?.toString().toLowerCase().contains(q) == true) ||
+                       (t['model']?.toString().toLowerCase().contains(q) == true);
+              },
               onSelected: (t) => setState(() => _selectedTractor = t),
+              emptyMessage: 'No unassigned tractors available',
             ),
             const SizedBox(height: 20),
 
             // FCA selector
             _SectionLabel(label: context.tr('select_fca')),
             const SizedBox(height: 8),
-            _FcaSelector(
-              fcaUsers: _fcaUsers,
+            _SearchableSelector<Map<String, dynamic>>(
+              items: _fcaUsers,
               selected: _selectedFca,
               hint: context.tr('select_fca_hint'),
+              searchLabel: 'Search FCA name or email...',
+              displayName: (f) => f['name']?.toString() ?? 'Unknown',
+              filter: (f, query) {
+                final q = query.toLowerCase();
+                return (f['name']?.toString().toLowerCase().contains(q) == true) ||
+                       (f['email']?.toString().toLowerCase().contains(q) == true);
+              },
               onSelected: (f) => setState(() => _selectedFca = f),
+              emptyMessage: 'No FCA users available',
             ),
             const SizedBox(height: 20),
 
-            // Area
-            _SectionLabel(label: context.tr('distribution_area')),
+            // Province
+            _SectionLabel(label: 'Province'),
             const SizedBox(height: 8),
-            TextFormField(
-              controller: _areaController,
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Required' : null,
-              decoration: _inputDecoration(
-                context.tr('distribution_area_hint'),
-                Icons.place_rounded,
+            if (_isLoadingProvinces)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.forest,
+                  ),
+                ),
+              )
+            else
+              _SearchableSelector<LocationOption>(
+                items: _provinceOptions,
+                selected: _selectedProvince,
+                hint: 'Select province',
+                searchLabel: 'Search province...',
+                displayName: (p) => p.name,
+                filter: (p, query) =>
+                    p.name.toLowerCase().contains(query.toLowerCase()),
+                onSelected: (p) {
+                  setState(() {
+                    _selectedProvince = p;
+                    _areaController.text = p?.name ?? '';
+                  });
+                },
+                emptyMessage: 'No provinces found',
               ),
-            ),
             const SizedBox(height: 20),
 
             // Date
@@ -400,373 +476,225 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-// ─── Tractor selector ───────────────────────────
 
-class _TractorSelector extends StatelessWidget {
-  const _TractorSelector({
-    required this.tractors,
+
+// ─── Searchable selector ────────────────────────
+
+class _SearchableSelector<T> extends StatefulWidget {
+  const _SearchableSelector({
+    required this.items,
     required this.selected,
     required this.hint,
-    required this.distributedLabel,
+    required this.searchLabel,
+    required this.displayName,
+    required this.filter,
     required this.onSelected,
+    this.emptyMessage = 'No items available',
   });
 
-  final List<Map<String, dynamic>> tractors;
-  final Map<String, dynamic>? selected;
+  final List<T> items;
+  final T? selected;
   final String hint;
-  final String distributedLabel;
-  final ValueChanged<Map<String, dynamic>?> onSelected;
+  final String searchLabel;
+  final String Function(T) displayName;
+  final bool Function(T, String query) filter;
+  final ValueChanged<T?> onSelected;
+  final String emptyMessage;
 
   @override
-  Widget build(BuildContext context) {
-    if (tractors.isEmpty) {
-      return _EmptyCard(
-        icon: Icons.agriculture_rounded,
-        message: context.tr('no_tractors_available'),
-      );
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: selected != null
-              ? AppColors.forest.withValues(alpha: 0.3)
-              : AppColors.ink.withValues(alpha: 0.06),
-        ),
-      ),
-      child: Column(
-        children: [
-          for (int i = 0; i < tractors.length; i++) ...[
-            _TractorTile(
-              tractor: tractors[i],
-              isSelected: selected?['id'] == tractors[i]['id'],
-              distributedLabel: distributedLabel,
-              onTap: () {
-                final isDistributed =
-                    tractors[i]['is_distributed'] == true;
-                if (!isDistributed) {
-                  onSelected(
-                    selected?['id'] == tractors[i]['id']
-                        ? null
-                        : tractors[i],
-                  );
-                }
-              },
-            ),
-            if (i < tractors.length - 1)
-              Divider(
-                height: 1,
-                indent: 56,
-                color: AppColors.ink.withValues(alpha: 0.04),
-              ),
-          ],
-        ],
-      ),
-    );
-  }
+  State<_SearchableSelector<T>> createState() => _SearchableSelectorState<T>();
 }
 
-class _TractorTile extends StatelessWidget {
-  const _TractorTile({
-    required this.tractor,
-    required this.isSelected,
-    required this.distributedLabel,
-    required this.onTap,
-  });
+class _SearchableSelectorState<T> extends State<_SearchableSelector<T>> {
+  final _searchController = TextEditingController();
+  final _focusNode = FocusNode();
+  List<T> _filtered = [];
 
-  final Map<String, dynamic> tractor;
-  final bool isSelected;
-  final String distributedLabel;
-  final VoidCallback onTap;
+  @override
+  void initState() {
+    super.initState();
+    _filtered = widget.items;
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    setState(() {
+      _filtered = query.isEmpty
+          ? widget.items
+          : widget.items.where((item) => widget.filter(item, query)).toList();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final plate = tractor['no_plate']?.toString() ?? 'N/A';
-    final brand = tractor['brand']?.toString() ?? '';
-    final model = tractor['model']?.toString() ?? '';
-    final isDistributed = tractor['is_distributed'] == true;
-    final opacity = isDistributed ? 0.4 : 1.0;
-
-    return Material(
-      color: isSelected
-          ? AppColors.forest.withValues(alpha: 0.04)
-          : Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Opacity(
-          opacity: opacity,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppColors.forest.withValues(alpha: 0.1)
-                        : AppColors.pine.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    Icons.agriculture_rounded,
-                    size: 20,
-                    color: isSelected ? AppColors.forest : AppColors.pine,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        plate,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.ink,
-                        ),
+    return Column(
+      children: [
+        // Search field
+        TextField(
+          controller: _searchController,
+          focusNode: _focusNode,
+          onChanged: _onSearchChanged,
+          decoration: InputDecoration(
+            hintText: widget.searchLabel,
+            hintStyle: TextStyle(
+              color: AppColors.mutedInk.withValues(alpha: 0.5),
+              fontSize: 14,
+            ),
+            prefixIcon: const Icon(
+              Icons.search_rounded,
+              color: AppColors.mutedInk,
+              size: 20,
+            ),
+            suffixIcon: _searchController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    onPressed: () {
+                      _searchController.clear();
+                      _onSearchChanged('');
+                    },
+                  )
+                : null,
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(
+                color: AppColors.ink.withValues(alpha: 0.06),
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(
+                color: AppColors.ink.withValues(alpha: 0.06),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: AppColors.forest, width: 1.5),
+            ),
+          ),
+        ),
+        // Selected item display
+        if (widget.selected != null) ...[
+          Builder(
+            builder: (context) {
+              final selected = widget.selected;
+              return Column(
+                children: [
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.forest.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.forest.withValues(alpha: 0.15),
                       ),
-                      if (brand.isNotEmpty || model.isNotEmpty)
-                        Text(
-                          '$brand $model'.trim(),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.mutedInk,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.check_circle_rounded,
+                          color: AppColors.forest,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            widget.displayName(selected as T),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.forest,
+                            ),
                           ),
                         ),
-                    ],
+                        GestureDetector(
+                          onTap: () => widget.onSelected(null),
+                          child: const Icon(
+                            Icons.close_rounded,
+                            color: AppColors.mutedInk,
+                            size: 20,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                if (isDistributed)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.mutedInk.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      distributedLabel,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.mutedInk.withValues(alpha: 0.7),
+                ],
+              );
+            },
+          ),
+        ],
+        // Results list
+        if (_searchController.text.isNotEmpty && widget.selected == null) ...[
+          const SizedBox(height: 8),
+          Container(
+            constraints: const BoxConstraints(maxHeight: 250),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: AppColors.ink.withValues(alpha: 0.06),
+              ),
+            ),
+            child: _filtered.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Center(
+                      child: Text(
+                        widget.emptyMessage,
+                        style: const TextStyle(
+                          color: AppColors.mutedInk,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                   )
-                else if (isSelected)
-                  const Icon(
-                    Icons.check_circle_rounded,
-                    color: AppColors.forest,
-                    size: 22,
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── FCA selector ───────────────────────────────
-
-class _FcaSelector extends StatelessWidget {
-  const _FcaSelector({
-    required this.fcaUsers,
-    required this.selected,
-    required this.hint,
-    required this.onSelected,
-  });
-
-  final List<Map<String, dynamic>> fcaUsers;
-  final Map<String, dynamic>? selected;
-  final String hint;
-  final ValueChanged<Map<String, dynamic>?> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    if (fcaUsers.isEmpty) {
-      return _EmptyCard(
-        icon: Icons.people_outline_rounded,
-        message: context.tr('no_fca_users_available'),
-      );
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: selected != null
-              ? AppColors.forest.withValues(alpha: 0.3)
-              : AppColors.ink.withValues(alpha: 0.06),
-        ),
-      ),
-      child: Column(
-        children: [
-          for (int i = 0; i < fcaUsers.length; i++) ...[
-            _FcaTile(
-              user: fcaUsers[i],
-              isSelected: selected?['id'] == fcaUsers[i]['id'],
-              onTap: () {
-                onSelected(
-                  selected?['id'] == fcaUsers[i]['id']
-                      ? null
-                      : fcaUsers[i],
-                );
-              },
-            ),
-            if (i < fcaUsers.length - 1)
-              Divider(
-                height: 1,
-                indent: 56,
-                color: AppColors.ink.withValues(alpha: 0.04),
-              ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _FcaTile extends StatelessWidget {
-  const _FcaTile({
-    required this.user,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final Map<String, dynamic> user;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final name = user['name']?.toString() ?? 'Unknown';
-    final email = user['email']?.toString() ?? '';
-
-    return Material(
-      color: isSelected
-          ? AppColors.forest.withValues(alpha: 0.04)
-          : Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? AppColors.forest.withValues(alpha: 0.1)
-                      : AppColors.gold.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Center(
-                  child: Text(
-                    _initials(name),
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: isSelected ? AppColors.forest : AppColors.gold,
+                : ListView.separated(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: _filtered.length,
+                    separatorBuilder: (_, _) => Divider(
+                      height: 1,
+                      indent: 16,
+                      color: AppColors.ink.withValues(alpha: 0.04),
                     ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.ink,
-                      ),
-                    ),
-                    if (email.isNotEmpty)
-                      Text(
-                        email,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.mutedInk,
+                    itemBuilder: (_, i) {
+                      final item = _filtered[i];
+                      return ListTile(
+                        dense: true,
+                        title: Text(
+                          widget.displayName(item),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                  ],
-                ),
-              ),
-              if (isSelected)
-                const Icon(
-                  Icons.check_circle_rounded,
-                  color: AppColors.forest,
-                  size: 22,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _initials(String name) {
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.length >= 2) {
-      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
-    }
-    return name.isNotEmpty ? name[0].toUpperCase() : '?';
-  }
-}
-
-// ─── Empty card ─────────────────────────────────
-
-class _EmptyCard extends StatelessWidget {
-  const _EmptyCard({required this.icon, required this.message});
-
-  final IconData icon;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 32),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: AppColors.ink.withValues(alpha: 0.06),
-        ),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            icon,
-            size: 36,
-            color: AppColors.mutedInk.withValues(alpha: 0.3),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            message,
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.mutedInk.withValues(alpha: 0.6),
-            ),
+                        onTap: () {
+                          widget.onSelected(item);
+                          _searchController.clear();
+                          _onSearchChanged('');
+                          _focusNode.unfocus();
+                        },
+                      );
+                    },
+                  ),
           ),
         ],
-      ),
+      ],
     );
   }
 }
+
+

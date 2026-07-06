@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
-import 'package:tanodmobile/models/domain/registration_role.dart';
+import 'package:tanodmobile/frontend/shared/widgets/app_toast.dart';
 
 class AuthFormActions {
   const AuthFormActions._();
@@ -39,11 +39,13 @@ class AuthFormActions {
   static Future<void> submitSignUp({
     required BuildContext context,
     required GlobalKey<FormState> formKey,
-    required String? selectedRoleName,
+    required String selectedRoleName,
     required TextEditingController nameController,
     required TextEditingController emailController,
     required TextEditingController passwordController,
     required TextEditingController passwordConfirmationController,
+    TextEditingController? coopNameController,
+    TextEditingController? phoneController,
   }) async {
     final formState = formKey.currentState;
 
@@ -51,22 +53,29 @@ class AuthFormActions {
       return;
     }
 
-    final role = selectedRoleName;
+    FocusScope.of(context).unfocus();
 
-    if (role == null || role.isEmpty) {
-      _showErrorSnackBar(context, 'Please choose a role first.');
+    final email = emailController.text.trim();
+    final phone = phoneController?.text.trim() ?? '';
+    if (email.isEmpty && phone.isEmpty) {
+      AppToast.error('Please provide either an email or mobile number.');
       return;
     }
 
-    FocusScope.of(context).unfocus();
+    if (phone.isNotEmpty && !RegExp(r'^09\d{9}$').hasMatch(phone)) {
+      AppToast.error('Mobile number must start with 09 and be 11 digits.');
+      return;
+    }
 
     final authProvider = context.read<AuthProvider>();
     final success = await authProvider.signUp(
-      role: role,
+      role: selectedRoleName,
       name: nameController.text.trim(),
-      email: emailController.text.trim(),
+      email: email,
       password: passwordController.text,
       passwordConfirmation: passwordConfirmationController.text,
+      coopName: coopNameController?.text.trim(),
+      phone: phone.isNotEmpty ? phone : null,
     );
 
     if (!context.mounted || success) {
@@ -106,22 +115,6 @@ class AuthFormActions {
     return hasValidShape ? null : 'Enter a valid email address.';
   }
 
-  static RegistrationRole? resolveSelectedRole({
-    required List<RegistrationRole> roles,
-    required String? selectedRoleName,
-  }) {
-    if (roles.isEmpty) {
-      return null;
-    }
-
-    for (final role in roles) {
-      if (role.name == selectedRoleName) {
-        return role;
-      }
-    }
-
-    return roles.first;
-  }
 
   static void _showErrorSnackBar(BuildContext context, String message) {
     ScaffoldMessenger.of(

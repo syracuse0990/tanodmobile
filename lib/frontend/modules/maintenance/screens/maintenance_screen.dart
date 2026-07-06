@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
-import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/maintenance_provider.dart';
 import 'package:tanodmobile/models/domain/maintenance_tractor.dart';
 
@@ -21,9 +20,6 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
   }
 
   void _showPmsActions(BuildContext ctx, MaintenanceTractor tractor) {
-    final isTps =
-        ctx.read<AuthProvider>().session?.roles.contains('tps') ?? false;
-
     showModalBottomSheet(
       context: ctx,
       shape: const RoundedRectangleBorder(
@@ -66,27 +62,6 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
                 ctx.push('/account/maintenance/history', extra: tractor);
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.checklist_rounded,
-                  color: AppColors.forest),
-              title: const Text('Record PMS'),
-              subtitle: Text(isTps ? 'Perform PMS checklist' : 'Self-service PMS checklist'),
-              onTap: () {
-                Navigator.pop(sheetCtx);
-                ctx.push('/account/maintenance/record', extra: tractor);
-              },
-            ),
-            if (!isTps)
-              ListTile(
-                leading: const Icon(Icons.support_agent_rounded,
-                    color: Color(0xFFE65100)),
-                title: const Text('Request TPS Help'),
-                subtitle: const Text('Notify technician for PMS service'),
-                onTap: () {
-                  Navigator.pop(sheetCtx);
-                  ctx.push('/account/maintenance/request', extra: tractor);
-                },
-              ),
             const SizedBox(height: 8),
           ],
         ),
@@ -112,7 +87,7 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
       appBar: AppBar(
-        title: const Text('Maintenance'),
+        title: const Text('Tractors'),
         backgroundColor: AppColors.forest,
         foregroundColor: Colors.white,
         elevation: 0,

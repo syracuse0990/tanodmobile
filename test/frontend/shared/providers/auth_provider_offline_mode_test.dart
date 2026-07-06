@@ -228,6 +228,7 @@ class _FakeAuthRepository implements AuthRepository {
     required String email,
     required String password,
     required String passwordConfirmation,
+    String? coopName,
   }) async {
     final nextSession = signInSession ?? _tpsSession();
     session = nextSession;

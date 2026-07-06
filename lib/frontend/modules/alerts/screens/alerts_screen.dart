@@ -18,18 +18,19 @@ class _AlertsScreenState extends State<AlertsScreen> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
+  late final AlertProvider _alertProvider;
 
   @override
   void initState() {
     super.initState();
-    final provider = context.read<AlertProvider>();
-    _searchController.text = provider.searchQuery;
-    provider.startPolling();
+    _alertProvider = context.read<AlertProvider>();
+    _searchController.text = _alertProvider.searchQuery;
+    _alertProvider.startPolling();
 
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
           _scrollController.position.maxScrollExtent - 200) {
-        provider.fetchMore();
+        _alertProvider.fetchMore();
       }
     });
   }
@@ -37,7 +38,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
-    context.read<AlertProvider>().stopPolling();
+    _alertProvider.stopPolling();
     _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -47,7 +48,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
     setState(() {});
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
-      context.read<AlertProvider>().setSearchQuery(value);
+      _alertProvider.setSearchQuery(value);
     });
   }
 
@@ -55,21 +56,20 @@ class _AlertsScreenState extends State<AlertsScreen> {
     _searchDebounce?.cancel();
     _searchController.clear();
     setState(() {});
-    context.read<AlertProvider>().setSearchQuery('');
+    _alertProvider.setSearchQuery('');
   }
 
   void _onFilterTap(String filter) {
     if (_filter == filter) return;
     setState(() => _filter = filter);
 
-    final provider = context.read<AlertProvider>();
     if (filter == 'all') {
-      provider.setFilter(null);
+      _alertProvider.setFilter(null);
     } else if (filter == 'unread') {
       // Unread is a client-side filter on unacknowledged
-      provider.setFilter(null);
+      _alertProvider.setFilter(null);
     } else {
-      provider.setFilter(filter);
+      _alertProvider.setFilter(filter);
     }
   }
 

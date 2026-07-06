@@ -18,7 +18,6 @@ class TicketIssuePhotoService {
 
   static const int maxPhotos = 2;
   static const double _maxSinglePhotoDimension = 1100;
-  static const double _proofSheetContentWidth = 860;
 
   final ImagePicker _picker;
   final DateFormat _timestampFormat = DateFormat('MMM d, yyyy | h:mm a');
@@ -112,6 +111,98 @@ class TicketIssuePhotoService {
     }
   }
 
+  /// Pick a single video from the gallery.
+  Future<TicketIssuePhoto?> pickVideoFromGallery() async {
+    try {
+      final pickedFile = await _picker.pickVideo(
+        source: ImageSource.gallery,
+        maxDuration: const Duration(minutes: 5),
+      );
+
+      if (pickedFile == null) {
+        return null;
+      }
+
+      final snapshot = await _captureSnapshot();
+      return TicketIssuePhoto(
+        file: File(pickedFile.path),
+        latitude: snapshot.latitude,
+        longitude: snapshot.longitude,
+        verifiedAt: snapshot.verifiedAt,
+        address: snapshot.address,
+        isVideo: true,
+      );
+    } on MissingPluginException {
+      throw const TicketIssuePhotoException(
+        'Restart the app once so the video tools can finish loading.',
+      );
+    } on PlatformException catch (error, stackTrace) {
+      debugPrint(
+        'TicketIssuePhotoService.pickVideoFromGallery platform error: '
+        '$error\n$stackTrace',
+      );
+
+      throw TicketIssuePhotoException(_pickerPlatformMessage(error));
+    } on TicketIssuePhotoException {
+      rethrow;
+    } catch (error, stackTrace) {
+      debugPrint(
+        'TicketIssuePhotoService.pickVideoFromGallery error: '
+        '$error\n$stackTrace',
+      );
+
+      throw const TicketIssuePhotoException(
+        'Unable to pick a video right now. Please try again.',
+      );
+    }
+  }
+
+  /// Capture a video using the camera.
+  Future<TicketIssuePhoto?> captureVideo() async {
+    try {
+      final pickedFile = await _picker.pickVideo(
+        source: ImageSource.camera,
+        maxDuration: const Duration(minutes: 5),
+      );
+
+      if (pickedFile == null) {
+        return null;
+      }
+
+      final snapshot = await _captureSnapshot();
+      return TicketIssuePhoto(
+        file: File(pickedFile.path),
+        latitude: snapshot.latitude,
+        longitude: snapshot.longitude,
+        verifiedAt: snapshot.verifiedAt,
+        address: snapshot.address,
+        isVideo: true,
+      );
+    } on MissingPluginException {
+      throw const TicketIssuePhotoException(
+        'Restart the app once so the video tools can finish loading.',
+      );
+    } on PlatformException catch (error, stackTrace) {
+      debugPrint(
+        'TicketIssuePhotoService.captureVideo platform error: '
+        '$error\n$stackTrace',
+      );
+
+      throw TicketIssuePhotoException(_pickerPlatformMessage(error));
+    } on TicketIssuePhotoException {
+      rethrow;
+    } catch (error, stackTrace) {
+      debugPrint(
+        'TicketIssuePhotoService.captureVideo error: '
+        '$error\n$stackTrace',
+      );
+
+      throw const TicketIssuePhotoException(
+        'Unable to capture video right now. Please try again.',
+      );
+    }
+  }
+
   Future<File?> buildUploadPhoto(List<TicketIssuePhoto> photos) async {
     if (photos.isEmpty) {
       return null;
@@ -121,7 +212,55 @@ class TicketIssuePhotoService {
       return photos.first.file;
     }
 
-    return _buildProofSheet(photos.take(maxPhotos).toList(growable: false));
+    return _mergeIntoProofSheet(photos);
+  }
+
+  Future<File> _mergeIntoProofSheet(List<TicketIssuePhoto> photos) async {
+    const double maxSheetWidth = 1080;
+    const double spacing = 4;
+
+    final images = <ui.Image>[];
+    for (final photo in photos) {
+      final bytes = await photo.file.readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      images.add(frame.image);
+    }
+
+    final sheetWidth = maxSheetWidth;
+    final itemHeight = sheetWidth / images.length;
+    final sheetHeight = (itemHeight * images.length) + (spacing * (images.length - 1));
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(
+      recorder,
+      Rect.fromLTWH(0, 0, sheetWidth, sheetHeight),
+    );
+
+    canvas.drawColor(const Color(0xFF1A1A1A), BlendMode.srcOver);
+
+    var yOffset = 0.0;
+    for (final image in images) {
+      final srcRect = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+      final dstRect = Rect.fromLTWH(0, yOffset, sheetWidth, itemHeight);
+      canvas.drawImageRect(image, srcRect, dstRect, Paint()..filterQuality = FilterQuality.high);
+      yOffset += itemHeight + spacing;
+    }
+
+    final renderedImage = await recorder.endRecording().toImage(
+      sheetWidth.round(),
+      sheetHeight.round(),
+    );
+    final byteData = await renderedImage.toByteData(format: ui.ImageByteFormat.png);
+
+    if (byteData == null) {
+      throw const TicketIssuePhotoException('Unable to prepare the verified proof sheet for upload.');
+    }
+
+    return _writeTempFile(
+      bytes: byteData.buffer.asUint8List(),
+      prefix: 'ticket-proof-sheet',
+    );
   }
 
   Future<List<TicketIssuePhoto>> _buildVerifiedPhotos(
@@ -574,189 +713,6 @@ class TicketIssuePhotoService {
       ..lineTo(center.dx + (radius * 0.65), center.dy - (radius * 0.45));
 
     canvas.drawPath(checkPath, checkPaint);
-  }
-
-  Future<File> _buildProofSheet(List<TicketIssuePhoto> photos) async {
-    try {
-      final images = <ui.Image>[];
-      for (final photo in photos) {
-        images.add(await _decodeImage(await photo.file.readAsBytes()));
-      }
-
-      const padding = 30.0;
-      const gap = 22.0;
-      const headerHeight = 96.0;
-      final sheetWidth = _proofSheetContentWidth + (padding * 2);
-
-      final renderedHeights = images
-          .map(
-            (image) => _proofSheetContentWidth * (image.height / image.width),
-          )
-          .toList(growable: false);
-
-      final sheetHeight =
-          headerHeight +
-          padding +
-          renderedHeights.fold<double>(0, (total, height) => total + height) +
-          ((images.length - 1) * gap) +
-          padding;
-
-      final recorder = ui.PictureRecorder();
-      final canvas = Canvas(
-        recorder,
-        Rect.fromLTWH(0, 0, sheetWidth, sheetHeight),
-      );
-
-      canvas.drawRect(
-        Rect.fromLTWH(0, 0, sheetWidth, sheetHeight),
-        Paint()..color = const Color(0xFFF2F6F2),
-      );
-
-      final headerRect = Rect.fromLTWH(
-        padding,
-        padding,
-        _proofSheetContentWidth,
-        headerHeight - 10,
-      );
-      _drawGlassCard(
-        canvas,
-        headerRect,
-        gradient: const [Color(0xFF173126), Color(0xFF0D1511)],
-      );
-
-      final headerTitle = TextPainter(
-        text: const TextSpan(
-          text: 'Verified by TanodTractor',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.1,
-          ),
-        ),
-        textDirection: ui.TextDirection.ltr,
-        maxLines: 1,
-        ellipsis: '...',
-      )..layout(maxWidth: headerRect.width - 24);
-
-      final headerSubtitle = TextPainter(
-        text: TextSpan(
-          text: '${photos.length} issue photos | secure proof sheet',
-          style: const TextStyle(
-            color: Color(0xFFD6E3DB),
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        textDirection: ui.TextDirection.ltr,
-        maxLines: 1,
-      )..layout(maxWidth: headerRect.width - 24);
-
-      headerTitle.paint(
-        canvas,
-        Offset(headerRect.left + 18, headerRect.top + 18),
-      );
-      headerSubtitle.paint(
-        canvas,
-        Offset(headerRect.left + 18, headerRect.top + 50),
-      );
-
-      var top = headerHeight + padding;
-      for (var index = 0; index < images.length; index++) {
-        final image = images[index];
-        final imageHeight = renderedHeights[index];
-        final imageRect = Rect.fromLTWH(
-          padding,
-          top,
-          _proofSheetContentWidth,
-          imageHeight,
-        );
-        final card = RRect.fromRectAndRadius(
-          imageRect,
-          const Radius.circular(24),
-        );
-
-        canvas.drawRRect(
-          card.shift(const Offset(0, 6)),
-          Paint()
-            ..color = Colors.black.withValues(alpha: 0.10)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
-        );
-        canvas.save();
-        canvas.clipRRect(card);
-        paintImage(
-          canvas: canvas,
-          rect: imageRect,
-          image: image,
-          fit: BoxFit.cover,
-          filterQuality: FilterQuality.high,
-        );
-        canvas.restore();
-
-        final chipRect = Rect.fromLTWH(
-          imageRect.right - 140,
-          imageRect.top + 14,
-          126,
-          34,
-        );
-        _drawGlassCard(
-          canvas,
-          chipRect,
-          gradient: const [Color(0xE60D1511), Color(0xD6162A21)],
-        );
-        final chipPainter = TextPainter(
-          text: TextSpan(
-            text: 'Photo ${index + 1} of ${images.length}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          textDirection: ui.TextDirection.ltr,
-          maxLines: 1,
-        )..layout(maxWidth: chipRect.width - 16);
-        chipPainter.paint(
-          canvas,
-          Offset(
-            chipRect.left + (chipRect.width - chipPainter.width) / 2,
-            chipRect.top + (chipRect.height - chipPainter.height) / 2,
-          ),
-        );
-
-        top += imageHeight + gap;
-      }
-
-      final renderedImage = await recorder.endRecording().toImage(
-        sheetWidth.round(),
-        sheetHeight.round(),
-      );
-      final byteData = await renderedImage.toByteData(
-        format: ui.ImageByteFormat.png,
-      );
-
-      if (byteData == null) {
-        throw const TicketIssuePhotoException(
-          'Unable to prepare the verified photo sheet for upload.',
-        );
-      }
-
-      return _writeTempFile(
-        bytes: byteData.buffer.asUint8List(),
-        prefix: 'ticket-proof-sheet',
-      );
-    } on TicketIssuePhotoException {
-      rethrow;
-    } catch (error, stackTrace) {
-      debugPrint(
-        'TicketIssuePhotoService._buildProofSheet error: '
-        '$error\n$stackTrace',
-      );
-
-      throw const TicketIssuePhotoException(
-        'Unable to merge the selected photos into a verified proof sheet. Try again or upload one photo first.',
-      );
-    }
   }
 
   Future<ui.Image> _decodeImage(Uint8List bytes) async {

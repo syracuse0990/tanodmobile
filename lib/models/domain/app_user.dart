@@ -9,8 +9,12 @@ class AppUser extends Equatable {
     this.phone,
     this.gender,
     this.profilePhotoUrl,
+    this.province,
+    this.city,
+    this.barangay,
     this.mustChangePassword = false,
     this.phoneVerifiedAt,
+    this.organizationName,
   });
 
   final int? id;
@@ -20,8 +24,12 @@ class AppUser extends Equatable {
   final String? phone;
   final String? gender;
   final String? profilePhotoUrl;
+  final String? province;
+  final String? city;
+  final String? barangay;
   final bool mustChangePassword;
   final DateTime? phoneVerifiedAt;
+  final String? organizationName;
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
     final dynamic rawRoles = json['roles'];
@@ -50,10 +58,14 @@ class AppUser extends Equatable {
       phone: json['phone']?.toString(),
       gender: json['gender']?.toString(),
       profilePhotoUrl: json['profile_photo_url']?.toString(),
+      province: json['province']?.toString(),
+      city: json['city']?.toString(),
+      barangay: json['barangay']?.toString(),
       mustChangePassword: json['must_change_password'] == true,
       phoneVerifiedAt: json['phone_verified_at'] != null
           ? DateTime.tryParse(json['phone_verified_at'].toString())
           : null,
+      organizationName: json['organization_name']?.toString(),
     );
   }
 
@@ -66,8 +78,12 @@ class AppUser extends Equatable {
       'phone': phone,
       'gender': gender,
       'profile_photo_url': profilePhotoUrl,
+      'province': province,
+      'city': city,
+      'barangay': barangay,
       'must_change_password': mustChangePassword,
       'phone_verified_at': phoneVerifiedAt?.toIso8601String(),
+      'organization_name': organizationName,
     };
   }
 
@@ -88,5 +104,5 @@ class AppUser extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, name, email, roles, phone, gender, profilePhotoUrl, mustChangePassword, phoneVerifiedAt];
+  List<Object?> get props => [id, name, email, roles, phone, gender, profilePhotoUrl, province, city, barangay, mustChangePassword, phoneVerifiedAt, organizationName];
 }

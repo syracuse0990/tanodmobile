@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:tanodmobile/backend/dio/api_client.dart';
 import 'package:tanodmobile/backend/endpoints/app_endpoints.dart';
 import 'package:tanodmobile/core/utils/url_helper.dart';
+import 'package:tanodmobile/frontend/modules/tickets/models/ticket_issue_photo.dart';
 import 'package:tanodmobile/models/domain/ticket.dart';
 
 class TicketProvider extends ChangeNotifier {
@@ -266,10 +267,15 @@ class TicketProvider extends ChangeNotifier {
   Future<Ticket?> createTicket({
     required String subject,
     required String description,
-    required String priority,
+    String priority = 'medium',
     String? category,
     int? tractorId,
-    File? photo,
+    File? nameplatePhoto,
+    File? dashboardPhoto,
+    List<File>? damagePhotos,
+    List<Map<String, dynamic>>? pmsChecklist,
+    bool autoResolve = false,
+    String? actionTaken,
   }) async {
     try {
       final formMap = <String, dynamic>{
@@ -280,11 +286,44 @@ class TicketProvider extends ChangeNotifier {
         'tractor_id': ?tractorId,
       };
 
-      if (photo != null) {
-        formMap['photo'] = await MultipartFile.fromFile(
-          photo.path,
-          filename: photo.path.split(Platform.pathSeparator).last,
+      if (nameplatePhoto != null) {
+        formMap['nameplate_photo'] = await MultipartFile.fromFile(
+          nameplatePhoto.path,
+          filename: nameplatePhoto.path.split(Platform.pathSeparator).last,
         );
+      }
+      if (dashboardPhoto != null) {
+        formMap['dashboard_photo'] = await MultipartFile.fromFile(
+          dashboardPhoto.path,
+          filename: dashboardPhoto.path.split(Platform.pathSeparator).last,
+        );
+      }
+      if (damagePhotos != null && damagePhotos.isNotEmpty) {
+        for (var i = 0; i < damagePhotos.length; i++) {
+          formMap['damage_photos[$i]'] = await MultipartFile.fromFile(
+            damagePhotos[i].path,
+            filename: damagePhotos[i].path.split(Platform.pathSeparator).last,
+          );
+        }
+      }
+
+      // PMS checklist
+      if (pmsChecklist != null && pmsChecklist.isNotEmpty) {
+        for (var i = 0; i < pmsChecklist.length; i++) {
+          formMap['pms_checklist[$i][name]'] = pmsChecklist[i]['name'];
+          formMap['pms_checklist[$i][done]'] = pmsChecklist[i]['done'] == true ? '1' : '0';
+          if (pmsChecklist[i]['notes'] != null) {
+            formMap['pms_checklist[$i][notes]'] = pmsChecklist[i]['notes'];
+          }
+        }
+      }
+
+      // Auto-resolve & action taken (for PMS self-service)
+      if (autoResolve) {
+        formMap['auto_resolve'] = '1';
+      }
+      if (actionTaken != null) {
+        formMap['action_taken'] = actionTaken;
       }
 
       final formData = FormData.fromMap(formMap);
@@ -325,15 +364,15 @@ class TicketProvider extends ChangeNotifier {
     double? serviceCharge,
     double? downPayment,
     int? installments,
+    bool partial = false,
     List<Map<String, dynamic>>? parts,
     List<File>? drPhotos,
+    List<String>? keepDrPhotos,
   }) async {
     try {
       final formMap = <String, dynamic>{
-        'resolution_notes': ?resolutionNotes,
-        if (serviceCharge != null) 'service_charge': serviceCharge.toString(),
-        if (downPayment != null) 'down_payment': downPayment.toString(),
-        if (installments != null) 'installments': installments.toString(),
+        'resolution_notes': resolutionNotes,
+        if (partial) 'partial': '1',
       };
 
       if (resolutionPhoto != null) {
@@ -343,22 +382,39 @@ class TicketProvider extends ChangeNotifier {
         );
       }
 
+      if (serviceCharge != null) {
+        formMap['service_charge'] = serviceCharge.toString();
+      }
+
+      if (downPayment != null) {
+        formMap['down_payment'] = downPayment.toString();
+      }
+
+      if (installments != null) {
+        formMap['installments'] = installments.toString();
+      }
+
       if (parts != null && parts.isNotEmpty) {
         for (var i = 0; i < parts.length; i++) {
-          final p = parts[i];
-          formMap['parts[$i][name]'] = p['name'];
-          formMap['parts[$i][amount]'] = (p['amount'] ?? 0).toString();
-          formMap['parts[$i][quantity]'] = (p['quantity'] ?? 1).toString();
-          if (p['id'] != null) formMap['parts[$i][id]'] = p['id'].toString();
+          formMap['parts[$i][id]'] = parts[i]['id'].toString();
+          formMap['parts[$i][amount]'] = parts[i]['amount'].toString();
         }
       }
 
       if (drPhotos != null && drPhotos.isNotEmpty) {
+        debugPrint('TicketProvider.resolveTicket: attaching ${drPhotos.length} new DR photo(s)');
         for (var i = 0; i < drPhotos.length; i++) {
           formMap['dr_photos[$i]'] = await MultipartFile.fromFile(
             drPhotos[i].path,
             filename: drPhotos[i].path.split(Platform.pathSeparator).last,
           );
+        }
+      }
+
+      if (keepDrPhotos != null && keepDrPhotos.isNotEmpty) {
+        debugPrint('TicketProvider.resolveTicket: preserving ${keepDrPhotos.length} existing DR photo URL(s)');
+        for (var i = 0; i < keepDrPhotos.length; i++) {
+          formMap['keep_dr_photos[$i]'] = keepDrPhotos[i];
         }
       }
 
@@ -378,19 +434,51 @@ class TicketProvider extends ChangeNotifier {
     }
   }
 
-  // ─── Tractor Parts ─────────────────────────────
+  // ─── Validate photo (AI) ───────────────────────
 
-  List<Map<String, dynamic>> _tractorParts = [];
-  List<Map<String, dynamic>> get tractorParts => _tractorParts;
-
-  Future<void> fetchTractorParts() async {
+  Future<TicketIssuePhotoValidationResult> validatePhoto({
+    required File photo,
+    required String type,
+  }) async {
     try {
-      final response = await _apiClient.get(AppEndpoints.tractorParts);
-      final data = (response is Map ? response['data'] : null) as List<dynamic>? ?? [];
-      _tractorParts = data.whereType<Map<String, dynamic>>().toList();
+      final formMap = <String, dynamic>{
+        'type': type,
+      };
+
+      formMap['photo'] = await MultipartFile.fromFile(
+        photo.path,
+        filename: photo.path.split(Platform.pathSeparator).last,
+      );
+
+      final formData = FormData.fromMap(formMap);
+
+      final response = await _dio.post(
+        AppEndpoints.ticketValidatePhoto,
+        data: formData,
+        options: Options(
+          contentType: 'multipart/form-data',
+          receiveTimeout: const Duration(seconds: 30),
+          sendTimeout: const Duration(seconds: 30),
+        ),
+      );
+
+      final data = response.data as Map<String, dynamic>;
+      return TicketIssuePhotoValidationResult(
+        valid: data['valid'] == true,
+        message: data['message']?.toString() ?? '',
+      );
+    } on DioException {
+      // Fail-open on network errors
+      return const TicketIssuePhotoValidationResult(
+        valid: true,
+        message: 'Validation skipped.',
+      );
     } catch (e) {
-      debugPrint('TicketProvider.fetchTractorParts error: $e');
-      _tractorParts = [];
+      debugPrint('validatePhoto error: $e');
+      return const TicketIssuePhotoValidationResult(
+        valid: true,
+        message: 'Validation skipped.',
+      );
     }
   }
 

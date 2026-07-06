@@ -97,7 +97,10 @@ class _RecordCard extends StatelessWidget {
     final doneCount = record.checklist.where((c) => c.done).length;
     final statusInfo = _statusInfo(record.status);
 
-    return Container(
+    return InkWell(
+      onTap: () => _showRecordDetail(context),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -238,6 +241,7 @@ class _RecordCard extends StatelessWidget {
           const SizedBox(height: 14),
         ],
       ),
+      ),
     );
   }
 
@@ -252,6 +256,17 @@ class _RecordCard extends StatelessWidget {
         record: record,
         tractor: tractor,
       ),
+    );
+  }
+
+  void _showRecordDetail(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _RecordDetailSheet(record: record),
     );
   }
 
@@ -748,6 +763,404 @@ class _ErrorBody extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Record detail sheet ────────────────────────
+
+class _RecordDetailSheet extends StatelessWidget {
+  const _RecordDetailSheet({required this.record});
+
+  final PmsRecord record;
+
+  @override
+  Widget build(BuildContext context) {
+    final doneCount = record.checklist.where((c) => c.done).length;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.55,
+      minChildSize: 0.3,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (_, scrollController) => SingleChildScrollView(
+        controller: scrollController,
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Status
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: record.isCompleted
+                        ? const Color(0xFFE8F5E9)
+                        : const Color(0xFFFFF3E0),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    record.isCompleted ? 'COMPLETED' : 'PENDING',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: record.isCompleted
+                          ? AppColors.forest
+                          : const Color(0xFFE65100),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                if (record.createdAt != null)
+                  Text(
+                    _formatDateStatic(record.createdAt!),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.mutedInk,
+                    ),
+                  ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // Checklist
+            const Text(
+              'Checklist',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '$doneCount / ${record.checklist.length} completed',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.mutedInk,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F7F6),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: List.generate(
+                  record.checklist.length,
+                  (i) {
+                    final item = record.checklist[i];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            item.done
+                                ? Icons.check_circle_rounded
+                                : Icons.radio_button_unchecked_rounded,
+                            color: item.done
+                                ? AppColors.forest
+                                : AppColors.mutedInk
+                                    .withValues(alpha: 0.3),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.name,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: item.done
+                                        ? AppColors.forest
+                                        : AppColors.ink,
+                                  ),
+                                ),
+                                if (item.notes != null &&
+                                    item.notes!.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(
+                                        top: 2),
+                                    child: Text(
+                                      item.notes!,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.mutedInk,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+
+            // Hours/km
+            if (record.hoursAtMaintenance > 0 ||
+                record.kmAtMaintenance > 0) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Machine Status at PMS',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _DetailChip(
+                      icon: Icons.timer_outlined,
+                      label:
+                          '${record.hoursAtMaintenance.toStringAsFixed(1)} hrs'),
+                  const SizedBox(width: 12),
+                  _DetailChip(
+                      icon: Icons.speed_rounded,
+                      label:
+                          '${record.kmAtMaintenance.toStringAsFixed(1)} km'),
+                ],
+              ),
+            ],
+
+            // Description
+            if (record.description != null &&
+                record.description!.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Notes',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                record.description!,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.mutedInk,
+                ),
+              ),
+            ],
+
+            // Performer
+            if (record.performer != null) ...[
+              const SizedBox(height: 16),
+              _InfoRow(
+                icon: Icons.engineering_rounded,
+                text:
+                    'Performed by ${record.performer!.name ?? 'Unknown'}',
+              ),
+            ],
+            if (record.creator != null) ...[
+              const SizedBox(height: 4),
+              _InfoRow(
+                icon: Icons.person_outline_rounded,
+                text:
+                    'Recorded by ${record.creator!.name ?? 'Unknown'}',
+              ),
+            ],
+
+            // Images
+            if (record.images.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              const Text(
+                'Photos',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink,
+                ),
+              ),
+              const SizedBox(height: 10),
+              ..._buildImageGroups(context),
+            ],
+
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildImageGroups(BuildContext context) {
+    final grouped = <String, List<PmsImage>>{};
+    for (final img in record.images) {
+      final key = img.type ?? 'general';
+      grouped.putIfAbsent(key, () => []).add(img);
+    }
+
+    final labels = <String, String>{
+      'nameplate': 'Nameplate',
+      'dashboard': 'Dashboard',
+      'damage': 'Damaged Parts',
+      'before': 'Before',
+      'after': 'After',
+      'general': 'Photos',
+    };
+
+    final widgets = <Widget>[];
+    for (final entry in grouped.entries) {
+      final label = labels[entry.key] ?? entry.key;
+      widgets.add(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.mutedInk,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: entry.value.map((img) {
+                return GestureDetector(
+                  onTap: () => _showFullImage(context, img.url),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.network(
+                      img.url,
+                      width: 100,
+                      height: 100,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(Icons.broken_image_rounded,
+                            color: Colors.grey.shade400),
+                      ),
+                      loadingBuilder: (_, child, progress) {
+                        if (progress == null) return child;
+                        return Container(
+                          width: 100,
+                          height: 100,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Center(
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 14),
+          ],
+        ),
+      );
+    }
+    return widgets;
+  }
+
+  void _showFullImage(BuildContext context, String url) {
+    if (url.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: GestureDetector(
+          onTap: () => Navigator.pop(ctx),
+          child: InteractiveViewer(
+            child: Image.network(url),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatDateStatic(String dateStr) {
+    try {
+      final date = DateTime.parse(dateStr);
+      final months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      ];
+      return '${months[date.month - 1]} ${date.day}, ${date.year}';
+    } catch (_) {
+      return dateStr;
+    }
+  }
+}
+
+class _DetailChip extends StatelessWidget {
+  const _DetailChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: AppColors.mutedInk.withValues(alpha: 0.15),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon,
+              size: 16, color: AppColors.mutedInk),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppColors.ink,
+            ),
+          ),
+        ],
       ),
     );
   }

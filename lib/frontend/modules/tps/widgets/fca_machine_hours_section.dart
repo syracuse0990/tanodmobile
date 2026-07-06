@@ -245,7 +245,7 @@ class FcaMachineHoursSectionState extends State<FcaMachineHoursSection> {
   }
 
   Future<void> _pickPhotosFromGallery(_MachineHourRowState row) async {
-    if (row.photos.length >= TicketIssuePhotoService.maxPhotos) {
+    if (row.photos.length >= 2) {
       AppToast.error('Only up to 2 inspection photos are allowed.');
       return;
     }
@@ -254,13 +254,13 @@ class FcaMachineHoursSectionState extends State<FcaMachineHoursSection> {
       row,
       loadingLabel: 'Applying secure watermark...',
       action: () => _photoService.pickFromGallery(
-        remainingSlots: TicketIssuePhotoService.maxPhotos - row.photos.length,
+        remainingSlots: 2 - row.photos.length,
       ),
     );
   }
 
   Future<void> _capturePhoto(_MachineHourRowState row) async {
-    if (row.photos.length >= TicketIssuePhotoService.maxPhotos) {
+    if (row.photos.length >= 2) {
       AppToast.error('Only up to 2 inspection photos are allowed.');
       return;
     }
@@ -299,7 +299,7 @@ class FcaMachineHoursSectionState extends State<FcaMachineHoursSection> {
         row.photos = [
           ...row.photos,
           ...newPhotos,
-        ].take(TicketIssuePhotoService.maxPhotos).toList(growable: false);
+        ].take(2).toList(growable: false);
       });
     } on TicketIssuePhotoException catch (error) {
       if (mounted) {
@@ -528,7 +528,7 @@ class _MachineHoursEntryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final entryLabel = 'Visit ${(index + 1).toString().padLeft(2, '0')}';
     final photoCountLabel =
-        '${row.photos.length}/${TicketIssuePhotoService.maxPhotos}';
+        '${row.photos.length}/2';
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -738,7 +738,7 @@ class _MachineHoursPhotoPanel extends StatelessWidget {
   final VoidCallback onCapturePhoto;
   final ValueChanged<int> onRemovePhoto;
 
-  bool get _atMax => photos.length >= TicketIssuePhotoService.maxPhotos;
+  bool get _atMax => photos.length >= 2;
 
   @override
   Widget build(BuildContext context) {
@@ -808,7 +808,7 @@ class _MachineHoursPhotoPanel extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      '${photos.length}/${TicketIssuePhotoService.maxPhotos}',
+                      '${photos.length}/2',
                       style: const TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w800,

@@ -23,6 +23,7 @@ class AppEndpoints {
   static const String phoneSendCode = '/phone/send-code';
   static const String phoneVerify = '/phone/verify';
   static const String tickets = '/tickets';
+  static const String ticketValidatePhoto = '/tickets/validate-photo';
 
   // Maintenance / PMS endpoints
   static const String maintenances = '/maintenances';

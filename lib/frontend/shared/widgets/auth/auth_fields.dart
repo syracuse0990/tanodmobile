@@ -9,11 +9,21 @@ class AuthNameField extends StatelessWidget {
     required this.controller,
     required this.validator,
     this.lightSurface = false,
+    this.label,
+    this.hint,
+    this.prefixIcon,
+    this.autofillHints,
+    this.textCapitalization = TextCapitalization.words,
   });
 
   final TextEditingController controller;
   final String? Function(String?) validator;
   final bool lightSurface;
+  final String? label;
+  final String? hint;
+  final IconData? prefixIcon;
+  final Iterable<String>? autofillHints;
+  final TextCapitalization textCapitalization;
 
   @override
   Widget build(BuildContext context) {
@@ -21,12 +31,12 @@ class AuthNameField extends StatelessWidget {
 
     return AppTextField(
       controller: controller,
-      label: 'Full name',
-      hint: 'Juan Dela Cruz',
-      prefixIcon: Icons.person_outline_rounded,
+      label: label ?? 'Full name',
+      hint: hint ?? 'Juan Dela Cruz',
+      prefixIcon: prefixIcon ?? Icons.person_outline_rounded,
       textInputAction: TextInputAction.next,
-      textCapitalization: TextCapitalization.words,
-      autofillHints: const [AutofillHints.name],
+      textCapitalization: textCapitalization,
+      autofillHints: autofillHints ?? const [AutofillHints.name],
       validator: validator,
       labelStyle: _labelStyle(theme, lightSurface: lightSurface),
       inputTextStyle: _fieldTextStyle(theme),
@@ -108,6 +118,53 @@ class AuthEmailField extends StatelessWidget {
       keyboardType: TextInputType.emailAddress,
       textInputAction: textInputAction,
       autofillHints: autofillHints,
+      validator: validator,
+      onFieldSubmitted: onFieldSubmitted,
+      labelStyle: _labelStyle(theme, lightSurface: lightSurface),
+      inputTextStyle: _fieldTextStyle(theme),
+      hintStyle: _hintStyle(theme, lightSurface: lightSurface),
+      fillColor: _fillColor(lightSurface: lightSurface),
+      prefixIconColor: _iconColor(lightSurface: lightSurface),
+    );
+  }
+}
+
+class AuthPhoneField extends StatelessWidget {
+  const AuthPhoneField({
+    super.key,
+    required this.controller,
+    required this.validator,
+    this.lightSurface = false,
+    this.label,
+    this.hint,
+    this.prefixIcon,
+    this.autofillHints,
+    this.textInputAction = TextInputAction.next,
+    this.onFieldSubmitted,
+  });
+
+  final TextEditingController controller;
+  final String? Function(String?) validator;
+  final bool lightSurface;
+  final String? label;
+  final String? hint;
+  final IconData? prefixIcon;
+  final Iterable<String>? autofillHints;
+  final TextInputAction textInputAction;
+  final ValueChanged<String>? onFieldSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return AppTextField(
+      controller: controller,
+      label: label ?? 'Mobile Number',
+      hint: hint ?? '09xxxxxxxxx',
+      prefixIcon: prefixIcon ?? Icons.phone_outlined,
+      keyboardType: TextInputType.phone,
+      textInputAction: textInputAction,
+      autofillHints: autofillHints ?? const [AutofillHints.telephoneNumber],
       validator: validator,
       onFieldSubmitted: onFieldSubmitted,
       labelStyle: _labelStyle(theme, lightSurface: lightSurface),

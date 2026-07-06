@@ -690,25 +690,32 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     ],
                   ),
-                  const SizedBox(height: 14),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: _showSatellite
-                          ? Colors.white.withValues(alpha: 0.14)
-                          : Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
+                  if (!tractorProvider.isFocused) ...[
+                    const SizedBox(height: 14),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
                         color: _showSatellite
-                            ? Colors.white.withValues(alpha: 0.12)
-                            : AppColors.ink.withValues(alpha: 0.06),
-                      ),
-                      boxShadow: _showSatellite
-                          ? null
-                          : [
-                              BoxShadow(
-                                color: AppColors.ink.withValues(alpha: 0.06),
-                                blurRadius: 14,
-                                offset: const Offset(0, 6),
+                            ? const Color(0xFF334155)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: _showSatellite
+                              ? Colors.white.withValues(alpha: 0.25)
+                              : AppColors.ink.withValues(alpha: 0.06),
+                        ),
+                        boxShadow: _showSatellite
+                            ? [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.2),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 6),
+                                ),
+                              ]
+                            : [
+                                BoxShadow(
+                                  color: AppColors.ink.withValues(alpha: 0.06),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 6),
                               ),
                             ],
                     ),
@@ -716,8 +723,9 @@ class _HomeScreenState extends State<HomeScreen>
                       controller: _searchController,
                       onChanged: _onSearchChanged,
                       textInputAction: TextInputAction.search,
+                      cursorColor: _showSatellite ? Colors.white : AppColors.forest,
                       style: TextStyle(
-                        color: _showSatellite ? Colors.white : AppColors.ink,
+                        color: _showSatellite ? AppColors.mutedInk : AppColors.ink,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
@@ -725,25 +733,18 @@ class _HomeScreenState extends State<HomeScreen>
                         hintText: 'Search tractor, IMEI, or FCA name',
                         hintStyle: TextStyle(
                           color: _showSatellite
-                              ? Colors.white70
+                              ? AppColors.mutedInk
                               : AppColors.mutedInk,
                           fontSize: 13,
                         ),
-                        prefixIcon: Icon(
-                          Icons.search_rounded,
-                          color: _showSatellite
-                              ? Colors.white70
-                              : AppColors.mutedInk,
-                        ),
+                        iconColor: _showSatellite
+                            ? AppColors.mutedInk
+                            : AppColors.mutedInk,
+                        prefixIcon: const Icon(Icons.search_rounded),
                         suffixIcon: hasSearchQuery
                             ? IconButton(
                                 onPressed: _clearSearch,
-                                icon: Icon(
-                                  Icons.close_rounded,
-                                  color: _showSatellite
-                                      ? Colors.white70
-                                      : AppColors.mutedInk,
-                                ),
+                                icon: const Icon(Icons.close_rounded),
                               )
                             : null,
                         border: InputBorder.none,
@@ -754,6 +755,7 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     ),
                   ),
+                  ],
                 ],
               ),
             ),
@@ -782,7 +784,8 @@ class _HomeScreenState extends State<HomeScreen>
           // ─── Floating side controls ───
           Positioned(
             right: 16,
-            top: MediaQuery.paddingOf(context).top + 80,
+            top: MediaQuery.paddingOf(context).top +
+                (tractorProvider.isFocused ? 80 : 155),
             child: MapFabControls(
               showSatellite: _showSatellite,
               onToggleSatellite: () =>

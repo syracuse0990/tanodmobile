@@ -12,7 +12,6 @@ import 'package:tanodmobile/frontend/shared/functions/auth_form_actions.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/auth/auth_fields.dart';
 import 'package:tanodmobile/frontend/shared/widgets/primary_button.dart';
-import 'package:tanodmobile/models/domain/registration_role.dart';
 
 enum AuthMode { login, signup }
 
@@ -33,13 +32,14 @@ class _LoginScreenState extends State<LoginScreen> {
   late final TextEditingController _signupEmailController;
   late final TextEditingController _signupPasswordController;
   late final TextEditingController _signupConfirmPasswordController;
+  late final TextEditingController _signupCoopNameController;
+  late final TextEditingController _signupPhoneController;
 
   AuthMode _authMode = AuthMode.login;
   bool _showLoginPassword = false;
   bool _showSignupPassword = false;
   bool _showConfirmPassword = false;
   bool _rememberMe = false;
-  String? _selectedRoleName;
 
   @override
   void initState() {
@@ -50,21 +50,8 @@ class _LoginScreenState extends State<LoginScreen> {
     _signupEmailController = TextEditingController();
     _signupPasswordController = TextEditingController();
     _signupConfirmPasswordController = TextEditingController();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final authProvider = context.read<AuthProvider>();
-      await authProvider.loadRegistrationRoles();
-
-      if (!mounted ||
-          authProvider.registrationRoles.isEmpty ||
-          _selectedRoleName != null) {
-        return;
-      }
-
-      setState(() {
-        _selectedRoleName = authProvider.registrationRoles.first.name;
-      });
-    });
+    _signupCoopNameController = TextEditingController();
+    _signupPhoneController = TextEditingController();
   }
 
   @override
@@ -75,7 +62,21 @@ class _LoginScreenState extends State<LoginScreen> {
     _signupEmailController.dispose();
     _signupPasswordController.dispose();
     _signupConfirmPasswordController.dispose();
+    _signupCoopNameController.dispose();
+    _signupPhoneController.dispose();
     super.dispose();
+  }
+
+  String? _validateSignupContact() {
+    final email = _signupEmailController.text.trim();
+    final phone = _signupPhoneController.text.trim();
+    if (email.isEmpty && phone.isEmpty) {
+      return 'Please provide either an email address or a mobile number.';
+    }
+    if (email.isNotEmpty && !RegExp(r'^[^@]+@[^@]+\.[^@]+$').hasMatch(email)) {
+      return 'Enter a valid email address.';
+    }
+    return null;
   }
 
   void _toggleMode() {
@@ -89,11 +90,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
-    final availableRoles = authProvider.registrationRoles;
-    final selectedRole = AuthFormActions.resolveSelectedRole(
-      roles: availableRoles,
-      selectedRoleName: _selectedRoleName,
-    );
 
     return Scaffold(
       body: Container(
@@ -212,11 +208,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     duration: const Duration(milliseconds: 240),
                                     child: _authMode == AuthMode.login
                                         ? _buildLoginForm(authProvider)
-                                        : _buildSignupForm(
-                                            authProvider,
-                                            availableRoles,
-                                            selectedRole,
-                                          ),
+                                        : _buildSignupForm(authProvider),
                                   ),
                                 ],
                               ),
@@ -383,8 +375,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildSignupForm(
     AuthProvider authProvider,
-    List<RegistrationRole> availableRoles,
-    RegistrationRole? selectedRole,
   ) {
     return KeyedSubtree(
       key: const ValueKey('signup-form'),
@@ -394,22 +384,17 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              AuthRoleDropdown(
-                roles: availableRoles,
-                initialValue: selectedRole?.name ?? _selectedRoleName,
-                isLoading: context
-                    .read<AuthProvider>()
-                    .isLoadingRegistrationRoles,
-                onChanged: (v) => setState(() => _selectedRoleName = v),
+              const SizedBox(height: 16),
+              AuthNameField(
+                controller: _signupCoopNameController,
                 lightSurface: true,
+                label: 'Cooperative Name',
+                hint: 'Your coop or organization name',
+                prefixIcon: Icons.business_rounded,
+                autofillHints: const [AutofillHints.organizationName],
+                validator: (v) =>
+                    (v ?? '').trim().isEmpty ? 'Cooperative name is required.' : null,
               ),
-              if (selectedRole != null) ...[
-                const SizedBox(height: 12),
-                AuthRoleDescription(
-                  description: selectedRole.description,
-                  lightSurface: true,
-                ),
-              ],
               const SizedBox(height: 16),
               AuthNameField(
                 controller: _signupNameController,
@@ -418,9 +403,22 @@ class _LoginScreenState extends State<LoginScreen> {
                     (v ?? '').trim().isEmpty ? 'Name is required.' : null,
               ),
               const SizedBox(height: 16),
+              AuthPhoneField(
+                controller: _signupPhoneController,
+                lightSurface: true,
+                validator: (v) {
+                  if (v != null && v.trim().isNotEmpty) {
+                    if (!RegExp(r'^09\d{9}$').hasMatch(v.trim())) {
+                      return 'Must start with 09 and be 11 digits';
+                    }
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
               AuthEmailField(
                 controller: _signupEmailController,
-                validator: AuthFormActions.validateEmail,
+                validator: (v) => null,
                 lightSurface: true,
                 autofillHints: const [
                   AutofillHints.newUsername,
@@ -469,12 +467,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 onFieldSubmitted: (_) => AuthFormActions.submitSignUp(
                   context: context,
                   formKey: _signupFormKey,
-                  selectedRoleName: selectedRole?.name,
+                  selectedRoleName: 'fca',
                   nameController: _signupNameController,
                   emailController: _signupEmailController,
                   passwordController: _signupPasswordController,
                   passwordConfirmationController:
                       _signupConfirmPasswordController,
+                  coopNameController: _signupCoopNameController,
+                  phoneController: _signupPhoneController,
                 ),
               ),
               const SizedBox(height: 24),
@@ -486,12 +486,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 onPressed: () => AuthFormActions.submitSignUp(
                   context: context,
                   formKey: _signupFormKey,
-                  selectedRoleName: selectedRole?.name,
+                  selectedRoleName: 'fca',
                   nameController: _signupNameController,
                   emailController: _signupEmailController,
                   passwordController: _signupPasswordController,
                   passwordConfirmationController:
                       _signupConfirmPasswordController,
+                  coopNameController: _signupCoopNameController,
+                  phoneController: _signupPhoneController,
                 ),
               ),
             ],

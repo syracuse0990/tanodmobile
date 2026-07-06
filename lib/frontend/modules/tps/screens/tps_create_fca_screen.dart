@@ -1646,7 +1646,7 @@ class _TpsCreateFcaScreenState extends State<TpsCreateFcaScreen>
 
   int? _photoBucketMaxPhotos(_FcaPhotoBucket bucket) {
     return switch (bucket) {
-      _FcaPhotoBucket.tractor => TicketIssuePhotoService.maxPhotos,
+      _FcaPhotoBucket.tractor => 2,
       _FcaPhotoBucket.logbook => null,
     };
   }
@@ -3277,7 +3277,7 @@ class _TpsCreateFcaScreenState extends State<TpsCreateFcaScreen>
         FcaVerifiedPhotoSection(
           title: 'Photo of Tractors',
           subtitle: 'You may upload up to two(2) photos of tractor',
-          maxPhotos: TicketIssuePhotoService.maxPhotos,
+          maxPhotos: 2,
           photos: _tractorPhotoState.photos,
           isProcessing: _tractorPhotoState.isProcessing,
           processingLabel: _tractorPhotoState.processingLabel,

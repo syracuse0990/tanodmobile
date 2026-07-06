@@ -55,6 +55,7 @@ class TpsProvider extends ChangeNotifier {
   int _ticketsLastPage = 1;
   int _chatTicketsLastPage = 1;
   String _ticketSearchQuery = '';
+  String? _ticketStatusFilter;
 
   List<Ticket> get tickets => _tickets;
   List<Ticket> get chatTickets => _chatTickets;
@@ -65,6 +66,7 @@ class TpsProvider extends ChangeNotifier {
   bool get hasMoreTickets => _ticketsPage < _ticketsLastPage;
   bool get hasMoreChatTickets => _chatTicketsPage < _chatTicketsLastPage;
   String get ticketSearchQuery => _ticketSearchQuery;
+  String? get ticketStatusFilter => _ticketStatusFilter;
 
   // Feedbacks
   List<FarmerFeedbackItem> _feedbacks = [];
@@ -841,6 +843,16 @@ class TpsProvider extends ChangeNotifier {
     await fetchTickets(status: status);
   }
 
+  Future<void> setTicketStatusFilter(String? status) async {
+    if (_ticketStatusFilter == status) return;
+    _ticketStatusFilter = status;
+    _tickets = [];
+    _ticketsPage = 1;
+    _ticketsLastPage = 1;
+    notifyListeners();
+    await fetchTickets(status: status);
+  }
+
   Future<void> fetchChatTickets() async {
     _chatTicketsLoading = true;
     _chatTicketsError = null;
@@ -1340,8 +1352,8 @@ class TpsProvider extends ChangeNotifier {
         'subject': subject,
         'description': description,
         'priority': priority,
-        'category': ?category,
-        'tractor_id': ?tractorId,
+        'category': category,
+        'tractor_id': tractorId,
       };
 
       if (photo != null) {
@@ -1389,16 +1401,35 @@ class TpsProvider extends ChangeNotifier {
     double? serviceCharge,
     double? downPayment,
     int? installments,
+    bool partial = false,
     List<Map<String, dynamic>>? parts,
     List<File>? drPhotos,
+    List<String>? keepDrPhotos,
   }) async {
     try {
       final formMap = <String, dynamic>{
-        'resolution_notes': ?resolutionNotes,
-        if (serviceCharge != null) 'service_charge': serviceCharge.toString(),
-        if (downPayment != null) 'down_payment': downPayment.toString(),
-        if (installments != null) 'installments': installments.toString(),
+        'resolution_notes': resolutionNotes,
+        if (partial) 'partial': '1',
       };
+
+      if (serviceCharge != null) {
+        formMap['service_charge'] = serviceCharge.toString();
+      }
+
+      if (downPayment != null) {
+        formMap['down_payment'] = downPayment.toString();
+      }
+
+      if (installments != null) {
+        formMap['installments'] = installments.toString();
+      }
+
+      if (parts != null && parts.isNotEmpty) {
+        for (var i = 0; i < parts.length; i++) {
+          formMap['parts[$i][id]'] = parts[i]['id'].toString();
+          formMap['parts[$i][amount]'] = parts[i]['amount'].toString();
+        }
+      }
 
       if (resolutionPhoto != null) {
         formMap['resolution_photo'] = await MultipartFile.fromFile(
@@ -1407,22 +1438,20 @@ class TpsProvider extends ChangeNotifier {
         );
       }
 
-      if (parts != null && parts.isNotEmpty) {
-        for (var i = 0; i < parts.length; i++) {
-          final p = parts[i];
-          formMap['parts[$i][name]'] = p['name'];
-          formMap['parts[$i][amount]'] = (p['amount'] ?? 0).toString();
-          formMap['parts[$i][quantity]'] = (p['quantity'] ?? 1).toString();
-          if (p['id'] != null) formMap['parts[$i][id]'] = p['id'].toString();
-        }
-      }
-
       if (drPhotos != null && drPhotos.isNotEmpty) {
+        debugPrint('TpsProvider.resolveTicket: attaching ${drPhotos.length} new DR photo(s)');
         for (var i = 0; i < drPhotos.length; i++) {
           formMap['dr_photos[$i]'] = await MultipartFile.fromFile(
             drPhotos[i].path,
             filename: drPhotos[i].path.split(Platform.pathSeparator).last,
           );
+        }
+      }
+
+      if (keepDrPhotos != null && keepDrPhotos.isNotEmpty) {
+        debugPrint('TpsProvider.resolveTicket: preserving ${keepDrPhotos.length} existing DR photo URL(s)');
+        for (var i = 0; i < keepDrPhotos.length; i++) {
+          formMap['keep_dr_photos[$i]'] = keepDrPhotos[i];
         }
       }
 
@@ -1439,22 +1468,6 @@ class TpsProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('TpsProvider.resolveTicket error: $e');
       return false;
-    }
-  }
-
-  // ─── Tractor Parts ─────────────────────────────
-
-  List<Map<String, dynamic>> _tractorParts = [];
-  List<Map<String, dynamic>> get tractorParts => _tractorParts;
-
-  Future<void> fetchTractorParts() async {
-    try {
-      final response = await _apiClient.get(AppEndpoints.tractorParts);
-      final data = (response is Map ? response['data'] : null) as List<dynamic>? ?? [];
-      _tractorParts = data.whereType<Map<String, dynamic>>().toList();
-    } catch (e) {
-      debugPrint('TpsProvider.fetchTractorParts error: $e');
-      _tractorParts = [];
     }
   }
 

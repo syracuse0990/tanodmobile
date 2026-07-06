@@ -10,9 +10,11 @@ class PmsChecklistItem {
   final String? notes;
 
   factory PmsChecklistItem.fromJson(Map<String, dynamic> json) {
+    final doneRaw = json['done'];
+    final done = doneRaw == true || doneRaw == '1' || doneRaw == 1;
     return PmsChecklistItem(
       name: json['name']?.toString() ?? '',
-      done: json['done'] == true,
+      done: done,
       notes: json['notes']?.toString(),
     );
   }

@@ -46,6 +46,7 @@ class Distribution {
   factory Distribution.fromJson(Map<String, dynamic> json) {
     final tractor = json['tractor'] as Map<String, dynamic>?;
     final user = json['distributed_to_user'] as Map<String, dynamic>?;
+    final tractorName = tractor?['name']?.toString();
 
     return Distribution(
       id: json['id'] as int,
@@ -54,7 +55,9 @@ class Distribution {
       notes: json['notes']?.toString(),
       distributionDate: json['distribution_date']?.toString(),
       returnDate: json['return_date']?.toString(),
-      tractorLabel: tractor?['no_plate']?.toString(),
+      tractorLabel: (tractorName != null && tractorName.isNotEmpty)
+          ? tractorName
+          : tractor?['no_plate']?.toString(),
       tractorBrand: tractor?['brand']?.toString(),
       tractorModel: tractor?['model']?.toString(),
       distributedToName: user?['name']?.toString(),

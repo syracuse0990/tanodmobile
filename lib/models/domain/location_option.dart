@@ -13,4 +13,15 @@ class LocationOption {
       name: json['name']?.toString() ?? '',
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LocationOption &&
+          runtimeType == other.runtimeType &&
+          code == other.code &&
+          name == other.name;
+
+  @override
+  int get hashCode => code.hashCode ^ name.hashCode;
 }

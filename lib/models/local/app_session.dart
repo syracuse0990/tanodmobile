@@ -15,6 +15,10 @@ class AppSession extends HiveObject {
     this.phone,
     this.gender,
     this.profilePhotoUrl,
+    this.province,
+    this.city,
+    this.barangay,
+    this.organizationName,
     this.mustChangePassword = false,
     this.phoneVerifiedAt,
   });
@@ -52,6 +56,18 @@ class AppSession extends HiveObject {
   @HiveField(10)
   final DateTime? phoneVerifiedAt;
 
+  @HiveField(11)
+  final String? province;
+
+  @HiveField(12)
+  final String? city;
+
+  @HiveField(13)
+  final String? barangay;
+
+  @HiveField(14)
+  final String? organizationName;
+
   factory AppSession.fromJson(Map<String, dynamic> json) {
     final token =
         json['token']?.toString() ?? json['access_token']?.toString() ?? '';
@@ -68,8 +84,12 @@ class AppSession extends HiveObject {
       phone: userModel.phone,
       gender: userModel.gender,
       profilePhotoUrl: userModel.profilePhotoUrl,
+      province: userModel.province,
+      city: userModel.city,
+      barangay: userModel.barangay,
       mustChangePassword: userModel.mustChangePassword,
       phoneVerifiedAt: userModel.phoneVerifiedAt,
+      organizationName: userModel.organizationName,
     );
   }
 
@@ -82,8 +102,12 @@ class AppSession extends HiveObject {
       phone: phone,
       gender: gender,
       profilePhotoUrl: profilePhotoUrl,
+      province: province,
+      city: city,
+      barangay: barangay,
       mustChangePassword: mustChangePassword,
       phoneVerifiedAt: phoneVerifiedAt,
+      organizationName: organizationName,
     );
   }
 
@@ -97,8 +121,12 @@ class AppSession extends HiveObject {
     String? phone,
     String? gender,
     String? profilePhotoUrl,
+    String? province,
+    String? city,
+    String? barangay,
     bool? mustChangePassword,
     DateTime? phoneVerifiedAt,
+    String? organizationName,
   }) {
     return AppSession(
       token: token ?? this.token,
@@ -110,8 +138,12 @@ class AppSession extends HiveObject {
       phone: phone ?? this.phone,
       gender: gender ?? this.gender,
       profilePhotoUrl: profilePhotoUrl ?? this.profilePhotoUrl,
+      province: province ?? this.province,
+      city: city ?? this.city,
+      barangay: barangay ?? this.barangay,
       mustChangePassword: mustChangePassword ?? this.mustChangePassword,
       phoneVerifiedAt: phoneVerifiedAt ?? this.phoneVerifiedAt,
+      organizationName: organizationName ?? this.organizationName,
     );
   }
 

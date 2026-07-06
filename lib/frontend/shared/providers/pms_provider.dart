@@ -84,14 +84,16 @@ class PmsProvider extends ChangeNotifier {
     }
   }
 
-  /// FCA records PMS themselves.
+  /// FCA records PMS themselves with verified photos.
   Future<bool> recordPms({
     required int tractorId,
     required List<PmsChecklistItem> checklist,
     required double hoursAtMaintenance,
     required double kmAtMaintenance,
     String? description,
-    List<File> images = const [],
+    File? nameplatePhoto,
+    File? dashboardPhoto,
+    List<File> damagePhotos = const [],
   }) async {
     _submitting = true;
     _error = null;
@@ -116,11 +118,23 @@ class PmsProvider extends ChangeNotifier {
         }
       }
 
-      // Add images
-      for (var i = 0; i < images.length; i++) {
-        formMap['images[$i]'] = await MultipartFile.fromFile(
-          images[i].path,
-          filename: images[i].path.split(Platform.pathSeparator).last,
+      // Add images — verified photos in named groups
+      if (nameplatePhoto != null) {
+        formMap['nameplate_photo'] = await MultipartFile.fromFile(
+          nameplatePhoto.path,
+          filename: nameplatePhoto.path.split(Platform.pathSeparator).last,
+        );
+      }
+      if (dashboardPhoto != null) {
+        formMap['dashboard_photo'] = await MultipartFile.fromFile(
+          dashboardPhoto.path,
+          filename: dashboardPhoto.path.split(Platform.pathSeparator).last,
+        );
+      }
+      for (var i = 0; i < damagePhotos.length; i++) {
+        formMap['damage_photos[$i]'] = await MultipartFile.fromFile(
+          damagePhotos[i].path,
+          filename: damagePhotos[i].path.split(Platform.pathSeparator).last,
         );
       }
 
