@@ -7,6 +7,7 @@ import 'package:tanodmobile/backend/endpoints/app_endpoints.dart';
 import 'package:tanodmobile/models/domain/pms_record.dart';
 import 'package:tanodmobile/models/domain/tractor_insight_detail.dart';
 import 'package:tanodmobile/models/domain/tractor_location.dart';
+import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 enum TractorInsightTab {
@@ -48,11 +49,14 @@ class _TractorInsightSheetState extends State<_TractorInsightSheet>
   late final ApiClient _apiClient;
   late final TabController _tabController;
   late Future<_TractorInsightBundle> _insightFuture;
+  bool _isFca = false;
 
   @override
   void initState() {
     super.initState();
     _apiClient = context.read<ApiClient>();
+    final auth = context.read<AuthProvider>();
+    _isFca = auth.session?.roles.contains('fca') ?? false;
     _tabController = TabController(
       length: TractorInsightTab.values.length,
       vsync: this,
@@ -216,6 +220,7 @@ class _TractorInsightSheetState extends State<_TractorInsightSheet>
                           tractor: widget.tractor,
                           detail: bundle.detail,
                           latestCompletedRecord: bundle.latestCompletedRecord,
+                          hideFcaInfo: _isFca,
                         ),
                         _PmsHistoryTab(
                           tractor: widget.tractor,
@@ -260,11 +265,13 @@ class _FcaDetailsTab extends StatelessWidget {
     required this.tractor,
     required this.detail,
     required this.latestCompletedRecord,
+    this.hideFcaInfo = false,
   });
 
   final TractorLocation tractor;
   final TractorInsightDetail detail;
   final PmsRecord? latestCompletedRecord;
+  final bool hideFcaInfo;
 
   @override
   Widget build(BuildContext context) {
@@ -279,28 +286,29 @@ class _FcaDetailsTab extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _InsightHero(tractor: tractor, detail: detail),
-          const SizedBox(height: 20),
-          const _SectionHeading(
-            title: 'FCA Details',
-            subtitle: 'Assigned contact for this tractor',
-          ),
-          _SectionCard(
-            child: contact == null || contact.isEmpty
-                ? const _EmptySectionMessage(
-                    icon: Icons.person_off_rounded,
-                    message: 'No FCA details are assigned to this tractor yet.',
-                  )
-                : Column(
-                    children: [
-                      _DetailLine(
-                        icon: Icons.person_outline_rounded,
-                        label: 'FCA Name',
-                        value: contact.name ?? 'Unavailable',
-                      ),
-                      const _SectionDivider(),
-                      _ActionableDetailLine(
-                        icon: Icons.email_outlined,
-                        label: 'Email',
+          if (!hideFcaInfo) ...[
+            const SizedBox(height: 20),
+            const _SectionHeading(
+              title: 'FCA Details',
+              subtitle: 'Assigned contact for this tractor',
+            ),
+            _SectionCard(
+              child: contact == null || contact.isEmpty
+                  ? const _EmptySectionMessage(
+                      icon: Icons.person_off_rounded,
+                      message: 'No FCA details are assigned to this tractor yet.',
+                    )
+                  : Column(
+                      children: [
+                        _DetailLine(
+                          icon: Icons.person_outline_rounded,
+                          label: 'FCA Name',
+                          value: contact.name ?? 'Unavailable',
+                        ),
+                        const _SectionDivider(),
+                        _ActionableDetailLine(
+                          icon: Icons.email_outlined,
+                          label: 'Email',
                         value: contact.email ?? 'Unavailable',
                         actions: [
                           if (contact.email != null)
@@ -375,6 +383,7 @@ class _FcaDetailsTab extends StatelessWidget {
                     ],
                   ),
           ),
+          ],
           const SizedBox(height: 20),
           const _SectionHeading(
             title: 'Tractor Details',
@@ -429,6 +438,46 @@ class _FcaDetailsTab extends StatelessWidget {
                   label: 'Model',
                   value: tractorModel,
                 ),
+                if (detail.idNo != null) ...[
+                  _SectionDivider(),
+                  _DetailLine(
+                    icon: Icons.qr_code_rounded,
+                    label: 'Serial No. (ID)',
+                    value: detail.idNo!,
+                  ),
+                ],
+                if (detail.engineNo != null) ...[
+                  _SectionDivider(),
+                  _DetailLine(
+                    icon: Icons.engineering_rounded,
+                    label: 'Engine No.',
+                    value: detail.engineNo!,
+                  ),
+                ],
+                if (detail.frontLoaderSn != null) ...[
+                  _SectionDivider(),
+                  _DetailLine(
+                    icon: Icons.precision_manufacturing_rounded,
+                    label: 'Front Loader S/N',
+                    value: detail.frontLoaderSn!,
+                  ),
+                ],
+                if (detail.rotaryTillerSn != null) ...[
+                  _SectionDivider(),
+                  _DetailLine(
+                    icon: Icons.precision_manufacturing_rounded,
+                    label: 'Rotary Tiller S/N',
+                    value: detail.rotaryTillerSn!,
+                  ),
+                ],
+                if (detail.discPlowSn != null) ...[
+                  _SectionDivider(),
+                  _DetailLine(
+                    icon: Icons.precision_manufacturing_rounded,
+                    label: 'Disc Plow S/N',
+                    value: detail.discPlowSn!,
+                  ),
+                ],
               ],
             ),
           ),

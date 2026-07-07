@@ -817,6 +817,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                         tractor['rotary_tiller_sn']?.toString() ?? '';
                     final discPlowSn =
                         tractor['disc_plow_sn']?.toString() ?? '';
+                    final gpsImei = tractor['imei']?.toString() ?? '';
+                    final deviceData = tractor['device'] as Map<String, dynamic>?;
+                    final simNumber = deviceData?['sim']?.toString() ?? '';
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 16),
@@ -897,7 +900,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
 
                               // ─── Implement Details (editable) ───
                               _buildImplementSection(id, idNo, engineNo,
-                                  frontLoaderSn, rotaryTillerSn, discPlowSn),
+                                  frontLoaderSn, rotaryTillerSn, discPlowSn, gpsImei, simNumber),
                             ],
                           ),
                         ),
@@ -915,6 +918,8 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     String frontLoaderSn,
     String rotaryTillerSn,
     String discPlowSn,
+    String gpsImei,
+    String simNumber,
   ) {
     final ctrls = _tractorImplementControllers[tractorId];
     final isSaving = _savingImplementIds.contains(tractorId);
@@ -964,6 +969,49 @@ class _EditProfileScreenState extends State<EditProfileScreen>
             ),
           );
         }),
+        // ─── GPS Details ───
+        if (gpsImei.isNotEmpty || simNumber.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: const Row(
+              children: [
+                Icon(Icons.satellite_alt_rounded,
+                    size: 18, color: AppColors.pine),
+                SizedBox(width: 8),
+                Text(
+                  'GPS Details',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (gpsImei.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _TractorImplementField(
+                label: 'GPS IMEI',
+                icon: Icons.sim_card_rounded,
+                controller: TextEditingController(text: gpsImei),
+                readOnly: true,
+              ),
+            ),
+          if (simNumber.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _TractorImplementField(
+                label: 'SIM Number',
+                icon: Icons.sim_card_rounded,
+                controller: TextEditingController(text: simNumber),
+                readOnly: true,
+              ),
+            ),
+        ],
         const SizedBox(height: 12),
         SizedBox(
           width: double.infinity,
@@ -1168,12 +1216,13 @@ class _TractorImplementField extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.controller,
-
+    this.readOnly = false,
   });
 
   final String label;
   final IconData icon;
   final TextEditingController? controller;
+  final bool readOnly;
 
 
   @override
@@ -1202,13 +1251,14 @@ class _TractorImplementField extends StatelessWidget {
           ),
           child: TextFormField(
             controller: controller,
-            style: const TextStyle(
+            readOnly: readOnly,
+            style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w500,
-              color: AppColors.ink,
+              color: readOnly ? AppColors.mutedInk : AppColors.ink,
             ),
             decoration: InputDecoration(
-              hintText: 'Enter ${label.toLowerCase()}',
+              hintText: readOnly ? label : 'Enter ${label.toLowerCase()}',
               hintStyle: TextStyle(
                 color: AppColors.mutedInk.withValues(alpha: 0.4),
                 fontWeight: FontWeight.w400,
@@ -1223,7 +1273,7 @@ class _TractorImplementField extends StatelessWidget {
               ),
 
               filled: true,
-              fillColor: Colors.white,
+              fillColor: readOnly ? AppColors.canvas : Colors.white,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 16,
                 vertical: 16,

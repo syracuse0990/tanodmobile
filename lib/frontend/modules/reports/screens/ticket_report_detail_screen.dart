@@ -39,6 +39,8 @@ class _TicketReportDetailScreenState extends State<TicketReportDetailScreen> {
   bool? _warranty;
   DateTime? _repairStartDate;
   DateTime? _repairEndDate;
+  String? _workStatus;
+  String? _workCondition;
 
   bool _saving = false;
   bool _generatingPdf = false;
@@ -87,6 +89,8 @@ class _TicketReportDetailScreenState extends State<TicketReportDetailScreen> {
     }
     _repairStartDate = report.repairStartDate;
     _repairEndDate = report.repairEndDate;
+    _workStatus = report.workStatus;
+    _workCondition = report.workCondition;
   }
 
   Future<void> _fetchFcaFormData(int ticketId) async {
@@ -168,6 +172,8 @@ class _TicketReportDetailScreenState extends State<TicketReportDetailScreen> {
         'machine_hours': _machineHoursController.text.trim(),
         'serial_number': _serialNumberController.text.trim(),
         'warranty_type': _warranty == null ? null : (_warranty! ? 'yes' : 'no'),
+        if (_workStatus != null) 'work_status': _workStatus,
+        if (_workCondition != null) 'work_condition': _workCondition,
         if (_repairStartDate != null)
           'repair_start_date': _repairStartDate!.toIso8601String().split('T').first,
         if (_repairEndDate != null)
@@ -330,36 +336,107 @@ class _TicketReportDetailScreenState extends State<TicketReportDetailScreen> {
     );
   }
 
+  // ─── Work Status dropdown ────────────────────
+  Widget _buildWorkStatusDropdown() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.check_circle_rounded, size: 18, color: _workStatus == 'Completed' ? AppColors.forest : (_workStatus == 'Pending' ? Colors.orange : AppColors.mutedInk)),
+              const SizedBox(width: 8),
+              const Text('Work Status:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.mutedInk)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Group 1: Completed | Pending
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildStatusChip('Completed', AppColors.forest, _workStatus, (v) => setState(() => _workStatus = v)),
+              _buildStatusChip('Pending', Colors.orange, _workStatus, (v) => setState(() => _workStatus = v)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Icon(Icons.precision_manufacturing_rounded, size: 18, color: _workCondition == 'Operational' ? AppColors.forest : AppColors.mutedInk),
+              const SizedBox(width: 8),
+              const Text('Unit Condition:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.mutedInk)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Group 2: Operational | Non Operational
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildStatusChip('Operational', AppColors.forest, _workCondition, (v) => setState(() => _workCondition = v)),
+              _buildStatusChip('Non Operational', Colors.orange, _workCondition, (v) => setState(() => _workCondition = v)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusChip(String label, Color color, String? currentValue, void Function(String) onSelected) {
+    final isSelected = currentValue == label;
+    return ChoiceChip(
+      label: Text(label, style: const TextStyle(fontSize: 11)),
+      selected: isSelected,
+      onSelected: (_) => onSelected(label),
+      selectedColor: color.withValues(alpha: 0.15),
+      labelStyle: TextStyle(
+        color: isSelected ? color : AppColors.mutedInk,
+        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+      ),
+    );
+  }
+
   // ─── Warranty toggle widget ──────────────────
   Widget _buildWarrantyToggle() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.verified_user_rounded, size: 18, color: AppColors.mutedInk),
-          const SizedBox(width: 8),
-          const Text('Warranty:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.mutedInk)),
-          const SizedBox(width: 12),
-          ChoiceChip(
-            label: const Text('Yes', style: TextStyle(fontSize: 12)),
-            selected: _warranty == true,
-            onSelected: (_) => setState(() => _warranty = true),
-            selectedColor: AppColors.forest.withValues(alpha: 0.15),
-            labelStyle: TextStyle(
-              color: _warranty == true ? AppColors.forest : AppColors.mutedInk,
-              fontWeight: _warranty == true ? FontWeight.w600 : FontWeight.normal,
-            ),
+          Row(
+            children: [
+              Icon(Icons.verified_user_rounded, size: 18, color: AppColors.mutedInk),
+              const SizedBox(width: 8),
+              const Text('Warranty:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.mutedInk)),
+            ],
           ),
-          const SizedBox(width: 8),
-          ChoiceChip(
-            label: const Text('No', style: TextStyle(fontSize: 12)),
-            selected: _warranty == false,
-            onSelected: (_) => setState(() => _warranty = false),
-            selectedColor: Colors.orange.withValues(alpha: 0.15),
-            labelStyle: TextStyle(
-              color: _warranty == false ? Colors.orange : AppColors.mutedInk,
-              fontWeight: _warranty == false ? FontWeight.w600 : FontWeight.normal,
-            ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text('Yes', style: TextStyle(fontSize: 12)),
+                selected: _warranty == true,
+                onSelected: (_) => setState(() => _warranty = true),
+                selectedColor: AppColors.forest.withValues(alpha: 0.15),
+                labelStyle: TextStyle(
+                  color: _warranty == true ? AppColors.forest : AppColors.mutedInk,
+                  fontWeight: _warranty == true ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+              ChoiceChip(
+                label: const Text('No', style: TextStyle(fontSize: 12)),
+                selected: _warranty == false,
+                onSelected: (_) => setState(() => _warranty = false),
+                selectedColor: Colors.orange.withValues(alpha: 0.15),
+                labelStyle: TextStyle(
+                  color: _warranty == false ? Colors.orange : AppColors.mutedInk,
+                  fontWeight: _warranty == false ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -572,6 +649,58 @@ class _TicketReportDetailScreenState extends State<TicketReportDetailScreen> {
 
                             const SizedBox(height: 4),
 
+                            // Work Status selector
+                            if (_editing)
+                              _buildWorkStatusDropdown()
+                            else
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (report.workStatus != null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 4),
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.check_circle_rounded, size: 18, color: report.workStatus == 'Completed' ? AppColors.forest : Colors.orange),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              'Status: ',
+                                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.mutedInk),
+                                            ),
+                                            Text(
+                                              report.workStatus!,
+                                              style: TextStyle(
+                                                fontSize: 13, fontWeight: FontWeight.w600,
+                                                color: report.workStatus == 'Completed' ? AppColors.forest : Colors.orange,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    if (report.workCondition != null)
+                                      Row(
+                                        children: [
+                                          Icon(Icons.precision_manufacturing_rounded, size: 18, color: report.workCondition == 'Operational' ? AppColors.forest : Colors.orange),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Condition: ',
+                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.mutedInk),
+                                          ),
+                                          Text(
+                                            report.workCondition!,
+                                            style: TextStyle(
+                                              fontSize: 13, fontWeight: FontWeight.w600,
+                                              color: report.workCondition == 'Operational' ? AppColors.forest : Colors.orange,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                  ],
+                                ),
+                              ),
+
                             // Warranty Yes/No toggle
                             if (_editing)
                               _buildWarrantyToggle()
@@ -600,29 +729,49 @@ class _TicketReportDetailScreenState extends State<TicketReportDetailScreen> {
                             const SizedBox(height: 4),
 
                             // Repair dates
-                            if (_editing) ...[
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _DateField(
-                                      label: 'Repair Start Date',
-                                      date: _repairStartDate,
-                                      onTap: () => _pickDate(true),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: _DateField(
-                                      label: 'Repair End Date',
-                                      date: _repairEndDate,
-                                      onTap: () => _pickDate(false),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ] else ...[
-                              if (report.repairStartDate != null || report.repairEndDate != null)
-                                Padding(
+                            if (_editing)
+                              LayoutBuilder(
+                                builder: (context, constraints) {
+                                  if (constraints.maxWidth >= 320) {
+                                    return Row(
+                                      children: [
+                                        Expanded(
+                                          child: _DateField(
+                                            label: 'Repair Start Date',
+                                            date: _repairStartDate,
+                                            onTap: () => _pickDate(true),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: _DateField(
+                                            label: 'Repair End Date',
+                                            date: _repairEndDate,
+                                            onTap: () => _pickDate(false),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  }
+                                  return Column(
+                                    children: [
+                                      _DateField(
+                                        label: 'Repair Start Date',
+                                        date: _repairStartDate,
+                                        onTap: () => _pickDate(true),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      _DateField(
+                                        label: 'Repair End Date',
+                                        date: _repairEndDate,
+                                        onTap: () => _pickDate(false),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              )
+                            else if (report.repairStartDate != null || report.repairEndDate != null)
+                              Padding(
                                   padding: const EdgeInsets.only(top: 4),
                                   child: Row(
                                     children: [
@@ -638,11 +787,10 @@ class _TicketReportDetailScreenState extends State<TicketReportDetailScreen> {
                                       ),
                                     ],
                                   ),
-                                ),
+                              ),
                             ],
-                          ],
+                          ),
                         ),
-                      ),
                       const SizedBox(height: 12),
 
                       // ─── Parts Used ───

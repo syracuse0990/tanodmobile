@@ -41,6 +41,8 @@ class TicketReport {
     this.resolutionPhotoUrl,
     this.drPhotoUrls,
     this.status,
+    this.workStatus,
+    this.workCondition,
     this.reportPdfUrl,
     this.generatedAt,
     this.createdAt,
@@ -79,6 +81,8 @@ class TicketReport {
   final String? resolutionPhotoUrl;
   final List<String>? drPhotoUrls;
   final String? status; // draft, finalized
+  final String? workStatus; // Completed, Pending
+  final String? workCondition; // Operational, Non Operational
   final String? reportPdfUrl;
   final DateTime? generatedAt;
   final DateTime? createdAt;
@@ -156,6 +160,8 @@ class TicketReport {
       resolutionPhotoUrl: json['resolution_photo_url']?.toString(),
       drPhotoUrls: drUrls,
       status: json['status']?.toString(),
+      workCondition: json['work_condition']?.toString(),
+      workStatus: json['work_status']?.toString(),
       reportPdfUrl: json['report_pdf_url']?.toString(),
       generatedAt: json['generated_at'] != null
           ? DateTime.tryParse(json['generated_at'].toString())
