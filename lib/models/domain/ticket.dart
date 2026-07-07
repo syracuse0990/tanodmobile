@@ -29,6 +29,7 @@ class Ticket {
     this.resolvedById,
     this.resolvedByName,
     this.resolvedAt,
+    this.reportedDate,
     this.assignees,
     this.comments,
     this.lastComment,
@@ -65,6 +66,7 @@ class Ticket {
   final int? resolvedById;
   final String? resolvedByName;
   final DateTime? resolvedAt;
+  final DateTime? reportedDate;
   final List<TicketAssignee>? assignees;
   final List<TicketComment>? comments;
   final TicketComment? lastComment;
@@ -204,6 +206,7 @@ class Ticket {
       resolvedById: resolver?['id'] as int?,
       resolvedByName: resolver?['name']?.toString(),
       resolvedAt: DateTime.tryParse(json['resolved_at']?.toString() ?? ''),
+      reportedDate: DateTime.tryParse(json['reported_date']?.toString() ?? ''),
       assignees: rawAssignees
           ?.whereType<Map<String, dynamic>>()
           .map(TicketAssignee.fromJson)
@@ -257,6 +260,7 @@ class Ticket {
       resolvedById: resolvedById,
       resolvedByName: resolvedByName,
       resolvedAt: resolvedAt,
+      reportedDate: reportedDate,
       assignees: assignees,
       comments: [...(comments ?? []), comment],
       lastComment: comment,

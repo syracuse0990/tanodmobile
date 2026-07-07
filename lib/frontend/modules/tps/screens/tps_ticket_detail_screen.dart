@@ -354,6 +354,12 @@ class _TpsTicketDetailScreenState extends State<TpsTicketDetailScreen> {
                             label: 'Created',
                             value: ticket.timeAgo,
                           ),
+                          if (ticket.reportedDate != null)
+                            _InfoRow(
+                              icon: Icons.event_rounded,
+                              label: 'Date of Failure',
+                              value: '${ticket.reportedDate!.day}/${ticket.reportedDate!.month}/${ticket.reportedDate!.year}',
+                            ),
                         ],
                       ),
                     ),
