@@ -18,7 +18,8 @@ class EditProfileScreen extends StatefulWidget {
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
-class _EditProfileScreenState extends State<EditProfileScreen> {
+class _EditProfileScreenState extends State<EditProfileScreen>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _nameFocus = FocusNode();
   final _emailFocus = FocusNode();
@@ -45,6 +46,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool _isLoadingProvinces = false;
   bool _isLoadingCities = false;
   bool _isLoadingBarangays = false;
+
+  // ─── Tractors ───
+  late TabController _tabController;
+  List<Map<String, dynamic>> _tractors = [];
+  bool _isLoadingTractors = false;
+  final Map<int, TextEditingController> _tractorNameControllers = {};
+  final Set<int> _savingTractorIds = {};
+  // Implement controllers per tractor: tractorId -> field -> controller
+  final Map<int, Map<String, TextEditingController>> _tractorImplementControllers = {};
+  final Set<int> _savingImplementIds = {};
+
 
   @override
   void initState() {
@@ -75,11 +87,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _selectedBarangay = LocationOption(code: '', name: user.barangay!);
     }
 
+    _tabController = TabController(length: 2, vsync: this);
+
     _fetchProvinces();
+
+    // Only fetch tractors for FCA users
+    if (user?.roles.contains('fca') == true) {
+      _fetchTractors();
+    }
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
@@ -87,6 +107,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _nameFocus.dispose();
     _emailFocus.dispose();
     _phoneFocus.dispose();
+    for (final ctrl in _tractorNameControllers.values) {
+      ctrl.dispose();
+    }
+    for (final map in _tractorImplementControllers.values) {
+      for (final ctrl in map.values) {
+        ctrl.dispose();
+      }
+    }
     super.dispose();
   }
 
@@ -274,6 +302,98 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  // ─── Tractors ───
+
+  Future<void> _fetchTractors() async {
+    setState(() => _isLoadingTractors = true);
+    try {
+      final response = await _dio.get(
+        '/tractors',
+        queryParameters: {'per_page': '200'},
+      );
+      final data =
+          response.data is Map ? response.data['data'] : response.data;
+      if (data is List) {
+        _tractors = data.cast<Map<String, dynamic>>();
+        for (final t in _tractors) {
+          final id = t['id'] as int;
+          if (!_tractorNameControllers.containsKey(id)) {
+            _tractorNameControllers[id] = TextEditingController(
+              text: t['name']?.toString() ?? t['no_plate']?.toString() ?? '',
+            );
+          }
+          _initImplementControllers(id, t);
+        }
+      }
+    } catch (e) {
+      debugPrint('_fetchTractors error: $e');
+    }
+    if (mounted) setState(() => _isLoadingTractors = false);
+  }
+
+  Future<void> _renameTractor(int tractorId) async {
+    final controller = _tractorNameControllers[tractorId];
+    if (controller == null) return;
+    final newName = controller.text.trim();
+    if (newName.isEmpty) {
+      AppToast.show('Tractor name cannot be empty', type: ToastType.error);
+      return;
+    }
+
+    setState(() => _savingTractorIds.add(tractorId));
+    try {
+      await _dio.put('/tractors/$tractorId/rename', data: {'name': newName});
+      final idx = _tractors.indexWhere((t) => t['id'] == tractorId);
+      if (idx != -1) {
+        _tractors[idx]['name'] = newName;
+      }
+      if (mounted) AppToast.success('Tractor renamed successfully');
+    } catch (e) {
+      debugPrint('_renameTractor error: $e');
+      if (mounted) {
+        AppToast.show('Failed to rename tractor', type: ToastType.error);
+      }
+    }
+    if (mounted) setState(() => _savingTractorIds.remove(tractorId));
+  }
+
+  void _initImplementControllers(int tractorId, Map<String, dynamic> tractor) {
+    _tractorImplementControllers.putIfAbsent(tractorId, () => {});
+    final fields = ['id_no', 'engine_no', 'front_loader_sn', 'rotary_tiller_sn', 'disc_plow_sn'];
+    for (final field in fields) {
+      _tractorImplementControllers[tractorId]!.putIfAbsent(
+        field,
+        () => TextEditingController(text: tractor[field]?.toString() ?? ''),
+      );
+    }
+  }
+
+  Future<void> _saveImplements(int tractorId) async {
+    final controllers = _tractorImplementControllers[tractorId];
+    if (controllers == null) return;
+
+    setState(() => _savingImplementIds.add(tractorId));
+    try {
+      final data = <String, dynamic>{};
+      for (final entry in controllers.entries) {
+        final val = entry.value.text.trim();
+        if (val.isNotEmpty) {
+          data[entry.key] = val;
+        }
+      }
+      await _dio.put('/tractors/$tractorId/implements', data: data);
+      if (mounted) AppToast.success('Implement details saved');
+    } catch (e) {
+      debugPrint('_saveImplements error: $e');
+      if (mounted) {
+        AppToast.show('Failed to save implements', type: ToastType.error);
+      }
+    }
+    if (mounted) setState(() => _savingImplementIds.remove(tractorId));
+  }
+
+  // ─── Save Profile ───
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -330,276 +450,858 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().currentUser;
+    final isFca = user?.roles.contains('fca') == true;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F6),
-      body: CustomScrollView(
-        slivers: [
-          // ─── Header ───
-          SliverAppBar(
-            expandedHeight: 200,
-            pinned: true,
-            backgroundColor: AppColors.forest,
-            leading: IconButton(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-            ),
-            actions: [
-              TextButton(
-                onPressed: _isSaving ? null : _save,
-                child: _isSaving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text(
-                        'Save',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                        ),
-                      ),
+    return DefaultTabController(
+      length: isFca ? 2 : 1,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF5F7F6),
+        body: NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) => [
+            SliverAppBar(
+              expandedHeight: 200,
+              pinned: true,
+              backgroundColor: AppColors.forest,
+              leading: IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
               ),
-              const SizedBox(width: 8),
-            ],
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [AppColors.forest, AppColors.pine],
-                  ),
+              actions: [
+                TextButton(
+                  onPressed: _tabController.index == 1 || _isSaving
+                      ? null
+                      : _save,
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Save',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
+                        ),
                 ),
-                child: SafeArea(
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 16),
-                      child: _AvatarEditor(
-                        pickedPhoto: _pickedPhoto,
-                        existingPhotoUrl: _existingPhotoUrl,
-                        userName: user?.name ?? 'U',
-                        onTap: _showPhotoOptions,
+                const SizedBox(width: 8),
+              ],
+              flexibleSpace: FlexibleSpaceBar(
+                background: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppColors.forest, AppColors.pine],
+                    ),
+                  ),
+                  child: SafeArea(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 16),
+                        child: _AvatarEditor(
+                          pickedPhoto: _pickedPhoto,
+                          existingPhotoUrl: _existingPhotoUrl,
+                          userName: user?.name ?? 'U',
+                          onTap: _showPhotoOptions,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
+              bottom: isFca
+                  ? PreferredSize(
+                      preferredSize: const Size.fromHeight(48),
+                      child: Container(
+                        color: AppColors.forest,
+                        child: TabBar(
+                          controller: _tabController,
+                          labelColor: Colors.white,
+                          unselectedLabelColor: Colors.white60,
+                          indicatorColor: Colors.white,
+                          indicatorWeight: 3,
+                          labelStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          tabs: const [
+                            Tab(text: 'Personal Info'),
+                            Tab(text: 'Tractors & Implements'),
+                          ],
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+          ],
+          body: isFca
+              ? TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildPersonalInfoTab(),
+                    _buildTractorsTab(),
+                  ],
+                )
+              : _buildPersonalInfoTab(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPersonalInfoTab() {
+    return Transform.translate(
+      offset: const Offset(0, -16),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFFF5F7F6),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 32, 20, 40),
+          child: Form(
+            key: _formKey,
+            child: ListView(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                const Text(
+                  'Personal Information',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Update your profile details below',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.mutedInk.withValues(alpha: 0.7),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Name
+                _ProfileField(
+                  controller: _nameController,
+                  focusNode: _nameFocus,
+                  label: 'Full Name',
+                  hint: 'Enter your full name',
+                  icon: Icons.person_outline_rounded,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.next,
+                  onFieldSubmitted: (_) =>
+                      FocusScope.of(context).requestFocus(_emailFocus),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Name is required';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // Email
+                _ProfileField(
+                  controller: _emailController,
+                  focusNode: _emailFocus,
+                  label: 'Email Address',
+                  hint: 'Enter your email',
+                  icon: Icons.email_outlined,
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
+                  onFieldSubmitted: (_) =>
+                      FocusScope.of(context).requestFocus(_phoneFocus),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Email is required';
+                    }
+                    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+$')
+                        .hasMatch(value.trim())) {
+                      return 'Enter a valid email address';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // Phone
+                _ProfileField(
+                  controller: _phoneController,
+                  focusNode: _phoneFocus,
+                  label: 'Phone Number',
+                  hint: '09xxxxxxxxx',
+                  icon: Icons.phone_outlined,
+                  keyboardType: TextInputType.phone,
+                  textInputAction: TextInputAction.done,
+                ),
+                const SizedBox(height: 20),
+
+                // Gender
+                _GenderSelector(
+                  selectedGender: _selectedGender,
+                  onChanged: (gender) =>
+                      setState(() => _selectedGender = gender),
+                ),
+                const SizedBox(height: 20),
+                _ProfileField(
+                  controller: _orgNameController,
+                  focusNode: FocusNode(),
+                  label: 'Cooperative / Organization',
+                  hint: 'Enter your cooperative or organization name',
+                  icon: Icons.business_rounded,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.next,
+                ),
+
+                const SizedBox(height: 24),
+                const Text(
+                  'Address',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Province
+                _LocationDropdown(
+                  label: 'Province',
+                  hint: 'Select province',
+                  icon: Icons.map_rounded,
+                  value: _selectedProvince,
+                  options: _provinceOptions,
+                  isLoading: _isLoadingProvinces,
+                  onChanged: (v) {
+                    setState(() => _selectedProvince = v);
+                    if (v != null) {
+                      WidgetsBinding.instance.addPostFrameCallback(
+                          (_) => _fetchCities(v.code));
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // City
+                _LocationDropdown(
+                  label: 'City / Municipality',
+                  hint: 'Select city',
+                  icon: Icons.location_city_rounded,
+                  value: _selectedCity,
+                  options: _cityOptions,
+                  isLoading: _isLoadingCities,
+                  onChanged: (v) {
+                    setState(() => _selectedCity = v);
+                    if (v != null) {
+                      WidgetsBinding.instance.addPostFrameCallback(
+                          (_) => _fetchBarangays(v.code));
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Barangay
+                _LocationDropdown(
+                  label: 'Barangay',
+                  hint: 'Select barangay',
+                  icon: Icons.home_rounded,
+                  value: _selectedBarangay,
+                  options: _barangayOptions,
+                  isLoading: _isLoadingBarangays,
+                  onChanged: (v) => setState(() => _selectedBarangay = v),
+                ),
+
+                const SizedBox(height: 36),
+
+                // Save button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isSaving ? null : _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.forest,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor:
+                          AppColors.forest.withValues(alpha: 0.5),
+                      minimumSize: const Size.fromHeight(54),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 0,
+                      textStyle: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Save Changes'),
+                  ),
+                ),
+              ],
             ),
           ),
+        ),
+      ),
+    );
+  }
 
-          // ─── Form ───
-          SliverToBoxAdapter(
-            child: Transform.translate(
-              offset: const Offset(0, -16),
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF5F7F6),
-                  borderRadius:
-                      BorderRadius.vertical(top: Radius.circular(24)),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 32, 20, 40),
-                  child: Form(
-                    key: _formKey,
+  Widget _buildTractorsTab() {
+    return Container(
+      color: const Color(0xFFF5F7F6),
+      child: _isLoadingTractors
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.forest),
+            )
+          : _tractors.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
+                        Icon(Icons.precision_manufacturing_outlined,
+                            size: 64,
+                            color: AppColors.mutedInk.withValues(alpha: 0.3)),
+                        const SizedBox(height: 16),
                         const Text(
-                          'Personal Information',
+                          'No tractors assigned',
                           style: TextStyle(
                             fontSize: 18,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             color: AppColors.ink,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 8),
                         Text(
-                          'Update your profile details below',
+                          'No tractors are currently assigned to your account.',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 14,
-                            color: AppColors.mutedInk.withValues(alpha: 0.7),
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Name
-                        _ProfileField(
-                          controller: _nameController,
-                          focusNode: _nameFocus,
-                          label: 'Full Name',
-                          hint: 'Enter your full name',
-                          icon: Icons.person_outline_rounded,
-                          textCapitalization: TextCapitalization.words,
-                          textInputAction: TextInputAction.next,
-                          onFieldSubmitted: (_) =>
-                              FocusScope.of(context).requestFocus(_emailFocus),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Name is required';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Email
-                        _ProfileField(
-                          controller: _emailController,
-                          focusNode: _emailFocus,
-                          label: 'Email Address',
-                          hint: 'Enter your email',
-                          icon: Icons.email_outlined,
-                          keyboardType: TextInputType.emailAddress,
-                          textInputAction: TextInputAction.next,
-                          onFieldSubmitted: (_) =>
-                              FocusScope.of(context).requestFocus(_phoneFocus),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Email is required';
-                            }
-                            if (!RegExp(r'^[^@]+@[^@]+\.[^@]+$')
-                                .hasMatch(value.trim())) {
-                              return 'Enter a valid email address';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Phone
-                        _ProfileField(
-                          controller: _phoneController,
-                          focusNode: _phoneFocus,
-                          label: 'Phone Number',
-                          hint: '09xxxxxxxxx',
-                          icon: Icons.phone_outlined,
-                          keyboardType: TextInputType.phone,
-                          textInputAction: TextInputAction.done,
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Gender
-                        _GenderSelector(
-                          selectedGender: _selectedGender,
-                          onChanged: (gender) =>
-                              setState(() => _selectedGender = gender),
-                        ),
-                        const SizedBox(height: 20),
-                        _ProfileField(
-                          controller: _orgNameController,
-                          focusNode: FocusNode(),
-                          label: 'Cooperative / Organization',
-                          hint: 'Enter your cooperative or organization name',
-                          icon: Icons.business_rounded,
-                          textCapitalization: TextCapitalization.words,
-                          textInputAction: TextInputAction.next,
-                        ),
-
-                        const SizedBox(height: 24),
-                        const Text(
-                          'Address',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Province
-                        _LocationDropdown(
-                          label: 'Province',
-                          hint: 'Select province',
-                          icon: Icons.map_rounded,
-                          value: _selectedProvince,
-                          options: _provinceOptions,
-                          isLoading: _isLoadingProvinces,
-                          onChanged: (v) {
-                            setState(() => _selectedProvince = v);
-                            if (v != null) {
-                              WidgetsBinding.instance.addPostFrameCallback((_) => _fetchCities(v.code));
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 16),
-
-                        // City
-                        _LocationDropdown(
-                          label: 'City / Municipality',
-                          hint: 'Select city',
-                          icon: Icons.location_city_rounded,
-                          value: _selectedCity,
-                          options: _cityOptions,
-                          isLoading: _isLoadingCities,
-                          onChanged: (v) {
-                            setState(() => _selectedCity = v);
-                            if (v != null) {
-                              WidgetsBinding.instance.addPostFrameCallback((_) => _fetchBarangays(v.code));
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Barangay
-                        _LocationDropdown(
-                          label: 'Barangay',
-                          hint: 'Select barangay',
-                          icon: Icons.home_rounded,
-                          value: _selectedBarangay,
-                          options: _barangayOptions,
-                          isLoading: _isLoadingBarangays,
-                          onChanged: (v) => setState(() => _selectedBarangay = v),
-                        ),
-
-                        const SizedBox(height: 36),
-
-                        // Save button
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _isSaving ? null : _save,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.forest,
-                              foregroundColor: Colors.white,
-                              disabledBackgroundColor:
-                                  AppColors.forest.withValues(alpha: 0.5),
-                              minimumSize: const Size.fromHeight(54),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              elevation: 0,
-                              textStyle: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            child: _isSaving
-                                ? const SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.5,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Text('Save Changes'),
+                            color: AppColors.mutedInk,
                           ),
                         ),
                       ],
                     ),
                   ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
+                  itemCount: _tractors.length,
+                  itemBuilder: (context, index) {
+                    final tractor = _tractors[index];
+                    final id = tractor['id'] as int;
+                    final nameCtrl = _tractorNameControllers[id];
+                    final isSaving = _savingTractorIds.contains(id);
+                    final noPlate = tractor['no_plate']?.toString() ?? '';
+                    final idNo = tractor['id_no']?.toString() ?? '';
+                    final engineNo = tractor['engine_no']?.toString() ?? '';
+                    final frontLoaderSn =
+                        tractor['front_loader_sn']?.toString() ?? '';
+                    final rotaryTillerSn =
+                        tractor['rotary_tiller_sn']?.toString() ?? '';
+                    final discPlowSn =
+                        tractor['disc_plow_sn']?.toString() ?? '';
+                    final gpsImei = tractor['imei']?.toString() ?? '';
+                    final deviceData = tractor['device'] as Map<String, dynamic>?;
+                    final simNumber = deviceData?['sim']?.toString() ?? '';
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Tractor header
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.forest
+                                          .withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(
+                                      Icons.precision_manufacturing_rounded,
+                                      color: AppColors.forest,
+                                      size: 22,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          noPlate.isNotEmpty
+                                              ? noPlate
+                                              : 'Tractor #$id',
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            color: AppColors.mutedInk,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          tractor['brand']?.toString() ?? '',
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.ink,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Tractor name (renameable)
+                              _TractorField(
+                                label: 'Tractor Name',
+                                icon: Icons.edit_rounded,
+                                controller: nameCtrl,
+                                onSave: () => _renameTractor(id),
+                                isSaving: isSaving,
+                              ),
+                              const SizedBox(height: 16),
+
+                              // ─── Implement Details (editable) ───
+                              _buildImplementSection(id, idNo, engineNo,
+                                  frontLoaderSn, rotaryTillerSn, discPlowSn, gpsImei, simNumber),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+
+  Widget _buildImplementSection(
+    int tractorId,
+    String idNo,
+    String engineNo,
+    String frontLoaderSn,
+    String rotaryTillerSn,
+    String discPlowSn,
+    String gpsImei,
+    String simNumber,
+  ) {
+    final ctrls = _tractorImplementControllers[tractorId];
+    final isSaving = _savingImplementIds.contains(tractorId);
+    if (ctrls == null) return const SizedBox.shrink();
+
+    final fields = [
+      ('id_no', 'Serial Number', Icons.qr_code_rounded, idNo),
+      ('engine_no', 'Engine Number', Icons.engineering_rounded, engineNo),
+      ('front_loader_sn', 'Front Loader SN', Icons.hardware_rounded, frontLoaderSn),
+      ('rotary_tiller_sn', 'Rotavator SN', Icons.autorenew_rounded, rotaryTillerSn),
+      ('disc_plow_sn', 'Disk Plow SN', Icons.disc_full_rounded, discPlowSn),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section header
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: const Row(
+            children: [
+              Icon(Icons.precision_manufacturing_rounded,
+                  size: 18, color: AppColors.pine),
+              SizedBox(width: 8),
+              Text(
+                'Implement Details',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink,
+                ),
+              ),
+            ],
+          ),
+        ),
+        ...fields.map((f) {
+          final (key, label, icon, _) = f;
+          final ctrl = ctrls[key];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _TractorImplementField(
+              label: label,
+              icon: icon,
+              controller: ctrl,
+
+            ),
+          );
+        }),
+        // ─── GPS Details ───
+        if (gpsImei.isNotEmpty || simNumber.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: const Row(
+              children: [
+                Icon(Icons.satellite_alt_rounded,
+                    size: 18, color: AppColors.pine),
+                SizedBox(width: 8),
+                Text(
+                  'GPS Details',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (gpsImei.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _TractorImplementField(
+                label: 'GPS IMEI',
+                icon: Icons.sim_card_rounded,
+                controller: TextEditingController(text: gpsImei),
+                readOnly: true,
+              ),
+            ),
+          if (simNumber.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _TractorImplementField(
+                label: 'SIM Number',
+                icon: Icons.sim_card_rounded,
+                controller: TextEditingController(text: simNumber),
+                readOnly: true,
+              ),
+            ),
+        ],
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton.icon(
+            onPressed: isSaving ? null : () => _saveImplements(tractorId),
+            icon: isSaving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5, color: Colors.white),
+                  )
+                : const Icon(Icons.save_rounded, size: 20),
+            label: Text(isSaving ? 'Saving...' : 'Save Implements'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.forest,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: AppColors.forest.withValues(alpha: 0.5),
+              minimumSize: const Size.fromHeight(50),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              elevation: 0,
+              textStyle: const TextStyle(
+                fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Tractor Field (renameable) ─────────────────
+
+class _TractorField extends StatefulWidget {
+  const _TractorField({
+    required this.label,
+    required this.icon,
+    required this.controller,
+    required this.onSave,
+    required this.isSaving,
+  });
+
+  final String label;
+  final IconData icon;
+  final TextEditingController? controller;
+  final VoidCallback onSave;
+  final bool isSaving;
+
+  @override
+  State<_TractorField> createState() => _TractorFieldState();
+}
+
+class _TractorFieldState extends State<_TractorField> {
+  bool _isEditing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F7F6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _isEditing
+              ? AppColors.forest.withValues(alpha: 0.3)
+              : Colors.grey.shade200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(widget.icon, size: 16, color: AppColors.pine),
+              const SizedBox(width: 8),
+              Text(
+                widget.label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.mutedInk,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _isEditing
+                    ? TextFormField(
+                        controller: widget.controller,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.ink,
+                        ),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: AppColors.forest),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(
+                              color: AppColors.forest,
+                              width: 1.5,
+                            ),
+                          ),
+                        ),
+                        autofocus: true,
+                        onFieldSubmitted: (_) {
+                          widget.onSave();
+                          setState(() => _isEditing = false);
+                        },
+                      )
+                    : GestureDetector(
+                        onTap: () => setState(() => _isEditing = true),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Text(
+                            widget.controller?.text.isNotEmpty == true
+                                ? widget.controller!.text
+                                : 'Tap to set name',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: widget.controller?.text.isNotEmpty ==
+                                      true
+                                  ? AppColors.ink
+                                  : AppColors.mutedInk
+                                      .withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 8),
+              if (_isEditing)
+                GestureDetector(
+                  onTap: widget.isSaving
+                      ? null
+                      : () {
+                          widget.onSave();
+                          setState(() => _isEditing = false);
+                        },
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: widget.isSaving
+                          ? Colors.grey.shade300
+                          : AppColors.forest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: widget.isSaving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.check_rounded,
+                            size: 18, color: Colors.white),
+                  ),
+                )
+              else
+                GestureDetector(
+                  onTap: () => setState(() => _isEditing = true),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.forest.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.edit_rounded,
+                        size: 16, color: AppColors.forest),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Tractor Implement Field ────────────────────
+
+class _TractorImplementField extends StatelessWidget {
+  const _TractorImplementField({
+    required this.label,
+    required this.icon,
+    required this.controller,
+    this.readOnly = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final TextEditingController? controller;
+  final bool readOnly;
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6, left: 4),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppColors.mutedInk,
+            ),
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: AppColors.mutedInk.withValues(alpha: 0.12),
+            ),
+          ),
+          child: TextFormField(
+            controller: controller,
+            readOnly: readOnly,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: readOnly ? AppColors.mutedInk : AppColors.ink,
+            ),
+            decoration: InputDecoration(
+              hintText: readOnly ? label : 'Enter ${label.toLowerCase()}',
+              hintStyle: TextStyle(
+                color: AppColors.mutedInk.withValues(alpha: 0.4),
+                fontWeight: FontWeight.w400,
+              ),
+              prefixIcon: Container(
+                margin: const EdgeInsets.only(left: 4),
+                child: Icon(icon, size: 20, color: AppColors.pine),
+              ),
+              prefixIconConstraints: const BoxConstraints(
+                minWidth: 48,
+                minHeight: 0,
+              ),
+
+              filled: true,
+              fillColor: readOnly ? AppColors.canvas : Colors.white,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: AppColors.mutedInk.withValues(alpha: 0.12),
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: AppColors.mutedInk.withValues(alpha: 0.12),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(
+                  color: AppColors.forest,
+                  width: 1.5,
                 ),
               ),
             ),
           ),
-        ],
-      ),
+        ),
+
+      ],
     );
   }
 }
@@ -1079,3 +1781,5 @@ class _LocationDropdown extends StatelessWidget {
     );
   }
 }
+
+

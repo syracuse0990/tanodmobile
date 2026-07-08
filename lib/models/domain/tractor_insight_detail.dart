@@ -5,6 +5,11 @@ class TractorInsightDetail {
     this.brand,
     this.model,
     this.imei,
+    this.idNo,
+    this.engineNo,
+    this.frontLoaderSn,
+    this.rotaryTillerSn,
+    this.discPlowSn,
     this.totalDistance = 0,
     this.totalRunningHours = 0,
     this.pmsStatus = 'ok',
@@ -16,6 +21,11 @@ class TractorInsightDetail {
   final String? brand;
   final String? model;
   final String? imei;
+  final String? idNo;
+  final String? engineNo;
+  final String? frontLoaderSn;
+  final String? rotaryTillerSn;
+  final String? discPlowSn;
   final double totalDistance;
   final double totalRunningHours;
   final String pmsStatus;
@@ -49,6 +59,11 @@ class TractorInsightDetail {
       totalDistance: _parseDouble(json['total_distance']),
       totalRunningHours: _parseDouble(json['total_running_hours']),
       pmsStatus: _stringValue(json['pms_status']) ?? 'ok',
+      idNo: _stringValue(json['id_no']),
+      engineNo: _stringValue(json['engine_no']),
+      frontLoaderSn: _stringValue(json['front_loader_sn']),
+      rotaryTillerSn: _stringValue(json['rotary_tiller_sn']),
+      discPlowSn: _stringValue(json['disc_plow_sn']),
       fca: assignee == null ? null : TractorContactInfo.fromJson(assignee),
     );
   }

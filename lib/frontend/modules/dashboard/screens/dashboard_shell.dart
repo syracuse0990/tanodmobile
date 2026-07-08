@@ -96,98 +96,95 @@ class _DashboardShellState extends State<DashboardShell> {
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: GNav(
-              selectedIndex: _branchToTab(
-                navigationShell.currentIndex,
-                visibleBranches,
-              ),
-              onTabChange: (index) {
-                final branchIndex = _tabToBranch(index, visibleBranches);
-
-                // Tap on already-active tab → reset branch to its root
-                if (branchIndex == navigationShell.currentIndex) {
-                  final rootPath = _branchRootPath(
-                    branchIndex,
-                    isTps,
-                  );
-                  GoRouter.of(context).go(rootPath);
-                  return;
-                }
-
-                tractorProvider.setHomeVisible(branchIndex == 0);
-                navigationShell.goBranch(branchIndex);
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return FittedBox(
+                  fit: BoxFit.scaleDown,
+                  clipBehavior: Clip.none,
+                  child: GNav(
+                    selectedIndex: _branchToTab(
+                      navigationShell.currentIndex,
+                      visibleBranches,
+                    ),
+                    onTabChange: (index) {
+                      final branchIndex = _tabToBranch(index, visibleBranches);
+                      tractorProvider.setHomeVisible(branchIndex == 0);
+                      navigationShell.goBranch(branchIndex);
+                    },
+                    gap: 8,
+                    activeColor: AppColors.forest,
+                    iconSize: 22,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    duration: const Duration(milliseconds: 400),
+                    tabBackgroundColor: AppColors.forest.withValues(alpha: 0.08),
+                    color: AppColors.mutedInk,
+                    tabBorderRadius: 16,
+                    tabs: [
+                      GButton(
+                        icon: Icons.home_rounded,
+                        text: context.tr('nav_home'),
+                        iconActiveColor: AppColors.forest,
+                        textStyle: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.forest,
+                        ),
+                      ),
+                      GButton(
+                        icon: Icons.notifications_active_rounded,
+                        text: context.tr('nav_alerts'),
+                        iconActiveColor: AppColors.forest,
+                        textStyle: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.forest,
+                        ),
+                      ),
+                      GButton(
+                        icon: isTps
+                            ? Icons.build_circle_rounded
+                            : Icons.calendar_month_rounded,
+                        text: isTps
+                            ? context.tr('nav_tps')
+                            : context.tr('nav_booking'),
+                        iconActiveColor: AppColors.forest,
+                        textStyle: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.forest,
+                        ),
+                      ),
+                      if (showChat)
+                        GButton(
+                          icon: Icons.forum_rounded,
+                          text: context.tr('nav_chat'),
+                          leading: _BottomNavIcon(
+                            icon: Icons.forum_rounded,
+                            unreadCount: chatUnreadCount,
+                            active: navigationShell.currentIndex == 3,
+                          ),
+                          iconActiveColor: AppColors.forest,
+                          textStyle: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.forest,
+                          ),
+                        ),
+                      GButton(
+                        icon: Icons.person_rounded,
+                        text: context.tr('nav_account'),
+                        iconActiveColor: AppColors.forest,
+                        textStyle: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.forest,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
               },
-              gap: 8,
-              activeColor: AppColors.forest,
-              iconSize: 22,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              duration: const Duration(milliseconds: 400),
-              tabBackgroundColor: AppColors.forest.withValues(alpha: 0.08),
-              color: AppColors.mutedInk,
-              tabBorderRadius: 16,
-              tabs: [
-                GButton(
-                  icon: Icons.home_rounded,
-                  text: context.tr('nav_home'),
-                  iconActiveColor: AppColors.forest,
-                  textStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.forest,
-                  ),
-                ),
-                GButton(
-                  icon: Icons.notifications_active_rounded,
-                  text: context.tr('nav_alerts'),
-                  iconActiveColor: AppColors.forest,
-                  textStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.forest,
-                  ),
-                ),
-                GButton(
-                  icon: isTps
-                      ? Icons.build_circle_rounded
-                      : Icons.calendar_month_rounded,
-                  text: isTps
-                      ? context.tr('nav_tps')
-                      : context.tr('nav_booking'),
-                  iconActiveColor: AppColors.forest,
-                  textStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.forest,
-                  ),
-                ),
-                if (showChat)
-                  GButton(
-                    icon: Icons.forum_rounded,
-                    text: context.tr('nav_chat'),
-                    leading: _BottomNavIcon(
-                      icon: Icons.forum_rounded,
-                      unreadCount: chatUnreadCount,
-                      active: navigationShell.currentIndex == 3,
-                    ),
-                    iconActiveColor: AppColors.forest,
-                    textStyle: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.forest,
-                    ),
-                  ),
-                GButton(
-                  icon: Icons.person_rounded,
-                  text: context.tr('nav_account'),
-                  iconActiveColor: AppColors.forest,
-                  textStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.forest,
-                  ),
-                ),
-              ],
             ),
           ),
         ),

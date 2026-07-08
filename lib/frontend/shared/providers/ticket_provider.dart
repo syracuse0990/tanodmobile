@@ -270,6 +270,7 @@ class TicketProvider extends ChangeNotifier {
     String priority = 'medium',
     String? category,
     int? tractorId,
+    DateTime? dateOfFailure,
     File? nameplatePhoto,
     File? dashboardPhoto,
     List<File>? damagePhotos,
@@ -284,6 +285,7 @@ class TicketProvider extends ChangeNotifier {
         'priority': priority,
         'category': ?category,
         'tractor_id': ?tractorId,
+        if (dateOfFailure != null) 'reported_date': dateOfFailure.toIso8601String().split('T').first,
       };
 
       if (nameplatePhoto != null) {
@@ -547,6 +549,10 @@ class TicketProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint('TicketProvider.addComment error: $e');
+      if (e is DioException) {
+        debugPrint('  status: ${e.response?.statusCode}');
+        debugPrint('  body: ${e.response?.data}');
+      }
       return false;
     }
   }

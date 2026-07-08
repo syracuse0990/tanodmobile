@@ -25,6 +25,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
   int? _selectedTractorId;
   String? _selectedCategory;
+  DateTime? _dateOfFailure;
   final _photoService = TicketIssuePhotoService();
   bool _submitting = false;
 
@@ -500,6 +501,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
       description: _descriptionController.text.trim(),
       category: _selectedCategory,
       tractorId: _selectedTractorId,
+      dateOfFailure: _dateOfFailure,
       nameplatePhoto: _nameplatePhotos.first.file,
       dashboardPhoto: _dashboardPhotos.first.file,
       damagePhotos: _damagePhotos.map((p) => p.file).toList(),
@@ -781,6 +783,67 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                 },
               ),
               ],
+
+              const SizedBox(height: 18),
+
+              // ─── Date of Failure ───
+              _FieldLabel(label: 'Date of Failure'),
+              const SizedBox(height: 6),
+              GestureDetector(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _dateOfFailure ?? DateTime.now(),
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                    builder: (context, child) => Theme(
+                      data: Theme.of(context).copyWith(
+                        colorScheme: const ColorScheme.light(
+                          primary: AppColors.forest,
+                          onPrimary: Colors.white,
+                          surface: Colors.white,
+                          onSurface: AppColors.ink,
+                        ),
+                      ),
+                      child: child!,
+                    ),
+                  );
+                  if (picked != null) {
+                    setState(() => _dateOfFailure = picked);
+                  }
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.mutedInk.withValues(alpha: 0.12)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.calendar_today_rounded, size: 18, color: AppColors.mutedInk),
+                      const SizedBox(width: 12),
+                      Text(
+                        _dateOfFailure != null
+                            ? '${_dateOfFailure!.day}/${_dateOfFailure!.month}/${_dateOfFailure!.year}'
+                            : 'Select date of failure',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: _dateOfFailure != null ? AppColors.ink : AppColors.mutedInk,
+                        ),
+                      ),
+                      if (_dateOfFailure != null) ...[
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () => setState(() => _dateOfFailure = null),
+                          child: Icon(Icons.close_rounded, size: 18, color: AppColors.mutedInk),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
 
               const SizedBox(height: 18),
 
