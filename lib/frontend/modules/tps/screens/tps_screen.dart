@@ -390,6 +390,7 @@ class _TicketsTab extends StatelessWidget {
         const SizedBox(height: 8),
         Expanded(
           child: _PagedSearchList<Ticket>(
+            key: ValueKey('tickets_${provider.tickets.length}_${provider.ticketsLoading}'),
             items: provider.tickets,
             loading: provider.ticketsLoading,
             hasMore: provider.hasMoreTickets,
@@ -538,6 +539,7 @@ class _FcasTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _PagedSearchList<TpsFca>(
+      key: ValueKey('fcas_${provider.fcas.length}_${provider.fcasLoading}'),
       items: provider.fcas,
       loading: provider.fcasLoading,
       hasMore: provider.hasMoreFcas,
@@ -909,6 +911,7 @@ class _MaintenanceTab extends StatelessWidget {
       });
 
     return _PagedSearchList<MaintenanceTractor>(
+      key: ValueKey('maint_${tractors.length}_${provider.loading}'),
       items: tractors,
       loading: provider.loading,
       hasMore: provider.hasMore,
@@ -1090,6 +1093,7 @@ class _DistributionsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _PagedSearchList<Distribution>(
+      key: ValueKey('dist_${provider.distributions.length}_${provider.distributionsLoading}'),
       items: provider.distributions,
       loading: provider.distributionsLoading,
       hasMore: provider.hasMoreDistributions,
@@ -1200,6 +1204,7 @@ class _DistributionCard extends StatelessWidget {
 
 class _PagedSearchList<T> extends StatefulWidget {
   const _PagedSearchList({
+    super.key,
     required this.items,
     required this.loading,
     required this.hasMore,

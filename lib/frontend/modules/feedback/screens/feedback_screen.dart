@@ -24,9 +24,9 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     await context.read<FeedbackProvider>().fetchFeedbacks();
   }
 
-  bool get _isFarmer {
+  bool get _canGiveFeedback {
     final user = context.read<AuthProvider>().currentUser;
-    return user?.roles.contains('farmer') ?? false;
+    return user?.roles.any((r) => ['farmer', 'fca'].contains(r)) ?? false;
   }
 
   @override
@@ -46,7 +46,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
           onPressed: () => context.go('/account'),
         ),
       ),
-      floatingActionButton: _isFarmer
+      floatingActionButton: _canGiveFeedback
           ? FloatingActionButton(
               backgroundColor: AppColors.forest,
               foregroundColor: Colors.white,
@@ -96,7 +96,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                               color: AppColors.mutedInk,
                             ),
                           ),
-                          if (_isFarmer) ...[
+                          if (_canGiveFeedback) ...[
                             const SizedBox(height: 4),
                             const Text(
                               'Tap + to share your experience',

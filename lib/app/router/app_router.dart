@@ -2,6 +2,9 @@ import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:tanodmobile/frontend/modules/alerts/screens/alerts_screen.dart';
 import 'package:tanodmobile/frontend/modules/auth/screens/login_screen.dart';
+import 'package:tanodmobile/frontend/modules/forgot_password/forgot_password_screen.dart';
+import 'package:tanodmobile/frontend/modules/forgot_password/otp_verification_screen.dart';
+import 'package:tanodmobile/frontend/modules/forgot_password/reset_password_screen.dart';
 import 'package:tanodmobile/frontend/modules/bookings/screens/bookings_screen.dart';
 import 'package:tanodmobile/frontend/modules/chat/screens/chat_rooms_screen.dart';
 import 'package:tanodmobile/frontend/modules/dashboard/screens/dashboard_shell.dart';
@@ -64,6 +67,10 @@ class AppRouter {
       redirect: (BuildContext context, GoRouterState state) {
         final status = authProvider.status;
         final isAuthRoute = state.matchedLocation == '/login';
+        final isForgotPasswordRoute =
+            state.matchedLocation == '/forgot-password' ||
+            state.matchedLocation == '/forgot-password/verify-otp' ||
+            state.matchedLocation == '/forgot-password/reset-password';
         final isOfflineSyncRoute =
             state.matchedLocation == '/tps/offline-download';
         final isOfflineWorkspaceRoute =
@@ -78,7 +85,7 @@ class AppRouter {
           // Stay on the login screen during sign-in/sign-up attempts so
           // the form and its entered data are preserved. Only redirect
           // to the splash screen during the initial app bootstrap.
-          if (state.matchedLocation == '/login') {
+          if (state.matchedLocation == '/login' || isForgotPasswordRoute) {
             return null;
           }
           return '/splash';
@@ -86,7 +93,8 @@ class AppRouter {
 
         if (status == AuthStatus.unauthenticated ||
             status == AuthStatus.error) {
-          return isAuthRoute ? null : '/login';
+          if (isAuthRoute || isForgotPasswordRoute) return null;
+          return '/login';
         }
 
         if (requiresSync && !isOfflineSyncRoute) {
@@ -131,6 +139,35 @@ class AppRouter {
           path: '/login',
           builder: (context, state) =>
               const LoginScreen(key: ValueKey('login')),
+        ),
+        GoRoute(
+          path: '/forgot-password',
+          builder: (context, state) =>
+              const ForgotPasswordScreen(key: ValueKey('forgot-password')),
+        ),
+        GoRoute(
+          path: '/forgot-password/verify-otp',
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>? ?? {};
+            final contact = extra['contact'] as String? ?? '';
+            return OtpVerificationScreen(
+              key: const ValueKey('verify-otp'),
+              contact: contact,
+            );
+          },
+        ),
+        GoRoute(
+          path: '/forgot-password/reset-password',
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>? ?? {};
+            final contact = extra['contact'] as String? ?? '';
+            final verifiedToken = extra['verified_token'] as String? ?? '';
+            return ResetPasswordScreen(
+              key: const ValueKey('reset-password'),
+              contact: contact,
+              verifiedToken: verifiedToken,
+            );
+          },
         ),
         GoRoute(
           path: '/tps/offline-download',

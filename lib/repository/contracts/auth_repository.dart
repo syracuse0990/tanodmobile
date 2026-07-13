@@ -52,6 +52,17 @@ abstract class AuthRepository {
 
   Future<void> registerFcmToken();
 
+  Future<Map<String, dynamic>> sendForgotPasswordOtp({required String contact});
+
+  Future<Map<String, dynamic>> verifyForgotPasswordOtp({required String contact, required String otp});
+
+  Future<void> resetForgotPassword({
+    required String contact,
+    required String verifiedToken,
+    required String password,
+    required String passwordConfirmation,
+  });
+
   Future<void> requestAccountDeletion({required String password});
 
   Future<void> cancelAccountDeletion();

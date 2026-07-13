@@ -249,6 +249,58 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<Map<String, dynamic>> sendForgotPasswordOtp({required String contact}) async {
+    final isOnline = await _connectivityService.isConnected();
+
+    if (!isOnline) {
+      throw const AppException(
+        'No internet connection. Connect to the Tanod API and try again.',
+      );
+    }
+
+    return _remoteDataSource.sendForgotPasswordOtp(contact: contact);
+  }
+
+  @override
+  Future<Map<String, dynamic>> verifyForgotPasswordOtp({
+    required String contact,
+    required String otp,
+  }) async {
+    final isOnline = await _connectivityService.isConnected();
+
+    if (!isOnline) {
+      throw const AppException(
+        'No internet connection. Connect to the Tanod API and try again.',
+      );
+    }
+
+    return _remoteDataSource.verifyForgotPasswordOtp(contact: contact, otp: otp);
+  }
+
+  @override
+  Future<void> resetForgotPassword({
+    required String contact,
+    required String verifiedToken,
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    final isOnline = await _connectivityService.isConnected();
+
+    if (!isOnline) {
+      throw const AppException(
+        'No internet connection. Connect to the Tanod API and try again.',
+      );
+    }
+
+    await _remoteDataSource.resetForgotPassword(
+      contact: contact,
+      verifiedToken: verifiedToken,
+      password: password,
+      passwordConfirmation: passwordConfirmation,
+    );
+  }
+
+  @override
   Future<void> registerFcmToken() async {
     await _remoteDataSource.registerFcmToken();
   }

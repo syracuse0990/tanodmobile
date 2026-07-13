@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
@@ -36,8 +37,15 @@ class _CreateGeofenceScreenState extends State<CreateGeofenceScreen> {
   final Set<int> _selectedDeviceIds = {};
 
   bool _devicesLoaded = false;
+  bool _useSatellite = false;
+  LatLng? _userLocation;
+  bool _locationLoading = false;
 
   static const _phCenter = LatLng(12.8797, 121.7740);
+
+  String get _tileUrl => _useSatellite
+      ? 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
+      : 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
 
   @override
   void initState() {
@@ -76,6 +84,65 @@ class _CreateGeofenceScreenState extends State<CreateGeofenceScreen> {
       _circleRadius = 500;
       _polygonPoints.clear();
     });
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() => _locationLoading = true);
+
+    try {
+      final servicesEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!servicesEnabled) {
+        if (mounted) {
+          AppToast.show('Please enable location services', type: ToastType.error);
+        }
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            AppToast.show('Location permission denied', type: ToastType.error);
+          }
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          AppToast.show(
+            'Location permission permanently denied. Enable it in settings.',
+            type: ToastType.error,
+          );
+        }
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 15),
+        ),
+      );
+
+      final point = LatLng(position.latitude, position.longitude);
+
+      if (!mounted) return;
+
+      setState(() {
+        _userLocation = point;
+        _locationLoading = false;
+      });
+
+      _mapController.move(point, 15);
+      AppToast.show('Location found', type: ToastType.success);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _locationLoading = false);
+        AppToast.show('Failed to get location', type: ToastType.error);
+      }
+    }
   }
 
   List<LatLng> _circleVisualPoints(LatLng center, double radiusMeters) {
@@ -250,8 +317,7 @@ class _CreateGeofenceScreenState extends State<CreateGeofenceScreen> {
                           ),
                           children: [
                             TileLayer(
-                              urlTemplate:
-                                  'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+                              urlTemplate: _tileUrl,
                               userAgentPackageName: 'com.tanod.tanodmobile',
                             ),
                             // Circle overlay
@@ -298,6 +364,29 @@ class _CreateGeofenceScreenState extends State<CreateGeofenceScreen> {
                             // Markers for polygon vertices / circle center
                             MarkerLayer(
                               markers: [
+                                // User location blue dot
+                                if (_userLocation != null)
+                                  Marker(
+                                    point: _userLocation!,
+                                    width: 28,
+                                    height: 28,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Colors.blue.withValues(alpha: 0.25),
+                                      ),
+                                      child: Center(
+                                        child: Container(
+                                          width: 14,
+                                          height: 14,
+                                          decoration: const BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: Colors.blue,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 if (_shape == 'circle' && _circleCenter != null)
                                   Marker(
                                     point: _circleCenter!,
@@ -346,31 +435,43 @@ class _CreateGeofenceScreenState extends State<CreateGeofenceScreen> {
                             ),
                           ],
                         ),
-                        // Undo polygon button
-                        if (_shape == 'polygon' && _polygonPoints.isNotEmpty)
-                          Positioned(
-                            top: 8,
-                            right: 8,
-                            child: GestureDetector(
-                              onTap: _removeLastPolygonPoint,
-                              child: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(8),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color:
-                                          Colors.black.withValues(alpha: 0.1),
-                                      blurRadius: 4,
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(Icons.undo_rounded,
-                                    size: 20, color: AppColors.ink),
+                        // Map control buttons column (top-right)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Column(
+                            children: [
+                              // Satellite toggle
+                              _MapIconButton(
+                                icon: _useSatellite
+                                    ? Icons.map_rounded
+                                    : Icons.satellite_alt_rounded,
+                                tooltip: _useSatellite
+                                    ? 'Street view'
+                                    : 'Satellite view',
+                                onTap: () =>
+                                    setState(() => _useSatellite = !_useSatellite),
                               ),
-                            ),
+                              const SizedBox(height: 6),
+                              // GPS locate
+                              _MapIconButton(
+                                icon: Icons.my_location_rounded,
+                                tooltip: 'My location',
+                                isLoading: _locationLoading,
+                                onTap: _getCurrentLocation,
+                              ),
+                              const SizedBox(height: 6),
+                              // Undo polygon button
+                              if (_shape == 'polygon' &&
+                                  _polygonPoints.isNotEmpty)
+                                _MapIconButton(
+                                  icon: Icons.undo_rounded,
+                                  tooltip: 'Undo point',
+                                  onTap: _removeLastPolygonPoint,
+                                ),
+                            ],
                           ),
+                        ),
                       ],
                     ),
                   ),
@@ -617,6 +718,55 @@ class _ToggleChip extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MapIconButton extends StatelessWidget {
+  const _MapIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.isLoading = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 4,
+          ),
+        ],
+      ),
+      child: GestureDetector(
+        onTap: isLoading ? null : onTap,
+        child: Tooltip(
+          message: tooltip,
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            child: isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.pine,
+                    ),
+                  )
+                : Icon(icon, size: 20, color: AppColors.ink),
+          ),
         ),
       ),
     );

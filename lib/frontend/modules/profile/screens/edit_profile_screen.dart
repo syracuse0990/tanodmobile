@@ -10,6 +10,7 @@ import 'package:tanodmobile/core/errors/app_exception.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/app_toast.dart';
 import 'package:tanodmobile/models/domain/location_option.dart';
+import 'package:tanodmobile/services/ocr/tractor_ocr_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -56,6 +57,10 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   // Implement controllers per tractor: tractorId -> field -> controller
   final Map<int, Map<String, TextEditingController>> _tractorImplementControllers = {};
   final Set<int> _savingImplementIds = {};
+  // Image tracking per tractor per field
+  final Map<int, Map<String, String?>> _tractorImageUrls = {};
+  final Map<int, Map<String, bool>> _tractorScanning = {};
+  final Map<int, Map<String, bool>> _tractorImageExists = {};
 
 
   @override
@@ -359,12 +364,30 @@ class _EditProfileScreenState extends State<EditProfileScreen>
 
   void _initImplementControllers(int tractorId, Map<String, dynamic> tractor) {
     _tractorImplementControllers.putIfAbsent(tractorId, () => {});
+    _tractorImageUrls.putIfAbsent(tractorId, () => {});
+    _tractorScanning.putIfAbsent(tractorId, () => {});
+    _tractorImageExists.putIfAbsent(tractorId, () => {});
     final fields = ['id_no', 'engine_no', 'front_loader_sn', 'rotary_tiller_sn', 'disc_plow_sn'];
     for (final field in fields) {
       _tractorImplementControllers[tractorId]!.putIfAbsent(
         field,
         () => TextEditingController(text: tractor[field]?.toString() ?? ''),
       );
+      _tractorImageUrls[tractorId]![field] = null;
+      _tractorScanning[tractorId]![field] = false;
+      _tractorImageExists[tractorId]![field] = false;
+
+      // Load existing images from tractor data
+      final images = tractor['images'] as List<dynamic>? ?? [];
+      for (final img in images) {
+        if (img is Map<String, dynamic> && img['type']?.toString() == field) {
+          final imgUrl = img['url']?.toString() ?? '';
+          if (imgUrl.isNotEmpty) {
+            _tractorImageUrls[tractorId]![field] = imgUrl;
+            _tractorImageExists[tractorId]![field] = true;
+          }
+        }
+      }
     }
   }
 
@@ -390,6 +413,87 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       }
     }
     if (mounted) setState(() => _savingImplementIds.remove(tractorId));
+  }
+
+  Future<void> _takeAndProcessImplementPhoto(
+    int tractorId,
+    String fieldKey,
+  ) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: 1200,
+      maxHeight: 1200,
+      imageQuality: 70,
+    );
+
+    if (picked == null || !mounted) return;
+
+    final imageFile = File(picked.path);
+
+    setState(() {
+      _tractorScanning[tractorId]?[fieldKey] = true;
+    });
+
+    // Step 1: OCR - extract text & auto-fill SN
+    try {
+      final extractedSn =
+          await TractorOcrService.recognizeAndExtract(imageFile, fieldKey);
+
+      if (extractedSn != null && extractedSn.isNotEmpty && mounted) {
+        final ctrl = _tractorImplementControllers[tractorId]?[fieldKey];
+        if (ctrl != null) {
+          ctrl.text = extractedSn;
+          AppToast.success('SN auto-filled from image');
+        }
+      }
+    } catch (e) {
+      debugPrint('OCR error for $fieldKey: $e');
+    }
+
+    // Step 2: Upload image to backend
+    try {
+      final formData = FormData.fromMap({
+        'image': await MultipartFile.fromFile(
+          imageFile.path,
+          filename: '$fieldKey-${DateTime.now().millisecondsSinceEpoch}.jpg',
+        ),
+        'type': fieldKey,
+      });
+
+      final response = await _dio.post(
+        '/tractors/$tractorId/images',
+        data: formData,
+        options: Options(contentType: 'multipart/form-data'),
+      );
+
+      if (mounted) {
+        final data = response.data['data'] as Map<String, dynamic>?;
+        final imageUrl = data?['url']?.toString();
+        if (imageUrl != null && imageUrl.isNotEmpty) {
+          setState(() {
+            _tractorImageUrls[tractorId]?[fieldKey] = imageUrl;
+            _tractorImageExists[tractorId]?[fieldKey] = true;
+          });
+          AppToast.success('Image uploaded');
+        }
+      }
+    } on DioException catch (e) {
+      debugPrint('Image upload DioError for $fieldKey: ${e.response?.data}');
+      final msg = e.response?.data is Map
+          ? ((e.response!.data as Map)['message']?.toString() ?? 'Upload failed')
+          : 'Failed to upload image';
+      if (mounted) AppToast.show(msg, type: ToastType.error);
+    } catch (e) {
+      debugPrint('Image upload error for $fieldKey: $e');
+      if (mounted) AppToast.show('Failed to upload image', type: ToastType.error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _tractorScanning[tractorId]?[fieldKey] = false;
+        });
+      }
+    }
   }
 
   // ─── Save Profile ───
@@ -923,6 +1027,8 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   ) {
     final ctrls = _tractorImplementControllers[tractorId];
     final isSaving = _savingImplementIds.contains(tractorId);
+    final imageUrls = _tractorImageUrls[tractorId] ?? {};
+    final scanning = _tractorScanning[tractorId] ?? {};
     if (ctrls == null) return const SizedBox.shrink();
 
     final fields = [
@@ -965,7 +1071,10 @@ class _EditProfileScreenState extends State<EditProfileScreen>
               label: label,
               icon: icon,
               controller: ctrl,
-
+              fieldKey: key,
+              imageUrl: imageUrls[key],
+              isScanning: scanning[key] ?? false,
+              onCameraTap: () => _takeAndProcessImplementPhoto(tractorId, key),
             ),
           );
         }),
@@ -1217,13 +1326,20 @@ class _TractorImplementField extends StatelessWidget {
     required this.icon,
     required this.controller,
     this.readOnly = false,
+    this.onCameraTap,
+    this.imageUrl,
+    this.isScanning = false,
+    this.fieldKey,
   });
 
   final String label;
   final IconData icon;
   final TextEditingController? controller;
   final bool readOnly;
-
+  final VoidCallback? onCameraTap;
+  final String? imageUrl;
+  final bool isScanning;
+  final String? fieldKey;
 
   @override
   Widget build(BuildContext context) {
@@ -1232,13 +1348,64 @@ class _TractorImplementField extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: 6, left: 4),
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppColors.mutedInk,
-            ),
+          child: Row(
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.mutedInk,
+                ),
+              ),
+              const Spacer(),
+              if (imageUrl != null)
+                GestureDetector(
+                  onTap: () => _showImagePreview(context),
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: AppColors.mutedInk.withValues(alpha: 0.3),
+                      ),
+                      image: DecorationImage(
+                        image: NetworkImage(imageUrl!),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                ),
+              if (imageUrl != null) const SizedBox(width: 6),
+              if (onCameraTap != null)
+                GestureDetector(
+                  onTap: isScanning ? null : onCameraTap,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: isScanning
+                          ? AppColors.canvas
+                          : AppColors.forest.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: isScanning
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5,
+                              color: AppColors.pine,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.camera_alt_rounded,
+                            size: 16,
+                            color: AppColors.forest,
+                          ),
+                  ),
+                ),
+            ],
           ),
         ),
         Container(
@@ -1271,7 +1438,6 @@ class _TractorImplementField extends StatelessWidget {
                 minWidth: 48,
                 minHeight: 0,
               ),
-
               filled: true,
               fillColor: readOnly ? AppColors.canvas : Colors.white,
               contentPadding: const EdgeInsets.symmetric(
@@ -1300,8 +1466,32 @@ class _TractorImplementField extends StatelessWidget {
             ),
           ),
         ),
-
       ],
+    );
+  }
+
+  void _showImagePreview(BuildContext context) {
+    if (imageUrl == null) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: GestureDetector(
+          onTap: () => Navigator.pop(ctx),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.network(
+              imageUrl!,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => Container(
+                padding: const EdgeInsets.all(20),
+                color: Colors.white,
+                child: const Text('Failed to load image'),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

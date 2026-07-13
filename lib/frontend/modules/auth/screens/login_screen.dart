@@ -274,6 +274,7 @@ class _LoginScreenState extends State<LoginScreen> {
               RememberForgotRow(
                 rememberMe: _rememberMe,
                 onChanged: (v) => setState(() => _rememberMe = v),
+                onForgotPassword: () => context.push('/forgot-password'),
               ),
               const SizedBox(height: 24),
               PrimaryButton(

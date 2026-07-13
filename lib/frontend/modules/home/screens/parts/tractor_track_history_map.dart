@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -225,25 +223,22 @@ class _TractorTrackHistoryMapState extends State<TractorTrackHistoryMap> {
       point: point,
       width: 48,
       height: 48,
-      child: Transform.rotate(
-        angle: direction * math.pi / 180,
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.22),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Image.asset(
-            assetPath,
-            fit: BoxFit.contain,
-            filterQuality: FilterQuality.high,
-          ),
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.22),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Image.asset(
+          assetPath,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
         ),
       ),
     );

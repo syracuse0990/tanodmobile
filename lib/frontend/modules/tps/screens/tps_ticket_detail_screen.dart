@@ -256,7 +256,7 @@ class _TpsTicketDetailScreenState extends State<TpsTicketDetailScreen> {
               ],
             )
           : null,
-      body: provider.loadingDetail
+      body: provider.loadingDetail && ticket == null
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.forest),
             )

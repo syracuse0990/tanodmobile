@@ -40,6 +40,11 @@ class AppEndpoints {
   // Reports
   static const String reports = '/reports';
 
+  // Forgot Password endpoints
+  static const String forgotPasswordSendOtp = '/forgot-password/send-otp';
+  static const String forgotPasswordVerifyOtp = '/forgot-password/verify-otp';
+  static const String forgotPasswordReset = '/forgot-password/reset';
+
   // Account deletion endpoints
   static const String accountRequestDeletion = '/account/request-deletion';
   static const String accountCancelDeletion = '/account/cancel-deletion';

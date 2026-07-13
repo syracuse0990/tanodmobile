@@ -354,6 +354,36 @@ class AuthProvider extends ChangeNotifier {
     return _authRepository.fetchAccountDeletionStatus();
   }
 
+  Future<Map<String, dynamic>> sendForgotPasswordOtp({
+    required String contact,
+  }) async {
+    return _authRepository.sendForgotPasswordOtp(contact: contact);
+  }
+
+  Future<Map<String, dynamic>> verifyForgotPasswordOtp({
+    required String contact,
+    required String otp,
+  }) async {
+    return _authRepository.verifyForgotPasswordOtp(
+      contact: contact,
+      otp: otp,
+    );
+  }
+
+  Future<void> resetForgotPassword({
+    required String contact,
+    required String verifiedToken,
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    await _authRepository.resetForgotPassword(
+      contact: contact,
+      verifiedToken: verifiedToken,
+      password: password,
+      passwordConfirmation: passwordConfirmation,
+    );
+  }
+
   Future<void> deleteAccountAndSignOut({required String password}) async {
     await _authRepository.requestAccountDeletion(password: password);
   }

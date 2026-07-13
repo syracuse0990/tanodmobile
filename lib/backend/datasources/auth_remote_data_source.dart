@@ -217,6 +217,60 @@ class AuthRemoteDataSource {
     }
   }
 
+  Future<Map<String, dynamic>> sendForgotPasswordOtp({
+    required String contact,
+  }) async {
+    try {
+      return await _apiClient.post(
+        AppEndpoints.forgotPasswordSendOtp,
+        data: {'contact': contact},
+      );
+    } on DioException catch (error) {
+      throw AppException.fromDio(error);
+    } catch (error) {
+      throw AppException(error.toString());
+    }
+  }
+
+  Future<Map<String, dynamic>> verifyForgotPasswordOtp({
+    required String contact,
+    required String otp,
+  }) async {
+    try {
+      return await _apiClient.post(
+        AppEndpoints.forgotPasswordVerifyOtp,
+        data: {'contact': contact, 'otp': otp},
+      );
+    } on DioException catch (error) {
+      throw AppException.fromDio(error);
+    } catch (error) {
+      throw AppException(error.toString());
+    }
+  }
+
+  Future<void> resetForgotPassword({
+    required String contact,
+    required String verifiedToken,
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    try {
+      await _apiClient.post(
+        AppEndpoints.forgotPasswordReset,
+        data: {
+          'contact': contact,
+          'verified_token': verifiedToken,
+          'password': password,
+          'password_confirmation': passwordConfirmation,
+        },
+      );
+    } on DioException catch (error) {
+      throw AppException.fromDio(error);
+    } catch (error) {
+      throw AppException(error.toString());
+    }
+  }
+
   Future<void> signOut() async {
     try {
       await _apiClient.post(AppEndpoints.logout);

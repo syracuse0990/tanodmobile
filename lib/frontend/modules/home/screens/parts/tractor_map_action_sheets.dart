@@ -507,7 +507,8 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
                             actionLabel: 'Reload',
                             onTap: _loadTrackHistory,
                           )
-                        : Column(
+                        : SingleChildScrollView(
+                            child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               SizedBox(
@@ -738,7 +739,8 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
                                 ],
                               ),
                               const SizedBox(height: 10),
-                              Expanded(
+                              SizedBox(
+                                height: 260,
                                 child: ListView.separated(
                                   itemCount: _points.length,
                                   separatorBuilder: (_, _) => const SizedBox(height: 10),
@@ -752,9 +754,11 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
                                   },
                                 ),
                               ),
+                              const SizedBox(height: 20),
                             ],
                           ),
-          ),
+                        ),
+                      ),
         ],
       ),
     );

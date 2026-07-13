@@ -6,10 +6,12 @@ class RememberForgotRow extends StatelessWidget {
     super.key,
     required this.rememberMe,
     required this.onChanged,
+    required this.onForgotPassword,
   });
 
   final bool rememberMe;
   final ValueChanged<bool> onChanged;
+  final VoidCallback onForgotPassword;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +41,7 @@ class RememberForgotRow extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         GestureDetector(
-          onTap: () {},
+          onTap: onForgotPassword,
           child: Text(
             'Forgot Password?',
             style: style?.copyWith(
