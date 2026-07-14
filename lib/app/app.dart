@@ -19,6 +19,7 @@ import 'package:tanodmobile/frontend/shared/providers/locale_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/realtime_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tps_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/ticket_provider.dart';
+import 'package:tanodmobile/frontend/shared/providers/offline_ticket_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tractor_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/maintenance_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/pms_provider.dart';
@@ -95,6 +96,13 @@ class TanodMobileApp extends StatelessWidget {
           create: (context) => TicketProvider(
             apiClient: context.read<ApiClient>(),
             dio: context.read<Dio>(),
+          ),
+        ),
+        ChangeNotifierProvider<OfflineTicketProvider>(
+          create: (context) => OfflineTicketProvider(
+            hiveService: context.read<HiveService>(),
+            apiClient: context.read<ApiClient>(),
+            connectivityService: context.read<ConnectivityService>(),
           ),
         ),
         ChangeNotifierProvider<TpsProvider>(

@@ -17,6 +17,8 @@ import 'package:tanodmobile/frontend/modules/splash/screens/splash_screen.dart';
 import 'package:tanodmobile/frontend/modules/tickets/screens/create_ticket_screen.dart';
 import 'package:tanodmobile/frontend/modules/tickets/screens/ticket_detail_screen.dart';
 import 'package:tanodmobile/frontend/modules/tickets/screens/tickets_screen.dart';
+import 'package:tanodmobile/frontend/modules/offline_ticket/screens/offline_tickets_screen.dart';
+import 'package:tanodmobile/frontend/modules/offline_ticket/screens/create_offline_ticket_screen.dart';
 import 'package:tanodmobile/frontend/modules/maintenance/screens/maintenance_screen.dart';
 import 'package:tanodmobile/frontend/modules/maintenance/screens/pms_record_screen.dart';
 import 'package:tanodmobile/frontend/modules/maintenance/screens/pms_request_screen.dart';
@@ -350,6 +352,18 @@ class AppRouter {
                           path: 'create',
                           builder: (context, state) =>
                               const CreateTicketScreen(),
+                        ),
+                        GoRoute(
+                          path: 'offline',
+                          builder: (context, state) =>
+                              const OfflineTicketsScreen(),
+                          routes: [
+                            GoRoute(
+                              path: 'create',
+                              builder: (context, state) =>
+                                  const CreateOfflineTicketScreen(),
+                            ),
+                          ],
                         ),
                         GoRoute(
                           path: ':id',

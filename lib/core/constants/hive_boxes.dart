@@ -27,4 +27,6 @@ class HiveBoxes {
       'tps_offline_reference_data_synced_at';
   static const String fcaCreateDetailsDraftKey = 'fca_create_details_draft';
   static const String fcaCreateDraftKey = 'fca_create_draft';
+  static const String offlineTicketDraftsKey = 'offline_ticket_drafts';
+  static const String offlineTicketCachedTractorsKey = 'offline_ticket_cached_tractors';
 }

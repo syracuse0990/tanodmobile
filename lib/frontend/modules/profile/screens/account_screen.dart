@@ -224,6 +224,12 @@ class AccountScreen extends StatelessWidget {
                               subtitle: 'Service reports from resolved tickets',
                               onTap: () => context.go('/account/ticket-reports'),
                             ),
+                          _MenuItem(
+                            icon: Icons.cloud_off_rounded,
+                            label: 'Offline Tickets',
+                            subtitle: 'Drafts waiting to be submitted',
+                            onTap: () => context.go('/account/tickets/offline'),
+                          ),
                         ],
                       ),
 
