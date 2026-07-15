@@ -11,7 +11,9 @@ import 'package:tanodmobile/frontend/modules/home/screens/parts/tractor_map_acti
 import 'package:tanodmobile/frontend/modules/home/screens/parts/tractor_insight_sheet.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tractor_provider.dart';
+import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
 import 'package:tanodmobile/models/domain/tractor_location.dart';
+import 'package:tanodmobile/services/storage/hive_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -27,6 +29,14 @@ class _HomeScreenState extends State<HomeScreen>
   bool _showSatellite = false;
   bool _isMapReady = false;
   int? _selectedTractorId;
+
+  // ── Tutorial keys ──
+  final _titleKey = GlobalKey();
+  final _statusChipsKey = GlobalKey();
+  final _searchKey = GlobalKey();
+  final _mapKey = GlobalKey();
+  final _fabKey = GlobalKey();
+  bool _showTutorial = false;
 
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
@@ -79,6 +89,33 @@ class _HomeScreenState extends State<HomeScreen>
     // Start polling
     _tractorProvider.startPolling();
     _tractorProvider.addListener(_onTractorDataChanged);
+
+    // Show tutorial on first launch
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
+  }
+
+  void _maybeShowTutorial() {
+    if (!mounted) return;
+
+    try {
+      final hive = context.read<HiveService>();
+      final alreadySeen = hive.getPreference('tutorial_home') == 'true';
+      if (alreadySeen) return;
+
+      // Wait a moment for the map & data to render
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (!mounted || _showTutorial) return;
+        setState(() => _showTutorial = true);
+      });
+    } catch (_) {
+      // Hive not ready yet — silently skip tutorial
+    }
+  }
+
+  void _onTutorialComplete() {
+    if (!mounted) return;
+    context.read<HiveService>().savePreference('tutorial_home', 'true');
+    setState(() => _showTutorial = false);
   }
 
   @override
@@ -128,9 +165,10 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
 
-    final focused = tractors
-        .cast<TractorLocation?>()
-        .firstWhere((t) => t?.id == focusedId, orElse: () => null);
+    final focused = tractors.cast<TractorLocation?>().firstWhere(
+      (t) => t?.id == focusedId,
+      orElse: () => null,
+    );
     if (focused == null) return;
 
     if (_lastFocusedLat != focused.lat || _lastFocusedLng != focused.lng) {
@@ -225,7 +263,7 @@ class _HomeScreenState extends State<HomeScreen>
     final hasSearchQuery = _tractorProvider.searchQuery.isNotEmpty;
     final currentZoom = _isMapReady ? _mapController.camera.zoom : _initialZoom;
     final shouldCluster =
-      _isMapReady &&
+        _isMapReady &&
         _selectedTractorId == null &&
         !_tractorProvider.isFocused &&
         !hasSearchQuery &&
@@ -263,10 +301,7 @@ class _HomeScreenState extends State<HomeScreen>
           Marker(
             point: _getAnimatedPosition(
               cluster.tractors.first.id,
-              LatLng(
-                cluster.tractors.first.lat,
-                cluster.tractors.first.lng,
-              ),
+              LatLng(cluster.tractors.first.lat, cluster.tractors.first.lng),
             ),
             width: 40,
             height: 40,
@@ -275,8 +310,7 @@ class _HomeScreenState extends State<HomeScreen>
               child: _TractorMapMarker(
                 isOnline: cluster.tractors.first.isOnline,
                 isIdle: cluster.tractors.first.isIdle,
-                isSelected:
-                    _selectedTractorId == cluster.tractors.first.id,
+                isSelected: _selectedTractorId == cluster.tractors.first.id,
                 pulseAnimation: _pulseAnimation,
               ),
             ),
@@ -307,40 +341,41 @@ class _HomeScreenState extends State<HomeScreen>
       final sinLat = math.sin((lat * math.pi) / 180);
       final x = ((lng + 180) / 360) * scale;
       final y =
-          (0.5 - math.log((1 + sinLat) / (1 - sinLat)) / (4 * math.pi)) *
-          scale;
+          (0.5 - math.log((1 + sinLat) / (1 - sinLat)) / (4 * math.pi)) * scale;
       final key =
           '${(x / _clusterGridSize).floor()}:${(y / _clusterGridSize).floor()}';
 
       (clusterMap[key] ??= <TractorLocation>[]).add(tractor);
     }
 
-    return clusterMap.values.map((clusterTractors) {
-      if (clusterTractors.length == 1) {
-        final tractor = clusterTractors.first;
-        return _TractorCluster(
-          center: LatLng(tractor.lat, tractor.lng),
-          tractors: clusterTractors,
-        );
-      }
+    return clusterMap.values
+        .map((clusterTractors) {
+          if (clusterTractors.length == 1) {
+            final tractor = clusterTractors.first;
+            return _TractorCluster(
+              center: LatLng(tractor.lat, tractor.lng),
+              tractors: clusterTractors,
+            );
+          }
 
-      final totalLat = clusterTractors.fold<double>(
-        0,
-        (sum, tractor) => sum + tractor.lat,
-      );
-      final totalLng = clusterTractors.fold<double>(
-        0,
-        (sum, tractor) => sum + tractor.lng,
-      );
+          final totalLat = clusterTractors.fold<double>(
+            0,
+            (sum, tractor) => sum + tractor.lat,
+          );
+          final totalLng = clusterTractors.fold<double>(
+            0,
+            (sum, tractor) => sum + tractor.lng,
+          );
 
-      return _TractorCluster(
-        center: LatLng(
-          totalLat / clusterTractors.length,
-          totalLng / clusterTractors.length,
-        ),
-        tractors: clusterTractors,
-      );
-    }).toList(growable: false);
+          return _TractorCluster(
+            center: LatLng(
+              totalLat / clusterTractors.length,
+              totalLng / clusterTractors.length,
+            ),
+            tractors: clusterTractors,
+          );
+        })
+        .toList(growable: false);
   }
 
   double _clusterMarkerSize(int count) {
@@ -535,18 +570,19 @@ class _HomeScreenState extends State<HomeScreen>
     final appliedSearchQuery = tractorProvider.searchQuery;
     final hasAppliedSearchQuery = appliedSearchQuery.isNotEmpty;
     final showNoSearchMatches =
-      hasAppliedSearchQuery &&
-      !tractorProvider.loading &&
-      tractorProvider.tractors.isEmpty;
+        hasAppliedSearchQuery &&
+        !tractorProvider.loading &&
+        tractorProvider.tractors.isEmpty;
     final showNoSearchLocations =
-      hasAppliedSearchQuery &&
-      !tractorProvider.loading &&
-      tractorProvider.tractors.isNotEmpty &&
-      visibleTractors.isEmpty;
+        hasAppliedSearchQuery &&
+        !tractorProvider.loading &&
+        tractorProvider.tractors.isNotEmpty &&
+        visibleTractors.isEmpty;
 
     // Find selected tractor for FAB actions
-    final TractorLocation? selectedTractor =
-        tractorProvider.tractors.cast<TractorLocation?>().firstWhere(
+    final TractorLocation? selectedTractor = tractorProvider.tractors
+        .cast<TractorLocation?>()
+        .firstWhere(
           (tractor) => tractor?.id == _selectedTractorId,
           orElse: () => null,
         );
@@ -556,6 +592,7 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           // ─── Flutter Map ───
           Positioned.fill(
+            key: _mapKey,
             child: FlutterMap(
               mapController: _mapController,
               options: MapOptions(
@@ -643,6 +680,7 @@ class _HomeScreenState extends State<HomeScreen>
               child: Column(
                 children: [
                   Row(
+                    key: _statusChipsKey,
                     children: [
                       Expanded(
                         child: Column(
@@ -650,6 +688,7 @@ class _HomeScreenState extends State<HomeScreen>
                           children: [
                             Text(
                               'Fleet Tracker',
+                              key: _titleKey,
                               style: TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.w800,
@@ -693,6 +732,7 @@ class _HomeScreenState extends State<HomeScreen>
                   if (!tractorProvider.isFocused) ...[
                     const SizedBox(height: 14),
                     DecoratedBox(
+                      key: _searchKey,
                       decoration: BoxDecoration(
                         color: _showSatellite
                             ? const Color(0xFF334155)
@@ -716,45 +756,49 @@ class _HomeScreenState extends State<HomeScreen>
                                   color: AppColors.ink.withValues(alpha: 0.06),
                                   blurRadius: 14,
                                   offset: const Offset(0, 6),
-                              ),
-                            ],
-                    ),
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: _onSearchChanged,
-                      textInputAction: TextInputAction.search,
-                      cursorColor: _showSatellite ? Colors.white : AppColors.forest,
-                      style: TextStyle(
-                        color: _showSatellite ? AppColors.mutedInk : AppColors.ink,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                                ),
+                              ],
                       ),
-                      decoration: InputDecoration(
-                        hintText: 'Search tractor, IMEI, or FCA name',
-                        hintStyle: TextStyle(
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: _onSearchChanged,
+                        textInputAction: TextInputAction.search,
+                        cursorColor: _showSatellite
+                            ? Colors.white
+                            : AppColors.forest,
+                        style: TextStyle(
                           color: _showSatellite
                               ? AppColors.mutedInk
-                              : AppColors.mutedInk,
-                          fontSize: 13,
+                              : AppColors.ink,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
                         ),
-                        iconColor: _showSatellite
-                            ? AppColors.mutedInk
-                            : AppColors.mutedInk,
-                        prefixIcon: const Icon(Icons.search_rounded),
-                        suffixIcon: hasSearchQuery
-                            ? IconButton(
-                                onPressed: _clearSearch,
-                                icon: const Icon(Icons.close_rounded),
-                              )
-                            : null,
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 15,
+                        decoration: InputDecoration(
+                          hintText: 'Search tractor, IMEI, or FCA name',
+                          hintStyle: TextStyle(
+                            color: _showSatellite
+                                ? AppColors.mutedInk
+                                : AppColors.mutedInk,
+                            fontSize: 13,
+                          ),
+                          iconColor: _showSatellite
+                              ? AppColors.mutedInk
+                              : AppColors.mutedInk,
+                          prefixIcon: const Icon(Icons.search_rounded),
+                          suffixIcon: hasSearchQuery
+                              ? IconButton(
+                                  onPressed: _clearSearch,
+                                  icon: const Icon(Icons.close_rounded),
+                                )
+                              : null,
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 15,
+                          ),
                         ),
                       ),
                     ),
-                  ),
                   ],
                 ],
               ),
@@ -783,8 +827,10 @@ class _HomeScreenState extends State<HomeScreen>
 
           // ─── Floating side controls ───
           Positioned(
+            key: _fabKey,
             right: 16,
-            top: MediaQuery.paddingOf(context).top +
+            top:
+                MediaQuery.paddingOf(context).top +
                 (tractorProvider.isFocused ? 80 : 155),
             child: MapFabControls(
               showSatellite: _showSatellite,
@@ -805,6 +851,68 @@ class _HomeScreenState extends State<HomeScreen>
               onClearFocus: _clearFocusAndRecenter,
             ),
           ),
+
+          // ─── Tutorial overlay ───
+          if (_showTutorial)
+            TutorialOverlayWidget(
+              steps: [
+                TutorialStep(
+                  targetKey: _titleKey,
+                  title: 'Welcome to Tanod!',
+                  description:
+                      'This is your Fleet Tracker — a live map showing all '
+                      'your tractors in real time. Your name appears here '
+                      'as a greeting.',
+                  tooltipPosition: TutorialTooltipPosition.bottom,
+                ),
+                TutorialStep(
+                  targetKey: _statusChipsKey,
+                  title: 'Tractor Status at a Glance',
+                  description:
+                      'These chips show how many tractors are currently '
+                      'moving (green), idle (yellow), or offline (red). '
+                      'Tap any marker on the map for more details.',
+                  tooltipPosition: TutorialTooltipPosition.bottom,
+                ),
+                TutorialStep(
+                  targetKey: _searchKey,
+                  title: 'Search Tractors',
+                  description:
+                      'Type a tractor name, plate number, IMEI, or FCA name '
+                      'here to quickly find a specific tractor.',
+                  tooltipPosition: TutorialTooltipPosition.bottom,
+                ),
+                TutorialStep(
+                  targetKey: _mapKey,
+                  title: 'Interactive Map',
+                  description:
+                      'The map shows the live location of every tractor. '
+                      'Green markers are moving, yellow are idle, and red '
+                      'are offline. Tap a marker for details.',
+                  tooltipPosition: TutorialTooltipPosition.top,
+                ),
+                TutorialStep(
+                  targetKey: _fabKey,
+                  title: 'Map Controls',
+                  description:
+                      'Use these buttons to toggle satellite view, zoom '
+                      'in/out, and recenter the map. When a tractor is '
+                      'selected, you can also share its location.',
+                  tooltipPosition: TutorialTooltipPosition.left,
+                ),
+                TutorialStep(
+                  targetKey: _fabKey,
+                  title: 'Explore More Features',
+                  description:
+                      'Use the navigation bar at the bottom to explore '
+                      'Alerts, Bookings, Chat, and your Account. Tap each '
+                      'tab to discover what Tanod can do for you!',
+                  tooltipPosition: TutorialTooltipPosition.bottom,
+                ),
+              ],
+              onComplete: _onTutorialComplete,
+              onSkip: _onTutorialComplete,
+            ),
         ],
       ),
     );
@@ -825,10 +933,7 @@ Color _tractorColor(TractorLocation t) {
   return AppColors.danger;
 }
 
-String _tractorAssetForState({
-  required bool isOnline,
-  required bool isIdle,
-}) {
+String _tractorAssetForState({required bool isOnline, required bool isIdle}) {
   if (!isOnline) {
     return 'assets/images/red_tractor.png';
   }
@@ -864,10 +969,7 @@ class _TractorMapMarker extends StatelessWidget {
     } else {
       color = AppColors.success;
     }
-    final assetPath = _tractorAssetForState(
-      isOnline: isOnline,
-      isIdle: isIdle,
-    );
+    final assetPath = _tractorAssetForState(isOnline: isOnline, isIdle: isIdle);
 
     return AnimatedBuilder(
       animation: pulseAnimation,

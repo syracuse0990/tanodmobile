@@ -7,7 +7,9 @@ import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/chat_unread_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/ticket_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tps_provider.dart';
+import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
 import 'package:tanodmobile/models/domain/ticket.dart';
+import 'package:tanodmobile/services/storage/hive_service.dart';
 
 class ChatRoomsScreen extends StatefulWidget {
   const ChatRoomsScreen({super.key});
@@ -20,6 +22,8 @@ class _ChatRoomsScreenState extends State<ChatRoomsScreen> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _showTutorial = false;
+  final _titleKey = GlobalKey();
 
   bool get _isTps =>
       context.read<AuthProvider>().session?.roles.contains('tps') ?? false;
@@ -40,6 +44,25 @@ class _ChatRoomsScreenState extends State<ChatRoomsScreen> {
       _fetchInitial();
     });
     _scrollController.addListener(_handleScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
+  }
+
+  void _maybeShowTutorial() {
+    if (!mounted) return;
+    try {
+      final hive = context.read<HiveService>();
+      if (hive.getPreference('tutorial_chat') == 'true') return;
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (!mounted || _showTutorial) return;
+        setState(() => _showTutorial = true);
+      });
+    } catch (_) {}
+  }
+
+  void _onTutorialComplete() {
+    if (!mounted) return;
+    context.read<HiveService>().savePreference('tutorial_chat', 'true');
+    setState(() => _showTutorial = false);
   }
 
   @override
@@ -129,7 +152,9 @@ class _ChatRoomsScreenState extends State<ChatRoomsScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FB),
-      body: SafeArea(
+      body: Stack(
+        children: [
+          SafeArea(
         child: Column(
           children: [
             Padding(
@@ -214,6 +239,24 @@ class _ChatRoomsScreenState extends State<ChatRoomsScreen> {
             ),
           ],
         ),
+      ),
+            if (_showTutorial)
+              TutorialOverlayWidget(
+                steps: [
+                  TutorialStep(
+                    targetKey: _titleKey,
+                    title: 'Chat & Tickets',
+                    description:
+                        'View all your ticket conversations here. Each ticket '
+                        'shows the subject, status, and priority. Tap a ticket '
+                        'to open the conversation.',
+                    tooltipPosition: TutorialTooltipPosition.bottom,
+                  ),
+                ],
+                onComplete: _onTutorialComplete,
+                onSkip: _onTutorialComplete,
+              ),
+        ],
       ),
     );
   }

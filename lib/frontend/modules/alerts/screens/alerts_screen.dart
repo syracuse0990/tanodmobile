@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/shared/providers/alert_provider.dart';
+import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
 import 'package:tanodmobile/models/domain/alert.dart';
+import 'package:tanodmobile/services/storage/hive_service.dart';
 
 class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key});
@@ -19,6 +21,12 @@ class _AlertsScreenState extends State<AlertsScreen> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
   late final AlertProvider _alertProvider;
+  bool _showTutorial = false;
+
+  // ── Tutorial keys ──
+  final _titleKey = GlobalKey();
+  final _searchKey = GlobalKey();
+  final _filterKey = GlobalKey();
 
   @override
   void initState() {
@@ -33,6 +41,26 @@ class _AlertsScreenState extends State<AlertsScreen> {
         _alertProvider.fetchMore();
       }
     });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
+  }
+
+  void _maybeShowTutorial() {
+    if (!mounted) return;
+    try {
+      final hive = context.read<HiveService>();
+      if (hive.getPreference('tutorial_alerts') == 'true') return;
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (!mounted || _showTutorial) return;
+        setState(() => _showTutorial = true);
+      });
+    } catch (_) {}
+  }
+
+  void _onTutorialComplete() {
+    if (!mounted) return;
+    context.read<HiveService>().savePreference('tutorial_alerts', 'true');
+    setState(() => _showTutorial = false);
   }
 
   @override
@@ -89,250 +117,293 @@ class _AlertsScreenState extends State<AlertsScreen> {
 
         return Scaffold(
           backgroundColor: const Color(0xFFF5F7F6),
-          body: CustomScrollView(
-            controller: _scrollController,
-            slivers: [
-              // ─── App Bar ───
-              SliverAppBar(
-                floating: true,
-                snap: true,
-                backgroundColor: Colors.white,
-                surfaceTintColor: Colors.transparent,
-                elevation: 0,
-                toolbarHeight: 70,
-                title: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+          body: Stack(
+            children: [
+              CustomScrollView(
+                controller: _scrollController,
+                slivers: [
+                  // ─── App Bar ───
+                  SliverAppBar(
+                    floating: true,
+                    snap: true,
+                    backgroundColor: Colors.white,
+                    surfaceTintColor: Colors.transparent,
+                    elevation: 0,
+                    toolbarHeight: 70,
+                    title: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Alerts',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        if (badgeCount > 0)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.danger,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              '$badgeCount',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
+                        Row(
+                          key: _titleKey,
+                          children: [
+                            const Text(
+                              'Alerts',
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.ink,
                               ),
                             ),
+                            const SizedBox(width: 10),
+                            if (badgeCount > 0)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.danger,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '$badgeCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Tractor fleet notifications',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.mutedInk,
+                            fontWeight: FontWeight.w400,
                           ),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'Tractor fleet notifications',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.mutedInk,
-                        fontWeight: FontWeight.w400,
+                    actions: [
+                      IconButton(
+                        onPressed: () => provider.fetchAlerts(),
+                        icon: const Icon(
+                          Icons.refresh_rounded,
+                          color: AppColors.pine,
+                        ),
+                        tooltip: 'Refresh',
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                  ),
+
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      key: _searchKey,
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: _onSearchChanged,
+                        textInputAction: TextInputAction.search,
+                        decoration: InputDecoration(
+                          hintText: 'Search alert, tractor, or IMEI',
+                          prefixIcon: const Icon(
+                            Icons.search_rounded,
+                            color: AppColors.mutedInk,
+                          ),
+                          suffixIcon: _searchController.text.trim().isNotEmpty
+                              ? IconButton(
+                                  onPressed: _clearSearch,
+                                  icon: const Icon(
+                                    Icons.close_rounded,
+                                    color: AppColors.mutedInk,
+                                  ),
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: Colors.white,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
                       ),
                     ),
-                  ],
-                ),
-                actions: [
-                  IconButton(
-                    onPressed: () => provider.fetchAlerts(),
-                    icon:
-                        const Icon(Icons.refresh_rounded, color: AppColors.pine),
-                    tooltip: 'Refresh',
                   ),
-                  const SizedBox(width: 8),
+
+                  // ─── Filter Chips ───
+                  SliverToBoxAdapter(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                      child: Row(
+                        key: _filterKey,
+                        children: [
+                          _FilterChip(
+                            label: 'All',
+                            isActive: _filter == 'all',
+                            onTap: () => _onFilterTap('all'),
+                          ),
+                          _FilterChip(
+                            label: 'Unread',
+                            isActive: _filter == 'unread',
+                            onTap: () => _onFilterTap('unread'),
+                          ),
+                          _FilterChip(
+                            label: 'Geofence',
+                            isActive: _filter == 'geofence_breach',
+                            onTap: () => _onFilterTap('geofence_breach'),
+                          ),
+                          _FilterChip(
+                            label: 'Speed',
+                            isActive: _filter == 'speed',
+                            onTap: () => _onFilterTap('speed'),
+                          ),
+                          _FilterChip(
+                            label: 'Idle',
+                            isActive: _filter == 'idle',
+                            onTap: () => _onFilterTap('idle'),
+                          ),
+                          _FilterChip(
+                            label: 'Offline',
+                            isActive: _filter == 'offline',
+                            onTap: () => _onFilterTap('offline'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // ─── Loading State ───
+                  if (provider.loading && alerts.isEmpty)
+                    const SliverFillRemaining(
+                      child: Center(
+                        child: CircularProgressIndicator(color: AppColors.pine),
+                      ),
+                    )
+                  // ─── Error State ───
+                  else if (provider.error != null && alerts.isEmpty)
+                    SliverFillRemaining(
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.error_outline_rounded,
+                              size: 56,
+                              color: AppColors.danger,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              provider.error!,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.mutedInk,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextButton(
+                              onPressed: () => provider.fetchAlerts(),
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  // ─── Empty State ───
+                  else if (alerts.isEmpty)
+                    const SliverFillRemaining(
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.notifications_off_rounded,
+                              size: 56,
+                              color: AppColors.mutedInk,
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              'No alerts found',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.mutedInk,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  // ─── Alert List ───
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      sliver: SliverList.separated(
+                        itemCount: alerts.length + (provider.hasMore ? 1 : 0),
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          if (index >= alerts.length) {
+                            return const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.pine,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+                          final alert = alerts[index];
+                          return _AlertCard(
+                            alert: alert,
+                            onAcknowledge: !alert.isAcknowledged
+                                ? () => provider.acknowledge(alert.id)
+                                : null,
+                          );
+                        },
+                      ),
+                    ),
+
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
                 ],
               ),
 
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: _onSearchChanged,
-                    textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      hintText: 'Search alert, tractor, or IMEI',
-                      prefixIcon: const Icon(
-                        Icons.search_rounded,
-                        color: AppColors.mutedInk,
-                      ),
-                      suffixIcon: _searchController.text.trim().isNotEmpty
-                          ? IconButton(
-                              onPressed: _clearSearch,
-                              icon: const Icon(
-                                Icons.close_rounded,
-                                color: AppColors.mutedInk,
-                              ),
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
-                      ),
+              // ─── Tutorial overlay ───
+              if (_showTutorial)
+                TutorialOverlayWidget(
+                  steps: [
+                    TutorialStep(
+                      targetKey: _titleKey,
+                      title: 'Alerts & Notifications',
+                      description:
+                          'See all tractor fleet notifications here. '
+                          'The badge shows how many unread alerts you have.',
+                      tooltipPosition: TutorialTooltipPosition.bottom,
                     ),
-                  ),
-                ),
-              ),
-
-              // ─── Filter Chips ───
-              SliverToBoxAdapter(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-                  child: Row(
-                    children: [
-                      _FilterChip(
-                        label: 'All',
-                        isActive: _filter == 'all',
-                        onTap: () => _onFilterTap('all'),
-                      ),
-                      _FilterChip(
-                        label: 'Unread',
-                        isActive: _filter == 'unread',
-                        onTap: () => _onFilterTap('unread'),
-                      ),
-                      _FilterChip(
-                        label: 'Geofence',
-                        isActive: _filter == 'geofence_breach',
-                        onTap: () => _onFilterTap('geofence_breach'),
-                      ),
-                      _FilterChip(
-                        label: 'Speed',
-                        isActive: _filter == 'speed',
-                        onTap: () => _onFilterTap('speed'),
-                      ),
-                      _FilterChip(
-                        label: 'Idle',
-                        isActive: _filter == 'idle',
-                        onTap: () => _onFilterTap('idle'),
-                      ),
-                      _FilterChip(
-                        label: 'Offline',
-                        isActive: _filter == 'offline',
-                        onTap: () => _onFilterTap('offline'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // ─── Loading State ───
-              if (provider.loading && alerts.isEmpty)
-                const SliverFillRemaining(
-                  child: Center(
-                    child: CircularProgressIndicator(color: AppColors.pine),
-                  ),
-                )
-              // ─── Error State ───
-              else if (provider.error != null && alerts.isEmpty)
-                SliverFillRemaining(
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.error_outline_rounded,
-                          size: 56,
-                          color: AppColors.danger,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          provider.error!,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.mutedInk,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextButton(
-                          onPressed: () => provider.fetchAlerts(),
-                          child: const Text('Retry'),
-                        ),
-                      ],
+                    TutorialStep(
+                      targetKey: _searchKey,
+                      title: 'Search Alerts',
+                      description:
+                          'Search for specific alerts by tractor name, '
+                          'alert text, or IMEI number.',
+                      tooltipPosition: TutorialTooltipPosition.bottom,
                     ),
-                  ),
-                )
-              // ─── Empty State ───
-              else if (alerts.isEmpty)
-                const SliverFillRemaining(
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.notifications_off_rounded,
-                          size: 56,
-                          color: AppColors.mutedInk,
-                        ),
-                        SizedBox(height: 12),
-                        Text(
-                          'No alerts found',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.mutedInk,
-                          ),
-                        ),
-                      ],
+                    TutorialStep(
+                      targetKey: _filterKey,
+                      title: 'Filter Alerts',
+                      description:
+                          'Filter alerts by type — Geofence breaches, '
+                          'Speed alerts, Idle time, or Offline status. '
+                          'Use "Unread" to see only new alerts.',
+                      tooltipPosition: TutorialTooltipPosition.bottom,
                     ),
-                  ),
-                )
-              // ─── Alert List ───
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  sliver: SliverList.separated(
-                    itemCount: alerts.length + (provider.hasMore ? 1 : 0),
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      if (index >= alerts.length) {
-                        return const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Center(
-                            child: SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppColors.pine,
-                              ),
-                            ),
-                          ),
-                        );
-                      }
-                      final alert = alerts[index];
-                      return _AlertCard(
-                        alert: alert,
-                        onAcknowledge: !alert.isAcknowledged
-                            ? () => provider.acknowledge(alert.id)
-                            : null,
-                      );
-                    },
-                  ),
+                  ],
+                  onComplete: _onTutorialComplete,
+                  onSkip: _onTutorialComplete,
                 ),
-
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
             ],
           ),
         );
@@ -524,8 +595,7 @@ class _AlertCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                      if (alert.tractorLabel != null)
-                        const SizedBox(width: 8),
+                      if (alert.tractorLabel != null) const SizedBox(width: 8),
                       Icon(
                         Icons.schedule_rounded,
                         size: 13,
