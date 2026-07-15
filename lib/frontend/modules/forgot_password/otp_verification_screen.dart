@@ -60,10 +60,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
       if (!mounted) return;
 
-      context.push('/forgot-password/reset-password', extra: {
-        'contact': _contact,
-        'verified_token': token,
-      });
+      context.push(
+        '/forgot-password/reset-password',
+        extra: {'contact': _contact, 'verified_token': token},
+      );
     } on AppException catch (e) {
       if (!mounted) return;
       _showError(e.message);
@@ -117,8 +117,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                   children: [
                     IconButton(
                       onPressed: () => context.pop(),
-                      icon: const Icon(Icons.arrow_back_rounded,
-                          color: Colors.white),
+                      icon: const Icon(
+                        Icons.arrow_back_rounded,
+                        color: Colors.white,
+                      ),
                     ),
                     const Spacer(),
                     Image.asset(
@@ -160,9 +162,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           Text(
                             'Verify OTP',
                             textAlign: TextAlign.center,
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineSmall
+                            style: Theme.of(context).textTheme.headlineSmall
                                 ?.copyWith(
                                   color: AppColors.ink,
                                   fontWeight: FontWeight.w800,
@@ -173,9 +173,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           Text(
                             'Enter the 6-digit code sent to your email or phone.',
                             textAlign: TextAlign.center,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
+                            style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(
                                   color: AppColors.mutedInk,
                                   height: 1.4,
@@ -183,55 +181,82 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           ),
                           const SizedBox(height: 32),
 
-                          // OTP input fields
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: List.generate(6, (index) {
-                              return SizedBox(
-                                width: 48,
-                                height: 56,
-                                child: TextFormField(
-                                  controller: _otpControllers[index],
-                                  focusNode: _otpFocusNodes[index],
-                                  keyboardType: TextInputType.number,
-                                  textAlign: TextAlign.center,
-                                  maxLength: 1,
-                                  style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.ink,
-                                  ),
-                                  decoration: InputDecoration(
-                                    counterText: '',
-                                    filled: true,
-                                    fillColor: AppColors.canvas,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                        color: AppColors.mutedInk
-                                            .withValues(alpha: 0.2),
-                                      ),
+                          // OTP input fields — responsive
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              const double gap = 8;
+                              const double horizontalPadding = 0;
+                              final availableWidth =
+                                  constraints.maxWidth - horizontalPadding * 2;
+                              final fieldWidth =
+                                  (availableWidth - (5 * gap)) / 6;
+                              final clampedWidth = fieldWidth.clamp(42.0, 56.0);
+
+                              return Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: List.generate(6, (index) {
+                                  return Container(
+                                    width: clampedWidth,
+                                    height: 56,
+                                    margin: EdgeInsets.only(
+                                      right: index < 5 ? gap : 0,
                                     ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                        color: AppColors.mutedInk
-                                            .withValues(alpha: 0.2),
+                                    child: TextFormField(
+                                      controller: _otpControllers[index],
+                                      focusNode: _otpFocusNodes[index],
+                                      keyboardType: TextInputType.number,
+                                      textAlign: TextAlign.center,
+                                      maxLength: 1,
+                                      cursorColor: AppColors.pine,
+                                      cursorWidth: 2,
+                                      style: const TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.ink,
                                       ),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: const BorderSide(
-                                        color: AppColors.pine,
-                                        width: 2,
+                                      decoration: InputDecoration(
+                                        counterText: '',
+                                        filled: true,
+                                        fillColor: AppColors.canvas,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              vertical: 12,
+                                            ),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          borderSide: BorderSide(
+                                            color: AppColors.mutedInk
+                                                .withValues(alpha: 0.2),
+                                          ),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          borderSide: BorderSide(
+                                            color: AppColors.mutedInk
+                                                .withValues(alpha: 0.2),
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          borderSide: const BorderSide(
+                                            color: AppColors.pine,
+                                            width: 2,
+                                          ),
+                                        ),
                                       ),
+                                      onChanged: (value) =>
+                                          _onOtpChanged(index, value),
                                     ),
-                                  ),
-                                  onChanged: (value) =>
-                                      _onOtpChanged(index, value),
-                                ),
+                                  );
+                                }),
                               );
-                            }),
+                            },
                           ),
                           const SizedBox(height: 32),
 
@@ -250,11 +275,12 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                             onPressed: _isLoading
                                 ? null
                                 : () async {
-                                    final messenger =
-                                        ScaffoldMessenger.of(context);
+                                    final messenger = ScaffoldMessenger.of(
+                                      context,
+                                    );
                                     try {
-                                      final authProvider =
-                                          context.read<AuthProvider>();
+                                      final authProvider = context
+                                          .read<AuthProvider>();
                                       await authProvider.sendForgotPasswordOtp(
                                         contact: _contact,
                                       );
@@ -262,11 +288,13 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                                       messenger.showSnackBar(
                                         const SnackBar(
                                           content: Text(
-                                              'OTP resent successfully.'),
+                                            'OTP resent successfully.',
+                                          ),
                                           behavior: SnackBarBehavior.floating,
                                           shape: RoundedRectangleBorder(
                                             borderRadius: BorderRadius.all(
-                                                Radius.circular(12)),
+                                              Radius.circular(12),
+                                            ),
                                           ),
                                         ),
                                       );
