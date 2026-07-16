@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/services.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/modules/tickets/models/ticket_issue_photo.dart';
 import 'package:tanodmobile/frontend/modules/tickets/services/ticket_issue_photo_service.dart';
@@ -9,7 +9,9 @@ import 'package:tanodmobile/frontend/modules/tickets/widgets/ticket_issue_photo_
 import 'package:tanodmobile/frontend/shared/providers/pms_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/ticket_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/app_toast.dart';
+import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
 import 'package:tanodmobile/models/domain/pms_record.dart';
+import 'package:tanodmobile/services/storage/hive_service.dart';
 
 class CreateTicketScreen extends StatefulWidget {
   const CreateTicketScreen({super.key});
@@ -20,6 +22,16 @@ class CreateTicketScreen extends StatefulWidget {
 
 class _CreateTicketScreenState extends State<CreateTicketScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _subjectKey = GlobalKey();
+  final _tractorKey = GlobalKey();
+  final _resolutionKey = GlobalKey();
+  final _concernKey = GlobalKey();
+  final _dateKey = GlobalKey();
+  final _descriptionKey = GlobalKey();
+  final _nameplateKey = GlobalKey();
+  final _dashboardKey = GlobalKey();
+  final _damageKey = GlobalKey();
+  final _submitKey = GlobalKey();
   String? _selectedSubject;
   final _descriptionController = TextEditingController();
 
@@ -149,6 +161,121 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
     super.initState();
     context.read<TicketProvider>().fetchTractors();
     _loadChecklist();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
+  }
+
+  void _maybeShowTutorial() {
+    if (!mounted) return;
+    try {
+      final hive = context.read<HiveService>();
+      if (!hive.tutorialsEnabled) return;
+      if (hive.getPreference('tutorial_create_ticket') == 'true') return;
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (!mounted) return;
+        TutorialOverlay.show(
+          context: context,
+          steps: [
+            TutorialStep(
+              targetKey: _subjectKey,
+              title: '1. Select Subject',
+              description:
+                  'Start by choosing what type of issue this is: PMS '
+                  '(scheduled maintenance), Repair (Tractor, Loader, '
+                  'Disc Plow, or Rovator), Spare Parts, or Training.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+            TutorialStep(
+              targetKey: _tractorKey,
+              title: '2. Select Tractor',
+              description:
+                  'Choose which tractor needs attention. This is optional '
+                  'but recommended so the technician knows which '
+                  'equipment to service.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+            TutorialStep(
+              targetKey: _resolutionKey,
+              title: '3. Resolution Type',
+              description:
+                  'Indicate how you plan to resolve the issue — whether '
+                  'you\'ll do it yourself (Self), use a third party, or '
+                  'need a technician to handle it.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+            TutorialStep(
+              targetKey: _concernKey,
+              title: '4. Specific Concern',
+              description:
+                  'Describe the exact problem. For example, if it\'s an '
+                  'engine issue, pick "Engine - Overheat" or '
+                  '"Engine - Turbo Charger". This helps the technician '
+                  'prepare the right parts.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+            TutorialStep(
+              targetKey: _dateKey,
+              title: '5. Date of Failure',
+              description:
+                  'Select when the issue first occurred. This helps track '
+                  'how long the tractor has been out of service.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+            TutorialStep(
+              targetKey: _descriptionKey,
+              title: '6. Description',
+              description:
+                  'Provide a detailed explanation of the issue. Include '
+                  'what happened, when, and any troubleshooting steps '
+                  'you\'ve already tried.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+            TutorialStep(
+              targetKey: _nameplateKey,
+              title: '7. Nameplate Photo',
+              description:
+                  'Take a clear photo of the tractor\'s nameplate. This '
+                  'usually shows the serial number, model, and '
+                  'manufacturer. The AI will verify it\'s a valid plate.',
+              tooltipPosition: TutorialTooltipPosition.top,
+            ),
+            TutorialStep(
+              targetKey: _dashboardKey,
+              title: '8. Dashboard Photo',
+              description:
+                  'Take a photo of the dashboard showing the machine '
+                  'hours. This is required and the AI will verify the '
+                  'dashboard is readable.',
+              tooltipPosition: TutorialTooltipPosition.top,
+            ),
+            TutorialStep(
+              targetKey: _damageKey,
+              title: '9. Damaged Parts Photos',
+              description:
+                  'Take clear photos of the damaged parts from multiple '
+                  'angles. You can also record a video. These photos help '
+                  'the technician assess the damage before arriving.',
+              tooltipPosition: TutorialTooltipPosition.top,
+            ),
+            TutorialStep(
+              targetKey: _submitKey,
+              title: '10. Submit Ticket',
+              description:
+                  'Review all the information and tap Submit. Once '
+                  'submitted, a technician will be notified and you can '
+                  'track the progress in the chat.',
+              tooltipPosition: TutorialTooltipPosition.top,
+            ),
+          ],
+          onComplete: () => _onTutorialComplete(),
+          onSkip: () => _onTutorialComplete(),
+        );
+      });
+    } catch (_) {}
+  }
+
+  void _onTutorialComplete() {
+    if (!mounted) return;
+    context.read<HiveService>().savePreference('tutorial_create_ticket', 'true');
   }
 
   Future<void> _loadChecklist() async {
@@ -559,6 +686,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               _FieldLabel(label: 'Subject'),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
+                key: _subjectKey,
                 initialValue: _selectedSubject,
                 decoration: _inputDecoration('Select subject'),
                 isExpanded: true,
@@ -673,6 +801,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               _FieldLabel(label: 'Tractor'),
               const SizedBox(height: 6),
               DropdownButtonFormField<int>(
+                key: _tractorKey,
                 initialValue: _selectedTractorId,
                 decoration: _inputDecoration('Select a tractor (optional)'),
                 isExpanded: true,
@@ -703,7 +832,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               _FieldLabel(label: 'Resolution Type'),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                key: ValueKey('action_$_selectedSubject'),
+                key: _resolutionKey,
                 initialValue: _selectedActionTaken,
                 decoration: _inputDecoration('Select resolution type'),
                 isExpanded: true,
@@ -726,7 +855,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
                 _FieldLabel(label: 'SPECIFIC CONCERN'),
                 const SizedBox(height: 6),
                 Autocomplete<String>(
-                key: ValueKey(_selectedSubject),
+                key: _concernKey,
                 initialValue: _selectedCategory != null
                     ? TextEditingValue(text: _selectedCategory!)
                     : null,
@@ -790,6 +919,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               _FieldLabel(label: 'Date of Failure'),
               const SizedBox(height: 6),
               GestureDetector(
+                key: _dateKey,
                 onTap: () async {
                   final picked = await showDatePicker(
                     context: context,
@@ -851,6 +981,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
               _FieldLabel(label: 'Description'),
               const SizedBox(height: 6),
               TextFormField(
+                key: _descriptionKey,
                 controller: _descriptionController,
                 decoration: _inputDecoration('Describe the issue in detail'),
                 maxLines: 5,
@@ -863,6 +994,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
               // ─── Nameplate Photo ───
               TicketIssuePhotoPicker(
+                key: _nameplateKey,
                 label: 'Photo of Nameplate',
                 subtitle: 'Required. Exactly 1 photo.',
                 maxPhotos: 1,
@@ -879,6 +1011,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
               // ─── Dashboard Photo ───
               TicketIssuePhotoPicker(
+                key: _dashboardKey,
                 label: 'Dashboard showing MACHINE HOURS',
                 subtitle: 'Required. Exactly 1 photo.',
                 maxPhotos: 1,
@@ -895,6 +1028,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
               // ─── Damaged Parts ───
               TicketIssuePhotoPicker(
+                key: _damageKey,
                 label: 'Damaged Parts',
                 subtitle: 'Required. 1 to 3 photos.',
                 maxPhotos: 3,
@@ -913,6 +1047,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
               // ─── Submit ───
               SizedBox(
+                key: _submitKey,
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(

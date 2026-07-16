@@ -10,7 +10,9 @@ import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/shared/providers/geofence_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/app_toast.dart';
 import 'package:tanodmobile/frontend/shared/widgets/primary_button.dart';
+import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
 import 'package:tanodmobile/models/domain/geo_fence.dart';
+import 'package:tanodmobile/services/storage/hive_service.dart';
 
 class CreateGeofenceScreen extends StatefulWidget {
   const CreateGeofenceScreen({super.key});
@@ -22,6 +24,15 @@ class CreateGeofenceScreen extends StatefulWidget {
 class _CreateGeofenceScreenState extends State<CreateGeofenceScreen> {
   final _nameController = TextEditingController();
   final MapController _mapController = MapController();
+
+  // Tutorial keys
+  final _nameKey = GlobalKey();
+  final _shapeKey = GlobalKey();
+  final _mapKey = GlobalKey();
+  final _radiusKey = GlobalKey();
+  final _alertKey = GlobalKey();
+  final _tractorKey = GlobalKey();
+  final _submitKey = GlobalKey();
 
   String _shape = 'circle'; // 'circle' or 'polygon'
   String _alertOn = 'both';
@@ -53,6 +64,91 @@ class _CreateGeofenceScreenState extends State<CreateGeofenceScreen> {
     context.read<GeoFenceProvider>().fetchAvailableDevices().then((_) {
       if (mounted) setState(() => _devicesLoaded = true);
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
+  }
+
+  void _maybeShowTutorial() {
+    if (!mounted) return;
+    try {
+      final hive = context.read<HiveService>();
+      if (!hive.tutorialsEnabled) return;
+      if (hive.getPreference('tutorial_create_geofence') == 'true') return;
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (!mounted) return;
+        TutorialOverlay.show(
+          context: context,
+          steps: [
+            TutorialStep(
+              targetKey: _nameKey,
+              title: '1. Name Your Geofence',
+              description:
+                  'Give your geofence a clear, descriptive name like '
+                  '"Rice Paddy Zone A" or "Warehouse Perimeter". '
+                  'This helps you identify it later in the list.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+            TutorialStep(
+              targetKey: _shapeKey,
+              title: '2. Choose Shape',
+              description:
+                  'Pick Circle or Polygon. Circle: tap the map to set '
+                  'a center, then adjust the radius with the slider. '
+                  'Polygon: tap the map to place points one by one — '
+                  'each tap adds a numbered marker. Place at least 3 '
+                  'points to form a closed boundary.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+            TutorialStep(
+              targetKey: _mapKey,
+              title: '3. Draw on the Map & Set Radius',
+              description:
+                  'Circle mode: tap the map to set the center, then '
+                  'drag the radius slider (50m–10km) to resize the '
+                  'zone. Polygon mode: tap points on the map to mark '
+                  'corners — each tap adds a numbered marker. Tap '
+                  'Undo (↩) to remove the last point. Need at least '
+                  '3 points to form a valid polygon.',
+              tooltipPosition: TutorialTooltipPosition.top,
+            ),
+            TutorialStep(
+              targetKey: _alertKey,
+              title: '4. Alert Settings',
+              description:
+                  'Choose when to get notified: "Enter" alerts when a '
+                  'tractor enters the zone, "Exit" when it leaves, '
+                  'or "Both" for all movements in and out.',
+              tooltipPosition: TutorialTooltipPosition.top,
+            ),
+            TutorialStep(
+              targetKey: _tractorKey,
+              title: '5. Assign Tractors',
+              description:
+                  'Select which tractors this geofence applies to. '
+                  'Tap a tractor name to select it — a green border '
+                  'appears. Only selected tractors will trigger '
+                  'alerts when entering or exiting the zone.',
+              tooltipPosition: TutorialTooltipPosition.top,
+            ),
+            TutorialStep(
+              targetKey: _submitKey,
+              title: '6. Create Geofence',
+              description:
+                  'Review everything, then tap "Create Geofence" to '
+                  'save. You can edit the name, shape, or assigned '
+                  'tractors later from the geofence list.',
+              tooltipPosition: TutorialTooltipPosition.top,
+            ),
+          ],
+          onComplete: () => _onTutorialComplete(),
+          onSkip: () => _onTutorialComplete(),
+        );
+      });
+    } catch (_) {}
+  }
+
+  void _onTutorialComplete() {
+    if (!mounted) return;
+    context.read<HiveService>().savePreference('tutorial_create_geofence', 'true');
   }
 
   @override
@@ -235,6 +331,7 @@ class _CreateGeofenceScreenState extends State<CreateGeofenceScreen> {
                 _SectionLabel(label: 'Name'),
                 const SizedBox(height: 6),
                 TextField(
+                  key: _nameKey,
                   controller: _nameController,
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
@@ -262,6 +359,7 @@ class _CreateGeofenceScreenState extends State<CreateGeofenceScreen> {
                 _SectionLabel(label: 'Shape'),
                 const SizedBox(height: 6),
                 Row(
+                  key: _shapeKey,
                   children: [
                     Expanded(
                       child: _ToggleChip(
@@ -303,6 +401,7 @@ class _CreateGeofenceScreenState extends State<CreateGeofenceScreen> {
                 ),
                 const SizedBox(height: 6),
                 ClipRRect(
+                  key: _mapKey,
                   borderRadius: BorderRadius.circular(16),
                   child: SizedBox(
                     height: 260,
@@ -481,6 +580,7 @@ class _CreateGeofenceScreenState extends State<CreateGeofenceScreen> {
                 if (_shape == 'circle' && _circleCenter != null) ...[
                   const SizedBox(height: 12),
                   Row(
+                    key: _radiusKey,
                     children: [
                       const Text('Radius:',
                           style: TextStyle(
@@ -527,6 +627,7 @@ class _CreateGeofenceScreenState extends State<CreateGeofenceScreen> {
                 _SectionLabel(label: 'Alert On'),
                 const SizedBox(height: 6),
                 Row(
+                  key: _alertKey,
                   children: [
                     _ToggleChip(
                       label: 'Enter',
@@ -553,6 +654,11 @@ class _CreateGeofenceScreenState extends State<CreateGeofenceScreen> {
                 // Device selection
                 _SectionLabel(label: 'Assign Tractors'),
                 const SizedBox(height: 6),
+                Container(
+                  key: _tractorKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                 if (!_devicesLoaded)
                   const Padding(
                     padding: EdgeInsets.all(16),
@@ -634,6 +740,9 @@ class _CreateGeofenceScreenState extends State<CreateGeofenceScreen> {
                       ),
                     );
                   }),
+                ],
+              ),
+            ),
 
                 const SizedBox(height: 24),
               ],
@@ -642,6 +751,7 @@ class _CreateGeofenceScreenState extends State<CreateGeofenceScreen> {
 
           // Submit button
           StickyBottomButton(
+            key: _submitKey,
             label: 'Create Geofence',
             isLoading: provider.submitting,
             onPressed: _canSubmit && !provider.submitting ? _submit : null,

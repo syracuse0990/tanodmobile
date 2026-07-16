@@ -32,6 +32,7 @@ class _AccountScreenState extends State<AccountScreen> {
     if (!mounted) return;
     try {
       final hive = context.read<HiveService>();
+      if (!hive.tutorialsEnabled) return;
       if (hive.getPreference('tutorial_account') == 'true') return;
       Future.delayed(const Duration(milliseconds: 600), () {
         if (!mounted || _showTutorial) return;
@@ -44,6 +45,103 @@ class _AccountScreenState extends State<AccountScreen> {
     if (!mounted) return;
     context.read<HiveService>().savePreference('tutorial_account', 'true');
     setState(() => _showTutorial = false);
+  }
+
+  Widget _buildTutorialToggleItem() {
+    final hive = context.read<HiveService>();
+    final enabled = hive.tutorialsEnabled;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () async {
+          if (enabled) {
+            await hive.resetAllTutorials();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Tutorials reset! They will show again on your next visit.',
+                  ),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          } else {
+            await hive.setTutorialsEnabled(true);
+          }
+          if (mounted) setState(() {});
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.forest.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.school_rounded,
+                  size: 20,
+                  color: AppColors.pine,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Tutorials',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    Text(
+                      enabled
+                          ? 'Tap to reset and show tutorials again'
+                          : 'Tutorials are hidden',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.mutedInk.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: enabled,
+                activeThumbColor: AppColors.forest,
+                onChanged: (val) async {
+                  if (val) {
+                    await hive.resetAllTutorials();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Tutorials reset! They will show again on your next visit.',
+                          ),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  } else {
+                    await hive.setTutorialsEnabled(false);
+                  }
+                  if (mounted) setState(() {});
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -314,8 +412,10 @@ class _AccountScreenState extends State<AccountScreen> {
                               ),
                             ],
                           ),
+                          const SizedBox(height: 8),
+                          _buildTutorialToggleItem(),
 
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 20),
 
                           // Danger zone section
                           _SectionTitle(

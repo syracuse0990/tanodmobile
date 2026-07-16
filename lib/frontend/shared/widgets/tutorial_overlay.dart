@@ -66,9 +66,11 @@ class TutorialOverlay {
     _entry = null;
   }
 
-  static void _next() {
-    if (_currentStep < _steps.length - 1) {
-      _currentStep++;
+  static Future<void> _next() async {
+    final nextStep = _currentStep + 1;
+    if (nextStep < _steps.length) {
+      await _scrollToTarget(_steps[nextStep].targetKey);
+      _currentStep = nextStep;
       _entry?.markNeedsBuild();
     } else {
       hide();
@@ -76,9 +78,24 @@ class TutorialOverlay {
     }
   }
 
-  static void _previous() {
-    if (_currentStep > 0) {
-      _currentStep--;
+  static Future<void> _scrollToTarget(GlobalKey key) async {
+    final ctx = key.currentContext;
+    if (ctx != null && ctx.mounted) {
+      try {
+        await Scrollable.ensureVisible(
+          ctx,
+          alignment: 0.3,
+          duration: const Duration(milliseconds: 400),
+        );
+      } catch (_) {}
+    }
+  }
+
+  static Future<void> _previous() async {
+    final prevStep = _currentStep - 1;
+    if (prevStep >= 0) {
+      await _scrollToTarget(_steps[prevStep].targetKey);
+      _currentStep = prevStep;
       _entry?.markNeedsBuild();
     }
   }
@@ -129,17 +146,39 @@ class _TutorialOverlayWidgetState extends State<TutorialOverlayWidget>
     super.dispose();
   }
 
-  void _next() {
-    if (_currentStep < widget.steps.length - 1) {
-      setState(() => _currentStep++);
+  Future<void> _next() async {
+    final nextStep = _currentStep + 1;
+    if (nextStep < widget.steps.length) {
+      final ctx = widget.steps[nextStep].targetKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        try {
+          await Scrollable.ensureVisible(
+            ctx,
+            alignment: 0.3,
+            duration: const Duration(milliseconds: 400),
+          );
+        } catch (_) {}
+      }
+      setState(() => _currentStep = nextStep);
     } else {
       widget.onComplete?.call();
     }
   }
 
-  void _previous() {
-    if (_currentStep > 0) {
-      setState(() => _currentStep--);
+  Future<void> _previous() async {
+    final prevStep = _currentStep - 1;
+    if (prevStep >= 0) {
+      final ctx = widget.steps[prevStep].targetKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        try {
+          await Scrollable.ensureVisible(
+            ctx,
+            alignment: 0.3,
+            duration: const Duration(milliseconds: 400),
+          );
+        } catch (_) {}
+      }
+      setState(() => _currentStep = prevStep);
     }
   }
 
@@ -374,7 +413,7 @@ class _TooltipCard extends StatelessWidget {
           right: 20,
           top: _tooltipTop(screenSize, targetRect),
           bottom: _tooltipBottom(screenSize, targetRect),
-          child: _buildCard(context),
+          child: _buildCard(context, screenSize),
         ),
       ],
     );
@@ -383,12 +422,13 @@ class _TooltipCard extends StatelessWidget {
   double? _tooltipTop(Size screen, Rect target) {
     switch (step.tooltipPosition) {
       case TutorialTooltipPosition.bottom:
-        return target.bottom + 16;
+        if (target.bottom + 200 < screen.height) return target.bottom + 16;
+        return null;
       case TutorialTooltipPosition.top:
         return null;
       case TutorialTooltipPosition.left:
       case TutorialTooltipPosition.right:
-        return target.center.dy - 100;
+        return (target.center.dy - 100).clamp(20, screen.height - 240);
     }
   }
 
@@ -397,15 +437,17 @@ class _TooltipCard extends StatelessWidget {
       case TutorialTooltipPosition.bottom:
         return null;
       case TutorialTooltipPosition.top:
-        return screen.height - target.top + 16;
+        if (target.top > 240) return screen.height - target.top + 16;
+        return 20.0;
       case TutorialTooltipPosition.left:
       case TutorialTooltipPosition.right:
         return null;
     }
   }
 
-  Widget _buildCard(BuildContext context) {
-    // Determine alignment based on tooltip position
+  Widget _buildCard(BuildContext context, Size screenSize) {
+    final double maxCardHeight = screenSize.height * 0.55;
+
     final alignment = switch (step.tooltipPosition) {
       TutorialTooltipPosition.top => Alignment.bottomCenter,
       TutorialTooltipPosition.bottom => Alignment.topCenter,
@@ -422,7 +464,10 @@ class _TooltipCard extends StatelessWidget {
           if (step.tooltipPosition == TutorialTooltipPosition.bottom)
             _buildArrowUp(),
           Container(
-            constraints: const BoxConstraints(maxWidth: 400),
+            constraints: BoxConstraints(
+              maxWidth: screenSize.width - 40,
+              maxHeight: maxCardHeight,
+            ),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(20),
@@ -434,138 +479,140 @@ class _TooltipCard extends StatelessWidget {
                 ),
               ],
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Step indicator + Skip
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.forest.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '${currentStep + 1} of $totalSteps',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.forest,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: onSkip,
-                        child: Text(
-                          'Skip',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.mutedInk.withValues(alpha: 0.7),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Title
-                  Text(
-                    step.title,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.ink,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Description
-                  Text(
-                    step.description,
-                    style: TextStyle(
-                      fontSize: 14,
-                      height: 1.45,
-                      color: AppColors.mutedInk,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Navigation buttons
-                  Row(
-                    children: [
-                      // Dot indicators
-                      Expanded(
-                        child: Row(
-                          children: List.generate(
-                            totalSteps.clamp(1, 12),
-                            (i) => Container(
-                              width: i == currentStep ? 20 : 8,
-                              height: 8,
-                              margin: const EdgeInsets.only(right: 6),
-                              decoration: BoxDecoration(
-                                color: i == currentStep
-                                    ? AppColors.forest
-                                    : AppColors.mutedInk.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // Previous
-                      if (!isFirst)
-                        GestureDetector(
-                          onTap: onPrevious,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: AppColors.canvas,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Text(
-                              'Back',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.mutedInk,
-                              ),
-                            ),
-                          ),
-                        ),
-                      if (!isFirst) const SizedBox(width: 10),
-
-                      // Next / Finish
-                      GestureDetector(
-                        onTap: onNext,
-                        child: Container(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Step indicator + Skip
+                    Row(
+                      children: [
+                        Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 24, vertical: 10),
+                              horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: AppColors.forest,
-                            borderRadius: BorderRadius.circular(12),
+                            color: AppColors.forest.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            isLast ? 'Finish' : 'Next',
+                            '${currentStep + 1} of $totalSteps',
                             style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.forest,
                             ),
                           ),
                         ),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: onSkip,
+                          child: Text(
+                            'Skip',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.mutedInk.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Title
+                    Text(
+                      step.title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink,
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Description
+                    Text(
+                      step.description,
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.45,
+                        color: AppColors.mutedInk,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Navigation buttons
+                    Row(
+                      children: [
+                        // Dot indicators
+                        Expanded(
+                          child: Row(
+                            children: List.generate(
+                              totalSteps.clamp(1, 12),
+                              (i) => Container(
+                              width: i == currentStep ? 14 : 6,
+                              height: 6,
+                              margin: const EdgeInsets.only(right: 4),
+                                decoration: BoxDecoration(
+                                  color: i == currentStep
+                                      ? AppColors.forest
+                                      : AppColors.mutedInk.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // Previous
+                        if (!isFirst)
+                          GestureDetector(
+                            onTap: onPrevious,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: AppColors.canvas,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Text(
+                                'Back',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.mutedInk,
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (!isFirst) const SizedBox(width: 8),
+
+                        // Next / Finish
+                        GestureDetector(
+                          onTap: onNext,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 18, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: AppColors.forest,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              isLast ? 'Finish' : 'Next',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

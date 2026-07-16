@@ -90,4 +90,40 @@ class HiveService {
   Future<void> removePreference(String key) async {
     await _preferencesBox.delete(key);
   }
+
+  // ─── Tutorials ──────────────────────────────────
+
+  static const _tutorialEnabledKey = 'tutorials_enabled';
+  static const _tutorialKeys = [
+    'tutorial_home',
+    'tutorial_tractor_detail',
+    'tutorial_bookings',
+    'tutorial_chat',
+    'tutorial_account',
+    'tutorial_track_history',
+    'tutorial_feedback',
+    'tutorial_alerts',
+    'tutorial_tickets',
+    'tutorial_create_ticket',
+    'tutorial_ticket_detail',
+    'tutorial_geofences',
+    'tutorial_create_geofence',
+    'tutorial_geofence_detail',
+    'tutorial_edit_geofence',
+  ];
+
+  /// Whether tutorials are enabled (default: true).
+  bool get tutorialsEnabled => _preferencesBox.get(_tutorialEnabledKey) != 'false';
+
+  Future<void> setTutorialsEnabled(bool enabled) async {
+    await _preferencesBox.put(_tutorialEnabledKey, enabled ? 'true' : 'false');
+  }
+
+  /// Delete all tutorial "already seen" flags so they show again.
+  Future<void> resetAllTutorials() async {
+    for (final key in _tutorialKeys) {
+      await _preferencesBox.delete(key);
+    }
+    await _preferencesBox.put(_tutorialEnabledKey, 'true');
+  }
 }

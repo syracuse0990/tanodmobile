@@ -10,7 +10,9 @@ import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/chat_unread_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/realtime_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/ticket_provider.dart';
+import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
 import 'package:tanodmobile/models/domain/ticket.dart';
+import 'package:tanodmobile/services/storage/hive_service.dart';
 import 'package:tanodmobile/services/websocket/pusher_client.dart';
 
 class TicketDetailScreen extends StatefulWidget {
@@ -32,6 +34,11 @@ class TicketDetailScreen extends StatefulWidget {
 class _TicketDetailScreenState extends State<TicketDetailScreen> {
   StreamSubscription<PusherEvent>? _eventSub;
   String _channelName = '';
+
+  // Tutorial keys
+  final _headerKey = GlobalKey();
+  final _discussionKey = GlobalKey();
+  final _chatFabKey = GlobalKey();
 
   // Typing indicator state
   final _typingUserName = ValueNotifier<String?>(null);
@@ -59,6 +66,83 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
 
     // Listen for real-time events on this channel
     _eventSub = realtime.events?.listen(_handleRealtimeEvent);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
+  }
+
+  void _maybeShowTutorial() {
+    if (!mounted) return;
+    try {
+      final hive = context.read<HiveService>();
+      if (!hive.tutorialsEnabled) return;
+      if (hive.getPreference('tutorial_ticket_detail') == 'true') return;
+      // Wait for ticket data to load
+      final provider = context.read<TicketProvider>();
+      if (provider.selectedTicket == null) {
+        // Retry after data loads
+        provider.addListener(_onTicketLoaded);
+        return;
+      }
+      _showTutorialSteps();
+    } catch (_) {}
+  }
+
+  void _onTicketLoaded() {
+    if (!mounted) return;
+    final provider = context.read<TicketProvider>();
+    if (provider.selectedTicket != null) {
+      provider.removeListener(_onTicketLoaded);
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) _showTutorialSteps();
+      });
+    }
+  }
+
+  void _showTutorialSteps() {
+    if (!mounted) return;
+    final steps = <TutorialStep>[
+      TutorialStep(
+        targetKey: _headerKey,
+        title: 'Ticket Information',
+        description:
+            'This card shows all the important details about the ticket — '
+            'the subject, status, priority, tractor info, who submitted it, '
+            'and when it was created. Scroll down to see more details.',
+        tooltipPosition: TutorialTooltipPosition.bottom,
+      ),
+      TutorialStep(
+        targetKey: _discussionKey,
+        title: 'Discussion',
+        description:
+            'This section shows the conversation about this ticket. '
+            'Tap here to open the chat and view messages or ask questions '
+            'about the repair or maintenance request.',
+        tooltipPosition: TutorialTooltipPosition.top,
+      ),
+      TutorialStep(
+        targetKey: _chatFabKey,
+        title: 'Open Chat',
+        description:
+            'You can also tap this chat button anytime to open the '
+            'discussion. A badge shows how many unread messages you have.',
+        tooltipPosition: TutorialTooltipPosition.left,
+      ),
+    ];
+
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      TutorialOverlay.show(
+        context: context,
+        steps: steps,
+        onComplete: _onTutorialComplete,
+        onSkip: _onTutorialComplete,
+      );
+    });
+  }
+
+  void _onTutorialComplete() {
+    if (!mounted) return;
+    context.read<HiveService>().savePreference('tutorial_ticket_detail', 'true');
   }
 
   void _handleRealtimeEvent(PusherEvent event) {
@@ -177,6 +261,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
               clipBehavior: Clip.none,
               children: [
                 FloatingActionButton(
+                  key: _chatFabKey,
                   onPressed: _openChat,
                   backgroundColor: AppColors.forest,
                   foregroundColor: Colors.white,
@@ -256,6 +341,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                   children: [
                     // ─── Header card ───
                     _DetailCard(
+                      key: _headerKey,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -412,6 +498,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                     // ─── Discussion hint ───
                     const SizedBox(height: 16),
                     _DetailCard(
+                      key: _discussionKey,
                       child: InkWell(
                         onTap: _openChat,
                         borderRadius: BorderRadius.circular(14),
@@ -530,7 +617,7 @@ class _ChatSheet extends StatelessWidget {
 // ─── Shared widgets ─────────────────────────────
 
 class _DetailCard extends StatelessWidget {
-  const _DetailCard({required this.child});
+  const _DetailCard({super.key, required this.child});
   final Widget child;
 
   @override

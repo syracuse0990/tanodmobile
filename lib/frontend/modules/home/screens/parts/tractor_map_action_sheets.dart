@@ -3,10 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/shared/providers/tractor_provider.dart';
 import 'package:tanodmobile/frontend/modules/home/screens/parts/tractor_track_history_map.dart';
+import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
 import 'package:tanodmobile/models/domain/tractor_location.dart';
+import 'package:tanodmobile/services/storage/hive_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 Future<void> showTractorShareLocationSheet(
@@ -279,6 +282,11 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
   int _playbackIndex = 0;
   int _playbackSpeed = 1;
 
+  // Tutorial
+  final _periodKey = GlobalKey();
+  final _heroKey = GlobalKey();
+  bool _showTutorial = false;
+
   bool get _isPlaying => _playbackTimer != null;
 
   Duration get _playbackStepDuration => switch (_playbackSpeed) {
@@ -291,6 +299,30 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
   void initState() {
     super.initState();
     _loadTrackHistory();
+  }
+
+  void _maybeShowTutorial() {
+    if (!mounted || _loading || _points.isEmpty) return;
+
+    try {
+      final hive = context.read<HiveService>();
+      if (!hive.tutorialsEnabled) return;
+      final alreadySeen = hive.getPreference('tutorial_track_history') == 'true';
+      if (alreadySeen) return;
+    } catch (_) {}
+
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (!mounted || _showTutorial || _loading || _points.isEmpty) return;
+      setState(() => _showTutorial = true);
+    });
+  }
+
+  void _onTutorialComplete() {
+    if (!mounted) return;
+    try {
+      context.read<HiveService>().savePreference('tutorial_track_history', 'true');
+    } catch (_) {}
+    setState(() => _showTutorial = false);
   }
 
   @override
@@ -342,6 +374,8 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
       _points = parsedPoints;
       _playbackIndex = 0;
     });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
   }
 
   void _togglePlayback() {
@@ -456,11 +490,14 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
 
     return _SheetFrame(
       heightFactor: 0.94,
-      child: Column(
+      child: Stack(
+        children: [
+          Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SheetHandle(onClose: () => Navigator.of(context).pop()),
           _SheetHero(
+            key: _heroKey,
             icon: Icons.route_rounded,
             title: 'Track History',
             subtitle: widget.tractor.label,
@@ -468,6 +505,7 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
           ),
           const SizedBox(height: 20),
           Wrap(
+            key: _periodKey,
             spacing: 10,
             runSpacing: 10,
             children: [
@@ -759,9 +797,31 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
                           ),
                         ),
                       ),
-        ],
-      ),
-    );
+                    ],
+                  ),
+
+          // ─── Tutorial overlay ───
+          if (_showTutorial)
+            TutorialOverlayWidget(
+              steps: [
+                TutorialStep(
+                  targetKey: _heroKey,
+                  title: 'Track History Playback',
+                  description:
+                      'This timeline shows the tractor\'s route and stops '
+                      'for a selected time range. Choose a period above, '
+                      'then use the playback controls below the map to '
+                      'watch the tractor retrace its path. You can adjust '
+                      'the playback speed with the 1x, 2x, or 4x buttons.',
+                  tooltipPosition: TutorialTooltipPosition.bottom,
+                ),
+              ],
+              onComplete: _onTutorialComplete,
+              onSkip: _onTutorialComplete,
+            ),
+        ],  // ← closes Stack children
+      ),  // ← closes Stack
+    );  // ← closes _SheetFrame child
   }
 }
 
@@ -821,6 +881,7 @@ class _SheetHandle extends StatelessWidget {
 
 class _SheetHero extends StatelessWidget {
   const _SheetHero({
+    super.key,
     required this.icon,
     required this.title,
     required this.subtitle,

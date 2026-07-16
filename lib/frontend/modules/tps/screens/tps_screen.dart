@@ -8,12 +8,10 @@ import 'package:tanodmobile/core/locale/app_localizations.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/maintenance_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/tps_provider.dart';
-import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
 import 'package:tanodmobile/models/domain/distribution.dart';
 import 'package:tanodmobile/models/domain/maintenance_tractor.dart';
 import 'package:tanodmobile/models/domain/ticket.dart';
 import 'package:tanodmobile/models/domain/tps_fca.dart';
-import 'package:tanodmobile/services/storage/hive_service.dart';
 
 enum _TpsDashboardAction { refreshOfflineData }
 
@@ -27,8 +25,6 @@ class TpsScreen extends StatefulWidget {
 class _TpsScreenState extends State<TpsScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
-  bool _showTutorial = false;
-  final _titleKey = GlobalKey();
 
   @override
   void initState() {
@@ -36,25 +32,6 @@ class _TpsScreenState extends State<TpsScreen>
     _tabController = TabController(length: 4, vsync: this);
     context.read<TpsProvider>().loadAll();
     context.read<MaintenanceProvider>().fetchTractors(pageSize: 20);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
-  }
-
-  void _maybeShowTutorial() {
-    if (!mounted) return;
-    try {
-      final hive = context.read<HiveService>();
-      if (hive.getPreference('tutorial_tps') == 'true') return;
-      Future.delayed(const Duration(milliseconds: 600), () {
-        if (!mounted || _showTutorial) return;
-        setState(() => _showTutorial = true);
-      });
-    } catch (_) {}
-  }
-
-  void _onTutorialComplete() {
-    if (!mounted) return;
-    context.read<HiveService>().savePreference('tutorial_tps', 'true');
-    setState(() => _showTutorial = false);
   }
 
   @override
@@ -136,143 +113,121 @@ class _TpsScreenState extends State<TpsScreen>
               );
             },
           ),
-          body: Stack(
-            children: [
-              RefreshIndicator(
-                onRefresh: () async {
-                  await Future.wait([
-                    provider.loadAll(),
-                    context.read<MaintenanceProvider>().fetchTractors(
-                      pageSize: 20,
-                    ),
-                  ]);
-                },
-                color: AppColors.forest,
-                child: NestedScrollView(
-                  headerSliverBuilder: (context, innerBoxIsScrolled) {
-                    return [
-                      SliverAppBar(
-                        floating: true,
-                        snap: true,
-                        backgroundColor: Colors.white,
-                        surfaceTintColor: Colors.transparent,
-                        elevation: 0,
-                        toolbarHeight: 70,
-                        actions: [
-                          PopupMenuButton<_TpsDashboardAction>(
-                            tooltip: 'TPS actions',
-                            icon: const Icon(
-                              Icons.more_vert_rounded,
-                              color: AppColors.ink,
-                            ),
-                            onSelected: (action) =>
-                                _handleDashboardAction(action, authProvider),
-                            itemBuilder: (context) => const [
-                              PopupMenuItem<_TpsDashboardAction>(
-                                value: _TpsDashboardAction.refreshOfflineData,
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.cloud_sync_rounded,
-                                      color: AppColors.forest,
-                                      size: 20,
-                                    ),
-                                    SizedBox(width: 12),
-                                    Text('Refresh offline data'),
-                                  ],
+          body: RefreshIndicator(
+            onRefresh: () async {
+              await Future.wait([
+                provider.loadAll(),
+                context.read<MaintenanceProvider>().fetchTractors(pageSize: 20),
+              ]);
+            },
+            color: AppColors.forest,
+            child: NestedScrollView(
+              headerSliverBuilder: (context, innerBoxIsScrolled) {
+                return [
+                  SliverAppBar(
+                    floating: true,
+                    snap: true,
+                    backgroundColor: Colors.white,
+                    surfaceTintColor: Colors.transparent,
+                    elevation: 0,
+                    toolbarHeight: 70,
+                    actions: [
+                      PopupMenuButton<_TpsDashboardAction>(
+                        tooltip: 'TPS actions',
+                        icon: const Icon(
+                          Icons.more_vert_rounded,
+                          color: AppColors.ink,
+                        ),
+                        onSelected: (action) =>
+                            _handleDashboardAction(action, authProvider),
+                        itemBuilder: (context) => const [
+                          PopupMenuItem<_TpsDashboardAction>(
+                            value: _TpsDashboardAction.refreshOfflineData,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.cloud_sync_rounded,
+                                  color: AppColors.forest,
+                                  size: 20,
                                 ),
-                              ),
-                            ],
+                                SizedBox(width: 12),
+                                Text('Refresh offline data'),
+                              ],
+                            ),
                           ),
                         ],
-                        title: const Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'TSR Dashboard',
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.ink,
-                              ),
-                            ),
-                            SizedBox(height: 2),
-                            Text(
-                              'Manage assigned tractors & services',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: AppColors.mutedInk,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                          ],
-                        ),
-                        bottom: PreferredSize(
-                          preferredSize: const Size.fromHeight(132),
-                          child: Column(
-                            children: [
-                              _SummaryRow(provider: provider),
-                              const SizedBox(height: 8),
-                              Container(
-                                color: Colors.white,
-                                child: TabBar(
-                                  controller: _tabController,
-                                  labelColor: AppColors.forest,
-                                  unselectedLabelColor: AppColors.mutedInk,
-                                  indicatorColor: AppColors.forest,
-                                  indicatorSize: TabBarIndicatorSize.label,
-                                  isScrollable: true,
-                                  tabAlignment: TabAlignment.start,
-                                  labelStyle: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                  unselectedLabelStyle: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  tabs: const [
-                                    Tab(text: 'Repair & Maintenance'),
-                                    Tab(text: 'Distributions'),
-                                    Tab(text: 'FCAs'),
-                                    Tab(text: 'Tractors'),
-                                  ],
-                                ),
-                              ),
-                            ],
+                      ),
+                    ],
+                    title: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'TSR Dashboard',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.ink,
                           ),
                         ),
-                      ),
-                    ];
-                  },
-                  body: TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _TicketsTab(provider: provider),
-                      _DistributionsTab(provider: provider),
-                      _FcasTab(provider: provider),
-                      const _MaintenanceTab(),
-                    ],
-                  ),
-                ),
-              ),
-              if (_showTutorial)
-                TutorialOverlayWidget(
-                  steps: [
-                    TutorialStep(
-                      targetKey: _titleKey,
-                      title: 'TSR Dashboard',
-                      description:
-                          'Your TPS control center. Switch between Repair & '
-                          'Maintenance, Distributions, FCAs, and Tractors tabs '
-                          'using the tabs above.',
-                      tooltipPosition: TutorialTooltipPosition.bottom,
+                        SizedBox(height: 2),
+                        Text(
+                          'Manage assigned tractors & services',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.mutedInk,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                  onComplete: _onTutorialComplete,
-                  onSkip: _onTutorialComplete,
-                ),
-            ],
+                    bottom: PreferredSize(
+                      preferredSize: const Size.fromHeight(132),
+                      child: Column(
+                        children: [
+                          _SummaryRow(provider: provider),
+                          const SizedBox(height: 8),
+                          Container(
+                            color: Colors.white,
+                            child: TabBar(
+                              controller: _tabController,
+                              labelColor: AppColors.forest,
+                              unselectedLabelColor: AppColors.mutedInk,
+                              indicatorColor: AppColors.forest,
+                              indicatorSize: TabBarIndicatorSize.label,
+                              isScrollable: true,
+                              tabAlignment: TabAlignment.start,
+                              labelStyle: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              unselectedLabelStyle: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              tabs: const [
+                                Tab(text: 'Repair & Maintenance'),
+                                Tab(text: 'Distributions'),
+                                Tab(text: 'FCAs'),
+                                Tab(text: 'Tractors'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ];
+              },
+              body: TabBarView(
+                controller: _tabController,
+                children: [
+                  _TicketsTab(provider: provider),
+                  _DistributionsTab(provider: provider),
+                  _FcasTab(provider: provider),
+                  const _MaintenanceTab(),
+                ],
+              ),
+            ),
           ),
         );
       },
@@ -435,9 +390,7 @@ class _TicketsTab extends StatelessWidget {
         const SizedBox(height: 8),
         Expanded(
           child: _PagedSearchList<Ticket>(
-            key: ValueKey(
-              'tickets_${provider.tickets.length}_${provider.ticketsLoading}',
-            ),
+            key: ValueKey('tickets_${provider.tickets.length}_${provider.ticketsLoading}'),
             items: provider.tickets,
             loading: provider.ticketsLoading,
             hasMore: provider.hasMoreTickets,
@@ -561,10 +514,7 @@ class _TicketCard extends StatelessWidget {
           Row(
             children: [
               if (ticket.isPartial)
-                _Badge(
-                  label: 'Partially Resolved',
-                  color: const Color(0xFFE65100),
-                )
+                _Badge(label: 'Partially Resolved', color: const Color(0xFFE65100))
               else
                 _Badge(label: ticket.statusLabel, color: _statusColor),
               const Spacer(),
@@ -1143,9 +1093,7 @@ class _DistributionsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _PagedSearchList<Distribution>(
-      key: ValueKey(
-        'dist_${provider.distributions.length}_${provider.distributionsLoading}',
-      ),
+      key: ValueKey('dist_${provider.distributions.length}_${provider.distributionsLoading}'),
       items: provider.distributions,
       loading: provider.distributionsLoading,
       hasMore: provider.hasMoreDistributions,

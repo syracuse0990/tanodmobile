@@ -23,8 +23,8 @@ class _BookingsScreenState extends State<BookingsScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final ScrollController _listScrollController = ScrollController();
-  bool _showTutorial = false;
-  final _titleKey = GlobalKey();
+  final _bookButtonKey = GlobalKey();
+  final _tabKey = GlobalKey();
 
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
@@ -58,10 +58,35 @@ class _BookingsScreenState extends State<BookingsScreen>
     if (!mounted) return;
     try {
       final hive = context.read<HiveService>();
+      if (!hive.tutorialsEnabled) return;
       if (hive.getPreference('tutorial_bookings') == 'true') return;
       Future.delayed(const Duration(milliseconds: 600), () {
-        if (!mounted || _showTutorial) return;
-        setState(() => _showTutorial = true);
+        if (!mounted) return;
+        TutorialOverlay.show(
+          context: context,
+          steps: [
+            TutorialStep(
+              targetKey: _bookButtonKey,
+              title: 'Bookings & Reservations',
+              description:
+                  'Manage your tractor reservations here. Tap "Book" '
+                  'to create a new reservation for a specific date '
+                  'and time. FCAs can book on behalf of thei-r farmers.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+            TutorialStep(
+              targetKey: _tabKey,
+              title: 'Calendar & Listing',
+              description:
+                  'Switch between Calendar view to see bookings by '
+                  'date, or Listing view for a sorted list of all '
+                  'reservations.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+          ],
+          onComplete: _onTutorialComplete,
+          onSkip: _onTutorialComplete,
+        );
       });
     } catch (_) {}
   }
@@ -69,7 +94,6 @@ class _BookingsScreenState extends State<BookingsScreen>
   void _onTutorialComplete() {
     if (!mounted) return;
     context.read<HiveService>().savePreference('tutorial_bookings', 'true');
-    setState(() => _showTutorial = false);
   }
 
   @override
@@ -1092,6 +1116,7 @@ class _BookingsScreenState extends State<BookingsScreen>
                     return SizedBox(
                       height: cellHeight,
                       child: Stack(
+                        clipBehavior: Clip.hardEdge,
                         children: [
                           // Day number cells (background)
                           Row(
@@ -1626,6 +1651,7 @@ class _BookingsScreenState extends State<BookingsScreen>
                     ),
                     actions: [
                       FilledButton.icon(
+                        key: _bookButtonKey,
                         onPressed: _showCreateBookingSheet,
                         icon: const Icon(Icons.add_rounded, size: 18),
                         label: const Text('Book'),
@@ -1725,6 +1751,7 @@ class _BookingsScreenState extends State<BookingsScreen>
                           Container(
                             color: Colors.white,
                             child: TabBar(
+                              key: _tabKey,
                               controller: _tabController,
                               labelColor: AppColors.forest,
                               unselectedLabelColor: AppColors.mutedInk,
@@ -1838,11 +1865,14 @@ class _SpanningEventBar extends StatelessWidget {
           left: isStart ? BorderSide(color: color, width: 3) : BorderSide.none,
         ),
       ),
-      padding: EdgeInsets.only(left: isStart ? 4 : 6, right: isEnd ? 4 : 2),
+      padding: EdgeInsets.only(
+        left: isStart ? 2 : 4,
+        right: isEnd ? 2 : 1,
+      ),
       alignment: Alignment.centerLeft,
       child: Row(
         children: [
-          Expanded(
+          Flexible(
             child: Text(
               label,
               maxLines: 1,
@@ -1855,7 +1885,7 @@ class _SpanningEventBar extends StatelessWidget {
             ),
           ),
           if (time != null) ...[
-            const SizedBox(width: 2),
+            const SizedBox(width: 1),
             Text(
               time,
               style: TextStyle(

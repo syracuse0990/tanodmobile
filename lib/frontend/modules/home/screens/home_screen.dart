@@ -36,7 +36,9 @@ class _HomeScreenState extends State<HomeScreen>
   final _searchKey = GlobalKey();
   final _mapKey = GlobalKey();
   final _fabKey = GlobalKey();
+  final _detailCardKey = GlobalKey();
   bool _showTutorial = false;
+  bool _showTractorTutorial = false;
 
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
@@ -99,23 +101,30 @@ class _HomeScreenState extends State<HomeScreen>
 
     try {
       final hive = context.read<HiveService>();
+      if (!hive.tutorialsEnabled) return;
       final alreadySeen = hive.getPreference('tutorial_home') == 'true';
       if (alreadySeen) return;
-
-      // Wait a moment for the map & data to render
-      Future.delayed(const Duration(milliseconds: 800), () {
-        if (!mounted || _showTutorial) return;
-        setState(() => _showTutorial = true);
-      });
     } catch (_) {
-      // Hive not ready yet — silently skip tutorial
+      // Hive not ready — proceed to show tutorial anyway
     }
+
+    // Wait a moment for the map & data to render
+    Future.delayed(const Duration(milliseconds: 1000), () {
+      if (!mounted || _showTutorial) return;
+      setState(() => _showTutorial = true);
+    });
   }
 
   void _onTutorialComplete() {
     if (!mounted) return;
     context.read<HiveService>().savePreference('tutorial_home', 'true');
     setState(() => _showTutorial = false);
+  }
+
+  void _onTractorTutorialComplete() {
+    if (!mounted) return;
+    context.read<HiveService>().savePreference('tutorial_tractor_detail', 'true');
+    setState(() => _showTractorTutorial = false);
   }
 
   @override
@@ -244,6 +253,20 @@ class _HomeScreenState extends State<HomeScreen>
     // Focus on the tractor - zoom in and switch to 10s polling
     provider.focusTractor(tractor.id);
     _animateCamera(LatLng(tractor.lat, tractor.lng), targetZoom: _focusZoom);
+
+    // Show tractor detail tutorial on first tap (if main tutorial was skipped)
+    if (!_showTutorial) {
+      try {
+        final hive = context.read<HiveService>();
+        final seenDetail = hive.getPreference('tutorial_tractor_detail') == 'true';
+        if (!seenDetail && mounted) {
+          setState(() => _showTractorTutorial = true);
+        }
+      } catch (_) {
+        // Hive not ready — show anyway
+        if (mounted) setState(() => _showTractorTutorial = true);
+      }
+    }
   }
 
   void _clearFocus() {
@@ -812,6 +835,7 @@ class _HomeScreenState extends State<HomeScreen>
               left: 20,
               right: 20,
               child: _TractorDetailCard(
+                key: _detailCardKey,
                 tractor: selectedTractor,
                 onClose: _clearFocusAndRecenter,
                 onShowFcaDetails: () => _showTractorInsight(
@@ -858,28 +882,27 @@ class _HomeScreenState extends State<HomeScreen>
               steps: [
                 TutorialStep(
                   targetKey: _titleKey,
-                  title: 'Welcome to Tanod!',
+                  title: 'Welcome to Fleet Tracker!',
                   description:
-                      'This is your Fleet Tracker — a live map showing all '
-                      'your tractors in real time. Your name appears here '
-                      'as a greeting.',
+                      'This is your live map showing all your tractors in '
+                      'real time. Your name appears here as a greeting.',
                   tooltipPosition: TutorialTooltipPosition.bottom,
                 ),
                 TutorialStep(
                   targetKey: _statusChipsKey,
                   title: 'Tractor Status at a Glance',
                   description:
-                      'These chips show how many tractors are currently '
-                      'moving (green), idle (yellow), or offline (red). '
-                      'Tap any marker on the map for more details.',
+                      'These chips show how many tractors are moving '
+                      '(green), idle (yellow), or offline (red). Tap any '
+                      'marker on the map for more details.',
                   tooltipPosition: TutorialTooltipPosition.bottom,
                 ),
                 TutorialStep(
                   targetKey: _searchKey,
                   title: 'Search Tractors',
                   description:
-                      'Type a tractor name, plate number, IMEI, or FCA name '
-                      'here to quickly find a specific tractor.',
+                      'Type a tractor name, plate number, IMEI, or FCA '
+                      'name here to quickly find a specific tractor.',
                   tooltipPosition: TutorialTooltipPosition.bottom,
                 ),
                 TutorialStep(
@@ -888,7 +911,8 @@ class _HomeScreenState extends State<HomeScreen>
                   description:
                       'The map shows the live location of every tractor. '
                       'Green markers are moving, yellow are idle, and red '
-                      'are offline. Tap a marker for details.',
+                      'are offline. Tap a marker to see its details card '
+                      'with status, speed, IMEI, and last update time.',
                   tooltipPosition: TutorialTooltipPosition.top,
                 ),
                 TutorialStep(
@@ -896,22 +920,31 @@ class _HomeScreenState extends State<HomeScreen>
                   title: 'Map Controls',
                   description:
                       'Use these buttons to toggle satellite view, zoom '
-                      'in/out, and recenter the map. When a tractor is '
-                      'selected, you can also share its location.',
+                      'in/out, recenter the map, share a tractor\'s '
+                      'location, or view its track history.',
                   tooltipPosition: TutorialTooltipPosition.left,
-                ),
-                TutorialStep(
-                  targetKey: _fabKey,
-                  title: 'Explore More Features',
-                  description:
-                      'Use the navigation bar at the bottom to explore '
-                      'Alerts, Bookings, Chat, and your Account. Tap each '
-                      'tab to discover what Tanod can do for you!',
-                  tooltipPosition: TutorialTooltipPosition.bottom,
                 ),
               ],
               onComplete: _onTutorialComplete,
               onSkip: _onTutorialComplete,
+            ),
+
+          // ─── Tractor Detail Tutorial ───
+          if (_showTractorTutorial && selectedTractor != null)
+            TutorialOverlayWidget(
+              steps: [
+                TutorialStep(
+                  targetKey: _detailCardKey,
+                  title: 'Tractor Details',
+                  description:
+                      'This card shows the selected tractor\'s real-time '
+                      'info: status, speed, coordinates, IMEI, and when '
+                      'it was last updated. Tap the X to close.',
+                  tooltipPosition: TutorialTooltipPosition.top,
+                ),
+              ],
+              onComplete: _onTractorTutorialComplete,
+              onSkip: _onTractorTutorialComplete,
             ),
         ],
       ),
@@ -1190,6 +1223,7 @@ class _StatusChip extends StatelessWidget {
 
 class _TractorDetailCard extends StatelessWidget {
   const _TractorDetailCard({
+    super.key,
     required this.tractor,
     required this.onClose,
     required this.onShowFcaDetails,

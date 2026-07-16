@@ -6,7 +6,9 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/shared/providers/geofence_provider.dart';
+import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
 import 'package:tanodmobile/models/domain/geo_fence.dart';
+import 'package:tanodmobile/services/storage/hive_service.dart';
 
 class GeofenceDetailScreen extends StatefulWidget {
   const GeofenceDetailScreen({super.key, required this.geofenceId});
@@ -19,6 +21,9 @@ class GeofenceDetailScreen extends StatefulWidget {
 
 class _GeofenceDetailScreenState extends State<GeofenceDetailScreen> {
   final MapController _mapController = MapController();
+  final _mapKey = GlobalKey();
+  final _infoKey = GlobalKey();
+  final _tractorKey = GlobalKey();
   GeoFence? _geofence;
   bool _loading = true;
 
@@ -26,6 +31,71 @@ class _GeofenceDetailScreenState extends State<GeofenceDetailScreen> {
   void initState() {
     super.initState();
     _loadDetail();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
+  }
+
+  void _maybeShowTutorial() {
+    if (!mounted) return;
+    try {
+      final hive = context.read<HiveService>();
+      if (!hive.tutorialsEnabled) return;
+      if (hive.getPreference('tutorial_geofence_detail') == 'true') return;
+      // Wait for data to load
+      if (_geofence == null) {
+        // Will retry after data loads
+        Future.delayed(const Duration(milliseconds: 1500), () {
+          if (mounted && _geofence != null) _showTutorialSteps();
+        });
+        return;
+      }
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) _showTutorialSteps();
+      });
+    } catch (_) {}
+  }
+
+  void _showTutorialSteps() {
+    if (!mounted) return;
+    TutorialOverlay.show(
+      context: context,
+      steps: [
+        TutorialStep(
+          targetKey: _mapKey,
+          title: 'Geofence Map View',
+          description:
+              'This map shows the geofence boundary. A green area '
+              'indicates the zone. For circles, you\'ll see the '
+              'center point. For polygons, the numbered vertices '
+              'show the boundary corners.',
+          tooltipPosition: TutorialTooltipPosition.bottom,
+        ),
+        TutorialStep(
+          targetKey: _infoKey,
+          title: 'Geofence Details',
+          description:
+              'This card shows the key info: shape (Circle or Polygon), '
+              'radius (if circle), alert trigger (Enter/Exit/Both), '
+              'and whether the geofence is currently Active or Inactive.',
+          tooltipPosition: TutorialTooltipPosition.top,
+        ),
+        TutorialStep(
+          targetKey: _tractorKey,
+          title: 'Assigned Tractors',
+          description:
+              'These are the tractors monitored by this geofence. '
+              'Only assigned tractors trigger alerts when they enter '
+              'or exit the defined zone.',
+          tooltipPosition: TutorialTooltipPosition.top,
+        ),
+      ],
+      onComplete: () => _onTutorialComplete(),
+      onSkip: () => _onTutorialComplete(),
+    );
+  }
+
+  void _onTutorialComplete() {
+    if (!mounted) return;
+    context.read<HiveService>().savePreference('tutorial_geofence_detail', 'true');
   }
 
   Future<void> _loadDetail() async {
@@ -103,6 +173,7 @@ class _GeofenceDetailScreenState extends State<GeofenceDetailScreen> {
                   children: [
                     // Map
                     SizedBox(
+                      key: _mapKey,
                       height: 300,
                       child: ClipRRect(
                         borderRadius: const BorderRadius.vertical(
@@ -190,6 +261,7 @@ class _GeofenceDetailScreenState extends State<GeofenceDetailScreen> {
                         children: [
                           // Info card
                           Container(
+                            key: _infoKey,
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
                               color: Colors.white,
@@ -224,8 +296,9 @@ class _GeofenceDetailScreenState extends State<GeofenceDetailScreen> {
                           const SizedBox(height: 16),
 
                           // Devices
-                          const Text(
+                          Text(
                             'Assigned Tractors',
+                            key: _tractorKey,
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,

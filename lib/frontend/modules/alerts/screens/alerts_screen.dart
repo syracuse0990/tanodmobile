@@ -49,6 +49,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
     if (!mounted) return;
     try {
       final hive = context.read<HiveService>();
+      if (!hive.tutorialsEnabled) return;
       if (hive.getPreference('tutorial_alerts') == 'true') return;
       Future.delayed(const Duration(milliseconds: 600), () {
         if (!mounted || _showTutorial) return;

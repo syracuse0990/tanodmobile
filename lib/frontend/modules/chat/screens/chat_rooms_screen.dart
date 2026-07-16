@@ -51,6 +51,7 @@ class _ChatRoomsScreenState extends State<ChatRoomsScreen> {
     if (!mounted) return;
     try {
       final hive = context.read<HiveService>();
+      if (!hive.tutorialsEnabled) return;
       if (hive.getPreference('tutorial_chat') == 'true') return;
       Future.delayed(const Duration(milliseconds: 600), () {
         if (!mounted || _showTutorial) return;
@@ -162,6 +163,7 @@ class _ChatRoomsScreenState extends State<ChatRoomsScreen> {
               child: Column(
                 children: [
                   _ChatHeroHeader(
+                    key: _titleKey,
                     title: context.tr('nav_chat'),
                     subtitle: _isTps
                         ? 'All ticket conversations across the tractor fleet.'
@@ -264,6 +266,7 @@ class _ChatRoomsScreenState extends State<ChatRoomsScreen> {
 
 class _ChatHeroHeader extends StatelessWidget {
   const _ChatHeroHeader({
+    super.key,
     required this.title,
     required this.subtitle,
     required this.totalRooms,
