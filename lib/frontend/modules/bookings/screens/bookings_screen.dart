@@ -123,10 +123,15 @@ class _BookingsScreenState extends State<BookingsScreen>
     return events.where((b) => b.tractorId == _selectedTractorId).toList();
   }
 
-  void _showCreateBookingSheet() {
+  void _showCreateBookingSheet() async {
     final provider = context.read<BookingProvider>();
     final roles = context.read<AuthProvider>().session?.roles ?? [];
     final isFca = roles.contains('fca');
+
+    // Refresh farmers list so newly added farmers appear immediately
+    if (isFca) {
+      await provider.fetchFarmers();
+    }
 
     if (provider.tractors.isEmpty) {
       AppToast.warning('No tractors available');
