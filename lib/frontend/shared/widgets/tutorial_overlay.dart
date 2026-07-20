@@ -6,6 +6,7 @@ import 'package:tanodmobile/app/theme/app_colors.dart';
 // ─────────────────────────────────────────────────────────────
 
 enum TutorialTooltipPosition { top, bottom, left, right }
+
 enum TutorialHighlightShape { circle, roundedRect }
 
 class TutorialStep {
@@ -231,8 +232,7 @@ class _TutorialOverlayWidgetState extends State<TutorialOverlayWidget>
 
 class _TutorialOverlayWidget extends StatefulWidget {
   @override
-  State<_TutorialOverlayWidget> createState() =>
-      _TutorialOverlayWidgetState2();
+  State<_TutorialOverlayWidget> createState() => _TutorialOverlayWidgetState2();
 }
 
 class _TutorialOverlayWidgetState2 extends State<_TutorialOverlayWidget>
@@ -311,21 +311,19 @@ class _CutoutPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final RenderObject? renderBox =
-        step.targetKey.currentContext?.findRenderObject();
-    if (renderBox == null || !renderBox.attached) {
-      // Fallback: paint full overlay
-      canvas.drawRect(
-        Rect.fromLTWH(0, 0, size.width, size.height),
-        Paint()..color = overlayColor,
-      );
+    final RenderObject? renderObject = step.targetKey.currentContext
+        ?.findRenderObject();
+    if (renderObject is! RenderBox ||
+        !renderObject.attached ||
+        !renderObject.hasSize) {
+      // Skip painting when the target widget is not mounted or
+      // not yet laid out — prevents a full dark overlay or layout
+      // errors when the tutorial persists across route changes.
       return;
     }
 
-    final target = renderBox is RenderBox
-        ? renderBox.localToGlobal(Offset.zero, ancestor: null)
-        : Offset.zero;
-    final targetSize = renderBox is RenderBox ? renderBox.size : Size.zero;
+    final target = renderObject.localToGlobal(Offset.zero, ancestor: null);
+    final targetSize = renderObject.size;
 
     final pad = step.highlightPadding;
     final rect = Rect.fromLTWH(
@@ -387,14 +385,16 @@ class _TooltipCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final RenderObject? renderBox =
-        step.targetKey.currentContext?.findRenderObject();
-    if (renderBox == null || !renderBox.attached) return const SizedBox();
+    final RenderObject? renderObject = step.targetKey.currentContext
+        ?.findRenderObject();
+    if (renderObject is! RenderBox ||
+        !renderObject.attached ||
+        !renderObject.hasSize) {
+      return const SizedBox();
+    }
 
-    final target = renderBox is RenderBox
-        ? renderBox.localToGlobal(Offset.zero, ancestor: null)
-        : Offset.zero;
-    final targetSize = renderBox is RenderBox ? renderBox.size : Size.zero;
+    final target = renderObject.localToGlobal(Offset.zero, ancestor: null);
+    final targetSize = renderObject.size;
     final screenSize = MediaQuery.of(context).size;
 
     final pad = step.highlightPadding;
@@ -491,7 +491,9 @@ class _TooltipCard extends StatelessWidget {
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: AppColors.forest.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(20),
@@ -552,13 +554,15 @@ class _TooltipCard extends StatelessWidget {
                             children: List.generate(
                               totalSteps.clamp(1, 12),
                               (i) => Container(
-                              width: i == currentStep ? 14 : 6,
-                              height: 6,
-                              margin: const EdgeInsets.only(right: 4),
+                                width: i == currentStep ? 14 : 6,
+                                height: 6,
+                                margin: const EdgeInsets.only(right: 4),
                                 decoration: BoxDecoration(
                                   color: i == currentStep
                                       ? AppColors.forest
-                                      : AppColors.mutedInk.withValues(alpha: 0.2),
+                                      : AppColors.mutedInk.withValues(
+                                          alpha: 0.2,
+                                        ),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                               ),
@@ -572,7 +576,9 @@ class _TooltipCard extends StatelessWidget {
                             onTap: onPrevious,
                             child: Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 10),
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppColors.canvas,
                                 borderRadius: BorderRadius.circular(12),
@@ -594,7 +600,9 @@ class _TooltipCard extends StatelessWidget {
                           onTap: onNext,
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 18, vertical: 10),
+                              horizontal: 18,
+                              vertical: 10,
+                            ),
                             decoration: BoxDecoration(
                               color: AppColors.forest,
                               borderRadius: BorderRadius.circular(12),
@@ -627,11 +635,7 @@ class _TooltipCard extends StatelessWidget {
     return Center(
       child: ClipPath(
         clipper: _ArrowClipper(flip: false),
-        child: Container(
-          width: 20,
-          height: 10,
-          color: Colors.white,
-        ),
+        child: Container(width: 20, height: 10, color: Colors.white),
       ),
     );
   }
@@ -640,11 +644,7 @@ class _TooltipCard extends StatelessWidget {
     return Center(
       child: ClipPath(
         clipper: _ArrowClipper(flip: true),
-        child: Container(
-          width: 20,
-          height: 10,
-          color: Colors.white,
-        ),
+        child: Container(width: 20, height: 10, color: Colors.white),
       ),
     );
   }
