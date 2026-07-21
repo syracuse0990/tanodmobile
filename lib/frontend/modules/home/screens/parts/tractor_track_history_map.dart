@@ -224,9 +224,6 @@ class _TractorTrackHistoryMapState extends State<TractorTrackHistoryMap> {
     required double direction,
   }) {
     final assetPath = _tractorAssetForSpeed(speed);
-    // Convert bearing (0°=North, clockwise) to Flutter rotation
-    // (0 radians = East, clockwise)
-    final rotationRadians = (direction - 90) * 3.141592653589793 / 180;
 
     return Marker(
       point: point,
@@ -244,13 +241,10 @@ class _TractorTrackHistoryMapState extends State<TractorTrackHistoryMap> {
             ),
           ],
         ),
-        child: Transform.rotate(
-          angle: rotationRadians,
-          child: Image.asset(
-            assetPath,
-            fit: BoxFit.contain,
-            filterQuality: FilterQuality.high,
-          ),
+        child: Image.asset(
+          assetPath,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
         ),
       ),
     );
