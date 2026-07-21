@@ -8,6 +8,7 @@ class Booking {
     this.endDate,
     this.purpose,
     this.farmAreaHectares,
+    this.cost,
     this.notes,
     this.startTime,
     this.endTime,
@@ -29,6 +30,7 @@ class Booking {
   final DateTime? endDate;
   final String? purpose;
   final double? farmAreaHectares;
+  final double? cost;
   final String? notes;
   final String? startTime;
   final String? endTime;
@@ -91,6 +93,7 @@ class Booking {
       endDate: DateTime.tryParse(json['end_date']?.toString() ?? ''),
       purpose: json['purpose']?.toString(),
       farmAreaHectares: _parseDouble(json['farm_area_hectares']),
+      cost: _parseDouble(json['cost']),
       notes: json['notes']?.toString(),
       startTime: json['start_time']?.toString(),
       endTime: json['end_time']?.toString(),
