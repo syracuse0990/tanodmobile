@@ -3,7 +3,9 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/shared/providers/ticket_provider.dart';
+import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
 import 'package:tanodmobile/models/domain/ticket.dart';
+import 'package:tanodmobile/services/storage/hive_service.dart';
 
 class TicketsScreen extends StatefulWidget {
   const TicketsScreen({super.key});
@@ -14,6 +16,9 @@ class TicketsScreen extends StatefulWidget {
 
 class _TicketsScreenState extends State<TicketsScreen> {
   final ScrollController _scrollController = ScrollController();
+  final _titleKey = GlobalKey();
+  final _filterKey = GlobalKey();
+  final _fabKey = GlobalKey();
 
   @override
   void initState() {
@@ -25,6 +30,58 @@ class _TicketsScreenState extends State<TicketsScreen> {
         context.read<TicketProvider>().fetchMore();
       }
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
+  }
+
+  void _maybeShowTutorial() {
+    if (!mounted) return;
+    try {
+      final hive = context.read<HiveService>();
+      if (!hive.tutorialsEnabled) return;
+      if (hive.getPreference('tutorial_tickets') == 'true') return;
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (!mounted) return;
+        TutorialOverlay.show(
+          context: context,
+          steps: [
+            TutorialStep(
+              targetKey: _titleKey,
+              title: 'Repair & Maintenance',
+              description:
+                  'This is your ticket hub. All reported issues, repair '
+                  'requests, and PMS schedules appear here. Tickets are '
+                  'sorted by newest first.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+            TutorialStep(
+              targetKey: _filterKey,
+              title: 'Filter Tickets',
+              description:
+                  'Quickly filter tickets by status: "All" shows every '
+                  'ticket, "Open" shows unresolved tickets, and "Resolved" '
+                  'shows completed ones.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+            TutorialStep(
+              targetKey: _fabKey,
+              title: 'Create a Ticket',
+              description:
+                  'Tap the + button to create a new ticket. You\'ll need '
+                  'to provide photos of the nameplate, dashboard, and '
+                  'damaged parts to submit a report.',
+              tooltipPosition: TutorialTooltipPosition.top,
+            ),
+          ],
+          onComplete: () => _onTutorialComplete(),
+          onSkip: () => _onTutorialComplete(),
+        );
+      });
+    } catch (_) {}
+  }
+
+  void _onTutorialComplete() {
+    if (!mounted) return;
+    context.read<HiveService>().savePreference('tutorial_tickets', 'true');
   }
 
   @override
@@ -40,7 +97,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
       appBar: AppBar(
-        title: const Text('Repair & Maintenance'),
+        title: Text('Repair & Maintenance', key: _titleKey),
         backgroundColor: AppColors.forest,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -50,6 +107,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
+        key: _fabKey,
         backgroundColor: AppColors.forest,
         onPressed: () => context.go('/account/tickets/create'),
         child: const Icon(Icons.add_rounded, color: Colors.white),
@@ -58,6 +116,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
         children: [
           // ─── Status filter chips ───
           Container(
+            key: _filterKey,
             color: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(

@@ -41,129 +41,171 @@ class _OfflineTicketsScreenState extends State<OfflineTicketsScreen> {
     final pendingCount = provider.pendingCount;
     final isOnline = provider.isOnline;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F6),
-      appBar: AppBar(
-        title: const Text('Offline Tickets'),
-        backgroundColor: AppColors.forest,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.go('/account'),
-        ),
-        actions: [
-          if (pendingCount > 0 && isOnline)
-            TextButton.icon(
-              onPressed: () => provider.syncNow(),
-              icon: const Icon(Icons.sync_rounded, color: Colors.white, size: 18),
-              label: const Text('Sync', style: TextStyle(color: Colors.white)),
-            ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Offline/Online Banner
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            color: isOnline ? AppColors.success.withValues(alpha: 0.1) : AppColors.warning.withValues(alpha: 0.15),
-            child: Row(
-              children: [
-                Icon(
-                  isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
-                  size: 18,
-                  color: isOnline ? AppColors.success : AppColors.warning,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    isOnline
-                        ? 'You are online. Drafts will be submitted automatically.'
-                        : 'You are offline. Tickets will be saved as drafts and submitted when connected.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isOnline ? AppColors.success : AppColors.warning,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          context.go('/account');
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF5F7F6),
+        appBar: AppBar(
+          title: const Text('Offline Tickets'),
+          backgroundColor: AppColors.forest,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () => context.go('/account'),
           ),
-
-          // Pending sync banner
-          if (pendingCount > 0 && isOnline)
+          actions: [
+            if (pendingCount > 0 && isOnline)
+              TextButton.icon(
+                onPressed: () => provider.syncNow(),
+                icon: const Icon(
+                  Icons.sync_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                label: const Text(
+                  'Sync',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+          ],
+        ),
+        body: Column(
+          children: [
+            // Offline/Online Banner
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: AppColors.pine.withValues(alpha: 0.1),
-            child: Row(
-              children: [
-                const Icon(Icons.sync_rounded, size: 16, color: AppColors.pine),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    provider.loading
-                        ? 'Syncing drafts...'
-                        : '$pendingCount draft(s) pending submission.',
-                    style: const TextStyle(fontSize: 12, color: AppColors.pine, fontWeight: FontWeight.w500),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              color: isOnline
+                  ? AppColors.success.withValues(alpha: 0.1)
+                  : AppColors.warning.withValues(alpha: 0.15),
+              child: Row(
+                children: [
+                  Icon(
+                    isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                    size: 18,
+                    color: isOnline ? AppColors.success : AppColors.warning,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isOnline
+                          ? 'You are online. Drafts will be submitted automatically.'
+                          : 'You are offline. Tickets will be saved as drafts and submitted when connected.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isOnline ? AppColors.success : AppColors.warning,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
-                  if (!provider.loading)
-                    TextButton(
-                      onPressed: () => provider.syncNow(),
-                      child: const Text('Sync Now', style: TextStyle(fontSize: 12)),
-                    ),
                 ],
               ),
             ),
 
-          // Content
-          Expanded(
-            child: drafts.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.note_add_rounded, size: 64, color: AppColors.mutedInk.withValues(alpha: 0.3)),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'No offline ticket drafts',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.mutedInk),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Create a new ticket offline — it will be saved\nas a draft and submitted when online.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 13, color: AppColors.mutedInk),
-                        ),
-                      ],
+            // Pending sync banner
+            if (pendingCount > 0 && isOnline)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                color: AppColors.pine.withValues(alpha: 0.1),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.sync_rounded,
+                      size: 16,
+                      color: AppColors.pine,
                     ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: drafts.length,
-                    itemBuilder: (context, index) {
-                      final draft = drafts[index];
-                      return _DraftCard(
-                        draft: draft,
-                        onTap: () {
-                          // Optionally navigate to edit draft
-                        },
-                        onDelete: () => _deleteDraft(draft.id),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/account/tickets/offline/create'),
-        backgroundColor: AppColors.forest,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('New Ticket'),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        provider.loading
+                            ? 'Syncing drafts...'
+                            : '$pendingCount draft(s) pending submission.',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.pine,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    if (!provider.loading)
+                      TextButton(
+                        onPressed: () => provider.syncNow(),
+                        child: const Text(
+                          'Sync Now',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
+            // Content
+            Expanded(
+              child: drafts.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.note_add_rounded,
+                            size: 64,
+                            color: AppColors.mutedInk.withValues(alpha: 0.3),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'No offline ticket drafts',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.mutedInk,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Create a new ticket offline — it will be saved\nas a draft and submitted when online.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.mutedInk,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: drafts.length,
+                      itemBuilder: (context, index) {
+                        final draft = drafts[index];
+                        return _DraftCard(
+                          draft: draft,
+                          onTap: () {
+                            // Optionally navigate to edit draft
+                          },
+                          onDelete: () => _deleteDraft(draft.id),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: () => context.push('/account/tickets/offline/create'),
+          backgroundColor: AppColors.forest,
+          foregroundColor: Colors.white,
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('New Ticket'),
+        ),
       ),
     );
   }
@@ -175,8 +217,14 @@ class _OfflineTicketsScreenState extends State<OfflineTicketsScreen> {
         title: const Text('Delete Draft'),
         content: const Text('This draft will be permanently deleted.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
         ],
       ),
     );
@@ -214,7 +262,9 @@ class _DraftCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(
-            draft.synced ? Icons.check_circle_rounded : Icons.cloud_upload_rounded,
+            draft.synced
+                ? Icons.check_circle_rounded
+                : Icons.cloud_upload_rounded,
             color: draft.synced ? AppColors.success : AppColors.warning,
             size: 20,
           ),

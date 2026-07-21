@@ -7,9 +7,142 @@ import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/locale_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/elegant_dialog.dart';
 import 'package:tanodmobile/frontend/shared/widgets/language_picker.dart';
+import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
+import 'package:tanodmobile/services/storage/hive_service.dart';
 
-class AccountScreen extends StatelessWidget {
+class AccountScreen extends StatefulWidget {
   const AccountScreen({super.key});
+
+  @override
+  State<AccountScreen> createState() => _AccountScreenState();
+}
+
+class _AccountScreenState extends State<AccountScreen> {
+  bool _showTutorial = false;
+  final _headerKey = GlobalKey();
+  final _menuKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
+  }
+
+  void _maybeShowTutorial() {
+    if (!mounted) return;
+    try {
+      final hive = context.read<HiveService>();
+      if (!hive.tutorialsEnabled) return;
+      if (hive.getPreference('tutorial_account') == 'true') return;
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (!mounted || _showTutorial) return;
+        setState(() => _showTutorial = true);
+      });
+    } catch (_) {}
+  }
+
+  void _onTutorialComplete() {
+    if (!mounted) return;
+    context.read<HiveService>().savePreference('tutorial_account', 'true');
+    setState(() => _showTutorial = false);
+  }
+
+  Widget _buildTutorialToggleItem() {
+    final hive = context.read<HiveService>();
+    final enabled = hive.tutorialsEnabled;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () async {
+          if (enabled) {
+            await hive.resetAllTutorials();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Tutorials reset! They will show again on your next visit.',
+                  ),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          } else {
+            await hive.setTutorialsEnabled(true);
+          }
+          if (mounted) setState(() {});
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.forest.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.school_rounded,
+                  size: 20,
+                  color: AppColors.pine,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Tutorials',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    Text(
+                      enabled
+                          ? 'Tap to reset and show tutorials again'
+                          : 'Tutorials are hidden',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.mutedInk.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: enabled,
+                activeThumbColor: AppColors.forest,
+                onChanged: (val) async {
+                  if (val) {
+                    await hive.resetAllTutorials();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Tutorials reset! They will show again on your next visit.',
+                          ),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  } else {
+                    await hive.setTutorialsEnabled(false);
+                  }
+                  if (mounted) setState(() {});
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,377 +152,434 @@ class AccountScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
-      body: CustomScrollView(
-        slivers: [
-          // ─── Profile Header ───
-          SliverToBoxAdapter(
-            child: Container(
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [AppColors.forest, AppColors.pine],
+      body: Stack(
+        children: [
+          CustomScrollView(
+            slivers: [
+              // ─── Profile Header ───
+              SliverToBoxAdapter(
+                child: Container(
+                  key: _headerKey,
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppColors.forest, AppColors.pine],
+                    ),
+                  ),
+                  child: SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+                      child: Column(
+                        children: [
+                          // Avatar
+                          Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withValues(alpha: 0.15),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.3),
+                                width: 3,
+                              ),
+                              image: user?.profilePhotoUrl != null
+                                  ? DecorationImage(
+                                      image: NetworkImage(
+                                        user!.profilePhotoUrl!,
+                                      ),
+                                      fit: BoxFit.cover,
+                                    )
+                                  : null,
+                            ),
+                            child: user?.profilePhotoUrl != null
+                                ? null
+                                : Center(
+                                    child: Text(
+                                      _initials(user?.name ?? 'U'),
+                                      style: const TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            user?.name ?? 'Tanod User',
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            user?.email ?? '',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.white.withValues(alpha: 0.7),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          if (user?.roles.isNotEmpty == true)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.gold.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: AppColors.gold.withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Text(
+                                user!.roles.first.toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.gold,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                            ),
+                          if (user?.organizationName != null &&
+                              user!.organizationName!.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                user.organizationName!,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.white.withValues(alpha: 0.65),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-                  child: Column(
-                    children: [
-                      // Avatar
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.15),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.3),
-                            width: 3,
+
+              // ─── Menu Sections ───
+              SliverToBoxAdapter(
+                key: _menuKey,
+                child: Transform.translate(
+                  offset: const Offset(0, -16),
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF5F7F6),
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(24),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Account section
+                          _SectionTitle(title: context.tr('section_account')),
+                          const SizedBox(height: 8),
+                          _MenuGroup(
+                            items: [
+                              _MenuItem(
+                                icon: Icons.person_outline_rounded,
+                                label: context.tr('edit_profile'),
+                                onTap: () =>
+                                    context.go('/account/edit-profile'),
+                              ),
+                              _MenuItem(
+                                icon: Icons.lock_outline_rounded,
+                                label: context.tr('change_password'),
+                                onTap: () =>
+                                    context.go('/account/change-password'),
+                              ),
+                              _MenuItem(
+                                icon: Icons.phone_android_rounded,
+                                label: context.tr('phone_number'),
+                                subtitle: user?.phoneVerifiedAt != null
+                                    ? context.tr('verified')
+                                    : context.tr('not_verified'),
+                                onTap: () =>
+                                    context.go('/account/phone-verification'),
+                              ),
+                            ],
                           ),
-                          image: user?.profilePhotoUrl != null
-                              ? DecorationImage(
-                                  image: NetworkImage(user!.profilePhotoUrl!),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
-                        ),
-                        child: user?.profilePhotoUrl != null
-                            ? null
-                            : Center(
-                                child: Text(
-                                  _initials(user?.name ?? 'U'),
-                                  style: const TextStyle(
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
+
+                          const SizedBox(height: 20),
+                          _SectionTitle(title: context.tr('section_services')),
+                          const SizedBox(height: 8),
+                          _MenuGroup(
+                            items: [
+                              if (user != null && user.roles.contains('fca'))
+                                _MenuItem(
+                                  icon: Icons.build_circle_rounded,
+                                  label: context.tr('repair_maintenance'),
+                                  onTap: () => context.go('/account/tickets'),
+                                ),
+                              if (user == null ||
+                                  (!user.roles.contains('tps') &&
+                                      !user.roles.contains('fca')))
+                                _MenuItem(
+                                  icon: Icons.confirmation_num_outlined,
+                                  label: context.tr('tickets'),
+                                  onTap: () => context.go('/account/tickets'),
+                                ),
+                              if (user != null && user.roles.contains('fca'))
+                                _MenuItem(
+                                  icon: Icons.people_outline_rounded,
+                                  label: context.tr('my_farmers'),
+                                  onTap: () => context.go('/account/farmers'),
+                                ),
+                              if (user != null && user.roles.contains('fca'))
+                                _MenuItem(
+                                  icon: Icons.agriculture_rounded,
+                                  label: context.tr('tractors'),
+                                  onTap: () =>
+                                      context.go('/account/maintenance'),
+                                ),
+                              if (user != null && user.roles.contains('fca'))
+                                _MenuItem(
+                                  icon: Icons.fence_rounded,
+                                  label: context.tr('geo_fences'),
+                                  onTap: () => context.go('/account/geofences'),
+                                ),
+                              if (user == null || !user.roles.contains('tps'))
+                                _MenuItem(
+                                  icon: Icons.rate_review_outlined,
+                                  label: context.tr('feedback'),
+                                  onTap: () => context.go('/account/feedback'),
+                                ),
+                              _MenuItem(
+                                icon: Icons.assessment_outlined,
+                                label: context.tr('reports'),
+                                onTap: () => context.go('/account/reports'),
+                              ),
+                              if (user != null && user.roles.contains('tps'))
+                                _MenuItem(
+                                  icon: Icons.assignment_rounded,
+                                  label: 'Ticket Reports',
+                                  subtitle:
+                                      'Service reports from resolved tickets',
+                                  onTap: () =>
+                                      context.go('/account/ticket-reports'),
+                                ),
+                              _MenuItem(
+                                icon: Icons.cloud_off_rounded,
+                                label: 'Offline Tickets',
+                                subtitle: 'Drafts waiting to be submitted',
+                                onTap: () =>
+                                    context.go('/account/tickets/offline'),
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 20),
+                          _SectionTitle(title: context.tr('section_support')),
+                          const SizedBox(height: 8),
+                          _MenuGroup(
+                            items: [
+                              _MenuItem(
+                                icon: Icons.language_rounded,
+                                label: context.tr('language'),
+                                subtitle: localeProvider.displayName,
+                                onTap: () => showLanguagePicker(context),
+                              ),
+                              _MenuItem(
+                                icon: Icons.help_outline_rounded,
+                                label: context.tr('help_center'),
+                                onTap: () => context.go('/account/help-center'),
+                              ),
+                              _MenuItem(
+                                icon: Icons.info_outline_rounded,
+                                label: context.tr('about_tanod'),
+                                onTap: () => context.go('/account/about'),
+                              ),
+                              _MenuItem(
+                                icon: Icons.description_outlined,
+                                label: context.tr('terms_privacy'),
+                                onTap: () =>
+                                    context.go('/account/terms-privacy'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          _buildTutorialToggleItem(),
+
+                          const SizedBox(height: 20),
+
+                          // Danger zone section
+                          _SectionTitle(
+                            title: context
+                                .tr('delete_account_title')
+                                .toUpperCase(),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: AppColors.danger.withValues(alpha: 0.1),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.ink.withValues(alpha: 0.04),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () =>
+                                    context.go('/account/delete-account'),
+                                borderRadius: BorderRadius.circular(16),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 14,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 36,
+                                        height: 36,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.danger.withValues(
+                                            alpha: 0.08,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          Icons.delete_outline_rounded,
+                                          size: 20,
+                                          color: AppColors.danger,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 14),
+                                      Expanded(
+                                        child: Text(
+                                          context.tr('delete_account'),
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.danger,
+                                          ),
+                                        ),
+                                      ),
+                                      Icon(
+                                        Icons.chevron_right_rounded,
+                                        color: AppColors.danger.withValues(
+                                          alpha: 0.5,
+                                        ),
+                                        size: 20,
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        user?.name ?? 'Tanod User',
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        user?.email ?? '',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.white.withValues(alpha: 0.7),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      if (user?.roles.isNotEmpty == true)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.gold.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: AppColors.gold.withValues(alpha: 0.3),
                             ),
                           ),
-                          child: Text(
-                            user!.roles.first.toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.gold,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                        ),
-                      if (user?.organizationName != null && user!.organizationName!.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            user.organizationName!,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.white.withValues(alpha: 0.65),
-                              fontWeight: FontWeight.w500,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
 
-          // ─── Menu Sections ───
-          SliverToBoxAdapter(
-            child: Transform.translate(
-              offset: const Offset(0, -16),
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF5F7F6),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Account section
-                      _SectionTitle(title: context.tr('section_account')),
-                      const SizedBox(height: 8),
-                      _MenuGroup(
-                        items: [
-                          _MenuItem(
-                            icon: Icons.person_outline_rounded,
-                            label: context.tr('edit_profile'),
-                            onTap: () => context.go('/account/edit-profile'),
-                          ),
-                          _MenuItem(
-                            icon: Icons.lock_outline_rounded,
-                            label: context.tr('change_password'),
-                            onTap: () => context.go('/account/change-password'),
-                          ),
-                          _MenuItem(
-                            icon: Icons.phone_android_rounded,
-                            label: context.tr('phone_number'),
-                            subtitle: user?.phoneVerifiedAt != null
-                                ? context.tr('verified')
-                                : context.tr('not_verified'),
-                            onTap: () =>
-                                context.go('/account/phone-verification'),
-                          ),
-                        ],
-                      ),
+                          const SizedBox(height: 24),
 
-                      const SizedBox(height: 20),
-                      _SectionTitle(title: context.tr('section_services')),
-                      const SizedBox(height: 8),
-                      _MenuGroup(
-                        items: [
-                          if (user != null && user.roles.contains('fca'))
-                            _MenuItem(
-                              icon: Icons.build_circle_rounded,
-                              label: context.tr('repair_maintenance'),
-                              onTap: () => context.go('/account/tickets'),
-                            ),
-                          if (user == null || (!user.roles.contains('tps') && !user.roles.contains('fca')))
-                            _MenuItem(
-                              icon: Icons.confirmation_num_outlined,
-                              label: context.tr('tickets'),
-                              onTap: () => context.go('/account/tickets'),
-                            ),
-                          if (user != null && user.roles.contains('fca'))
-                            _MenuItem(
-                              icon: Icons.people_outline_rounded,
-                              label: context.tr('my_farmers'),
-                              onTap: () => context.go('/account/farmers'),
-                            ),
-                          if (user != null && user.roles.contains('fca'))
-                            _MenuItem(
-                              icon: Icons.agriculture_rounded,
-                              label: context.tr('tractors'),
-                              onTap: () => context.go('/account/maintenance'),
-                            ),
-                          if (user != null && user.roles.contains('fca'))
-                            _MenuItem(
-                              icon: Icons.fence_rounded,
-                              label: context.tr('geo_fences'),
-                              onTap: () => context.go('/account/geofences'),
-                            ),
-                          if (user == null || !user.roles.contains('tps'))
-                            _MenuItem(
-                              icon: Icons.rate_review_outlined,
-                              label: context.tr('feedback'),
-                              onTap: () => context.go('/account/feedback'),
-                            ),
-                          _MenuItem(
-                            icon: Icons.assessment_outlined,
-                            label: context.tr('reports'),
-                            onTap: () => context.go('/account/reports'),
-                          ),
-                          if (user != null && user.roles.contains('tps'))
-                            _MenuItem(
-                              icon: Icons.assignment_rounded,
-                              label: 'Ticket Reports',
-                              subtitle: 'Service reports from resolved tickets',
-                              onTap: () => context.go('/account/ticket-reports'),
-                            ),
-                          _MenuItem(
-                            icon: Icons.cloud_off_rounded,
-                            label: 'Offline Tickets',
-                            subtitle: 'Drafts waiting to be submitted',
-                            onTap: () => context.go('/account/tickets/offline'),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 20),
-                      _SectionTitle(title: context.tr('section_support')),
-                      const SizedBox(height: 8),
-                      _MenuGroup(
-                        items: [
-                          _MenuItem(
-                            icon: Icons.language_rounded,
-                            label: context.tr('language'),
-                            subtitle: localeProvider.displayName,
-                            onTap: () => showLanguagePicker(context),
-                          ),
-                          _MenuItem(
-                            icon: Icons.help_outline_rounded,
-                            label: context.tr('help_center'),
-                            onTap: () => context.go('/account/help-center'),
-                          ),
-                          _MenuItem(
-                            icon: Icons.info_outline_rounded,
-                            label: context.tr('about_tanod'),
-                            onTap: () => context.go('/account/about'),
-                          ),
-                          _MenuItem(
-                            icon: Icons.description_outlined,
-                            label: context.tr('terms_privacy'),
-                            onTap: () => context.go('/account/terms-privacy'),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Danger zone section
-                      _SectionTitle(
-                        title: context.tr('delete_account_title').toUpperCase(),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: AppColors.danger.withValues(alpha: 0.1),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.ink.withValues(alpha: 0.04),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () => context.go('/account/delete-account'),
-                            borderRadius: BorderRadius.circular(16),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 36,
-                                    height: 36,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.danger.withValues(
-                                        alpha: 0.08,
-                                      ),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: const Icon(
-                                      Icons.delete_outline_rounded,
-                                      size: 20,
-                                      color: AppColors.danger,
-                                    ),
+                          // Sign Out button
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                ElegantDialog.show(
+                                  context,
+                                  type: ElegantDialogType.confirmation,
+                                  title: context.tr('sign_out'),
+                                  message: context.tr('sign_out_message'),
+                                  confirmText: context.tr('sign_out'),
+                                  onConfirm: authProvider.signOut,
+                                );
+                              },
+                              icon: const Icon(Icons.logout_rounded, size: 20),
+                              label: Text(context.tr('sign_out')),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.danger,
+                                side: BorderSide(
+                                  color: AppColors.danger.withValues(
+                                    alpha: 0.3,
                                   ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Text(
-                                      context.tr('delete_account'),
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppColors.danger,
-                                      ),
-                                    ),
-                                  ),
-                                  Icon(
-                                    Icons.chevron_right_rounded,
-                                    color: AppColors.danger.withValues(
-                                      alpha: 0.5,
-                                    ),
-                                    size: 20,
-                                  ),
-                                ],
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                textStyle: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 15,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
 
-                      const SizedBox(height: 24),
+                          const SizedBox(height: 16),
 
-                      // Sign Out button
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            ElegantDialog.show(
-                              context,
-                              type: ElegantDialogType.confirmation,
-                              title: context.tr('sign_out'),
-                              message: context.tr('sign_out_message'),
-                              confirmText: context.tr('sign_out'),
-                              onConfirm: authProvider.signOut,
-                            );
-                          },
-                          icon: const Icon(Icons.logout_rounded, size: 20),
-                          label: Text(context.tr('sign_out')),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.danger,
-                            side: BorderSide(
-                              color: AppColors.danger.withValues(alpha: 0.3),
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            textStyle: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
+                          Center(
+                            child: Text(
+                              context.tr('app_version'),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.mutedInk.withValues(
+                                  alpha: 0.5,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+
+                          const SizedBox(height: 24),
+                        ],
                       ),
-
-                      const SizedBox(height: 16),
-
-                      Center(
-                        child: Text(
-                          context.tr('app_version'),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.mutedInk.withValues(alpha: 0.5),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ),
+          if (_showTutorial)
+            TutorialOverlayWidget(
+              steps: [
+                TutorialStep(
+                  targetKey: _headerKey,
+                  title: 'Your Account',
+                  description:
+                      'Your profile info is shown here. Tap Edit Profile '
+                      'to update your name, email, phone, or address.',
+                  tooltipPosition: TutorialTooltipPosition.bottom,
+                ),
+                TutorialStep(
+                  targetKey: _menuKey,
+                  title: 'Account Menu',
+                  description:
+                      'Access all your features here — tickets, '
+                      'maintenance, geo-fences, reports, and more. '
+                      'The options depend on your user role.',
+                  tooltipPosition: TutorialTooltipPosition.bottom,
+                ),
+              ],
+              onComplete: _onTutorialComplete,
+              onSkip: _onTutorialComplete,
+            ),
         ],
       ),
     );

@@ -48,6 +48,10 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   bool _isLoadingCities = false;
   bool _isLoadingBarangays = false;
 
+  // Track active requests to prevent stale responses
+  String? _loadingProvinceCode;
+  String? _loadingCityCode;
+
   // ─── Tractors ───
   late TabController _tabController;
   List<Map<String, dynamic>> _tractors = [];
@@ -55,13 +59,13 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   final Map<int, TextEditingController> _tractorNameControllers = {};
   final Set<int> _savingTractorIds = {};
   // Implement controllers per tractor: tractorId -> field -> controller
-  final Map<int, Map<String, TextEditingController>> _tractorImplementControllers = {};
+  final Map<int, Map<String, TextEditingController>>
+  _tractorImplementControllers = {};
   final Set<int> _savingImplementIds = {};
   // Image tracking per tractor per field
   final Map<int, Map<String, String?>> _tractorImageUrls = {};
   final Map<int, Map<String, bool>> _tractorScanning = {};
   final Map<int, Map<String, bool>> _tractorImageExists = {};
-
 
   @override
   void initState() {
@@ -70,16 +74,23 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     final user = authProvider.currentUser;
     final token = authProvider.session?.token ?? '';
 
-    _dio = Dio(BaseOptions(
-      baseUrl: AppConfig.apiBaseUrl,
-      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
-    ));
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: AppConfig.apiBaseUrl,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      ),
+    );
 
     _nameController = TextEditingController(text: user?.name ?? '');
     _emailController = TextEditingController(text: user?.email ?? '');
     _phoneController = TextEditingController(text: user?.phone ?? '');
     _selectedGender = user?.gender;
-    _orgNameController = TextEditingController(text: user?.organizationName ?? '');
+    _orgNameController = TextEditingController(
+      text: user?.organizationName ?? '',
+    );
     _existingPhotoUrl = user?.profilePhotoUrl;
 
     if (user?.province != null && user!.province!.isNotEmpty) {
@@ -144,9 +155,13 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       final data = response.data is Map ? response.data['data'] : response.data;
       if (data is List) {
         _provinceOptions = data
-            .map<LocationOption>((e) => LocationOption.fromJson(e as Map<String, dynamic>))
+            .map<LocationOption>(
+              (e) => LocationOption.fromJson(e as Map<String, dynamic>),
+            )
             .toList();
-        debugPrint('_fetchProvinces: loaded ${_provinceOptions.length} provinces');
+        debugPrint(
+          '_fetchProvinces: loaded ${_provinceOptions.length} provinces',
+        );
         // Match existing province name to an option
         if (_selectedProvince != null) {
           final match = _provinceOptions.cast<LocationOption?>().firstWhere(
@@ -157,13 +172,40 @@ class _EditProfileScreenState extends State<EditProfileScreen>
           // Cascade: if province matched, load cities and barangays for pre-selection
           if (match != null && match.code.isNotEmpty) {
             await _fetchCities(match.code);
-            if (_selectedCity != null && _selectedCity!.code.isNotEmpty) {
-              await _fetchBarangays(_selectedCity!.code);
+            // Auto-select saved city from user profile
+            final savedCity = context.read<AuthProvider>().currentUser?.city;
+            if (savedCity != null && savedCity.isNotEmpty) {
+              final cityMatch = _cityOptions.cast<LocationOption?>().firstWhere(
+                (o) => o!.name == savedCity,
+                orElse: () => null,
+              );
+              if (cityMatch != null) {
+                _selectedCity = cityMatch;
+                await _fetchBarangays(cityMatch.code);
+                // Auto-select saved barangay from user profile
+                final savedBrgy = context
+                    .read<AuthProvider>()
+                    .currentUser
+                    ?.barangay;
+                if (savedBrgy != null && savedBrgy.isNotEmpty) {
+                  final brgyMatch = _barangayOptions
+                      .cast<LocationOption?>()
+                      .firstWhere(
+                        (o) => o!.name == savedBrgy,
+                        orElse: () => null,
+                      );
+                  if (brgyMatch != null) {
+                    _selectedBarangay = brgyMatch;
+                  }
+                }
+              }
             }
           }
         }
       } else {
-        debugPrint('_fetchProvinces: unexpected data type ${response.data.runtimeType}');
+        debugPrint(
+          '_fetchProvinces: unexpected data type ${response.data.runtimeType}',
+        );
       }
     } catch (e) {
       debugPrint('_fetchProvinces error: $e');
@@ -172,6 +214,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   }
 
   Future<void> _fetchCities(String provinceCode) async {
+    _loadingProvinceCode = provinceCode;
     setState(() {
       _isLoadingCities = true;
       _cityOptions = [];
@@ -180,59 +223,120 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       _barangayOptions = [];
     });
     try {
-      final response = await _dio.get('/locations/cities', queryParameters: {'province_code': provinceCode});
-      final data = response.data is Map ? response.data['data'] : response.data;
-      if (data is List) {
-        _cityOptions = data
-            .map<LocationOption>((e) => LocationOption.fromJson(e as Map<String, dynamic>))
+      final response = await _dio.get(
+        '/locations/cities',
+        queryParameters: {'province_code': provinceCode},
+      );
+      // Ignore stale response if province changed while loading
+      if (_loadingProvinceCode != provinceCode || !mounted) return;
+
+      debugPrint('_fetchCities: full response data = ${response.data}');
+
+      final raw = response.data;
+      final list = raw is List ? raw : (raw is Map ? raw['data'] : null);
+      if (list is List) {
+        _cityOptions = list
+            .map<LocationOption>(
+              (e) => LocationOption.fromJson(e as Map<String, dynamic>),
+            )
             .toList();
-        debugPrint('_fetchCities: loaded ${_cityOptions.length} cities for province $provinceCode');
-        // Match existing city name to an option
-        final savedCity = context.read<AuthProvider>().currentUser?.city;
-        if (savedCity != null && savedCity.isNotEmpty) {
-          _selectedCity = _cityOptions.cast<LocationOption?>().firstWhere(
-            (o) => o!.name == savedCity,
-            orElse: () => null,
+        debugPrint('_fetchCities: loaded ${_cityOptions.length} cities');
+        if (_cityOptions.isEmpty && mounted) {
+          AppToast.show(
+            'No cities found for this province',
+            type: ToastType.info,
           );
         }
       } else {
-        debugPrint('_fetchCities: unexpected data type ${response.data.runtimeType}');
+        debugPrint(
+          '_fetchCities: unexpected format. raw type=${raw.runtimeType}',
+        );
+        if (raw is Map) {
+          debugPrint('_fetchCities: keys=${raw.keys}');
+        }
+        if (mounted) {
+          AppToast.show(
+            'Failed to load cities. Please try again.',
+            type: ToastType.error,
+          );
+        }
       }
     } catch (e) {
       debugPrint('_fetchCities error: $e');
+      if (mounted) {
+        AppToast.show(
+          'Failed to load cities. Check your connection.',
+          type: ToastType.error,
+        );
+      }
     }
-    if (mounted) setState(() => _isLoadingCities = false);
+    if (mounted) {
+      _loadingProvinceCode = null;
+      setState(() => _isLoadingCities = false);
+    }
   }
 
   Future<void> _fetchBarangays(String cityCode) async {
+    _loadingCityCode = cityCode;
     setState(() {
       _isLoadingBarangays = true;
       _barangayOptions = [];
       _selectedBarangay = null;
     });
     try {
-      final response = await _dio.get('/locations/barangays', queryParameters: {'city_municipality_code': cityCode});
-      final data = response.data is Map ? response.data['data'] : response.data;
-      if (data is List) {
-        _barangayOptions = data
-            .map<LocationOption>((e) => LocationOption.fromJson(e as Map<String, dynamic>))
+      final response = await _dio.get(
+        '/locations/barangays',
+        queryParameters: {'city_municipality_code': cityCode},
+      );
+      // Ignore stale response if city changed while loading
+      if (_loadingCityCode != cityCode || !mounted) return;
+
+      debugPrint('_fetchBarangays: full response data = ${response.data}');
+
+      final raw = response.data;
+      final list = raw is List ? raw : (raw is Map ? raw['data'] : null);
+      if (list is List) {
+        _barangayOptions = list
+            .map<LocationOption>(
+              (e) => LocationOption.fromJson(e as Map<String, dynamic>),
+            )
             .toList();
-        debugPrint('_fetchBarangays: loaded ${_barangayOptions.length} barangays for city $cityCode');
-        // Match existing barangay name to an option
-        final savedBarangay = context.read<AuthProvider>().currentUser?.barangay;
-        if (savedBarangay != null && savedBarangay.isNotEmpty) {
-          _selectedBarangay = _barangayOptions.cast<LocationOption?>().firstWhere(
-            (o) => o!.name == savedBarangay,
-            orElse: () => null,
+        debugPrint(
+          '_fetchBarangays: loaded ${_barangayOptions.length} barangays',
+        );
+        if (_barangayOptions.isEmpty && mounted) {
+          AppToast.show(
+            'No barangays found for this city',
+            type: ToastType.info,
           );
         }
       } else {
-        debugPrint('_fetchBarangays: unexpected data type ${response.data.runtimeType}');
+        debugPrint(
+          '_fetchBarangays: unexpected format. raw type=${raw.runtimeType}',
+        );
+        if (raw is Map) {
+          debugPrint('_fetchBarangays: keys=${raw.keys}');
+        }
+        if (mounted) {
+          AppToast.show(
+            'Failed to load barangays. Please try again.',
+            type: ToastType.error,
+          );
+        }
       }
     } catch (e) {
       debugPrint('_fetchBarangays error: $e');
+      if (mounted) {
+        AppToast.show(
+          'Failed to load barangays. Check your connection.',
+          type: ToastType.error,
+        );
+      }
     }
-    if (mounted) setState(() => _isLoadingBarangays = false);
+    if (mounted) {
+      _loadingCityCode = null;
+      setState(() => _isLoadingBarangays = false);
+    }
   }
 
   void _showPhotoOptions() {
@@ -307,6 +411,67 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     );
   }
 
+  /// Extracts a [List] from various API response shapes.
+  /// Handles:
+  ///   `[...]`
+  ///   `{'data': [...]}`
+  ///   `{'data': {'cities': [...]}}`
+  ///   `{'cities': [...]}` / `{'barangays': [...]}`
+  ///   `{'data': {'data': [...]}}`
+  ///   and any Map whose first list-valued value is the target.
+  List<dynamic>? _extractListData(dynamic response) {
+    if (response is List) return response;
+    if (response is! Map) return null;
+
+    // Try common generic wrapper keys
+    for (final key in ['data', 'result', 'results', 'items', 'records']) {
+      final value = response[key];
+      if (value is List) return value;
+      if (value is Map) {
+        // Nested inside a wrapper: e.g. data: { cities: [...] }
+        // Try generic keys first, then any list value
+        for (final innerKey in [
+          'data',
+          'result',
+          'results',
+          'items',
+          'records',
+          'cities',
+          'barangays',
+          'provinces',
+          'municipalities',
+          'locations',
+        ]) {
+          final inner = value[innerKey];
+          if (inner is List) return inner;
+        }
+        // Fallback: first value that is a List
+        for (final inner in value.values) {
+          if (inner is List) return inner;
+        }
+      }
+    }
+
+    // Try resource-specific keys at the top level
+    for (final key in [
+      'cities',
+      'barangays',
+      'provinces',
+      'municipalities',
+      'locations',
+    ]) {
+      final value = response[key];
+      if (value is List) return value;
+    }
+
+    // Last resort: any top-level value that is a List
+    for (final value in response.values) {
+      if (value is List) return value;
+    }
+
+    return null;
+  }
+
   // ─── Tractors ───
 
   Future<void> _fetchTractors() async {
@@ -316,8 +481,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
         '/tractors',
         queryParameters: {'per_page': '200'},
       );
-      final data =
-          response.data is Map ? response.data['data'] : response.data;
+      final data = response.data is Map ? response.data['data'] : response.data;
       if (data is List) {
         _tractors = data.cast<Map<String, dynamic>>();
         for (final t in _tractors) {
@@ -367,7 +531,13 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     _tractorImageUrls.putIfAbsent(tractorId, () => {});
     _tractorScanning.putIfAbsent(tractorId, () => {});
     _tractorImageExists.putIfAbsent(tractorId, () => {});
-    final fields = ['id_no', 'engine_no', 'front_loader_sn', 'rotary_tiller_sn', 'disc_plow_sn'];
+    final fields = [
+      'id_no',
+      'engine_no',
+      'front_loader_sn',
+      'rotary_tiller_sn',
+      'disc_plow_sn',
+    ];
     for (final field in fields) {
       _tractorImplementControllers[tractorId]!.putIfAbsent(
         field,
@@ -437,8 +607,10 @@ class _EditProfileScreenState extends State<EditProfileScreen>
 
     // Step 1: OCR - extract text & auto-fill SN
     try {
-      final extractedSn =
-          await TractorOcrService.recognizeAndExtract(imageFile, fieldKey);
+      final extractedSn = await TractorOcrService.recognizeAndExtract(
+        imageFile,
+        fieldKey,
+      );
 
       if (extractedSn != null && extractedSn.isNotEmpty && mounted) {
         final ctrl = _tractorImplementControllers[tractorId]?[fieldKey];
@@ -481,12 +653,14 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     } on DioException catch (e) {
       debugPrint('Image upload DioError for $fieldKey: ${e.response?.data}');
       final msg = e.response?.data is Map
-          ? ((e.response!.data as Map)['message']?.toString() ?? 'Upload failed')
+          ? ((e.response!.data as Map)['message']?.toString() ??
+                'Upload failed')
           : 'Failed to upload image';
       if (mounted) AppToast.show(msg, type: ToastType.error);
     } catch (e) {
       debugPrint('Image upload error for $fieldKey: $e');
-      if (mounted) AppToast.show('Failed to upload image', type: ToastType.error);
+      if (mounted)
+        AppToast.show('Failed to upload image', type: ToastType.error);
     } finally {
       if (mounted) {
         setState(() {
@@ -647,10 +821,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
           body: isFca
               ? TabBarView(
                   controller: _tabController,
-                  children: [
-                    _buildPersonalInfoTab(),
-                    _buildTractorsTab(),
-                  ],
+                  children: [_buildPersonalInfoTab(), _buildTractorsTab()],
                 )
               : _buildPersonalInfoTab(),
         ),
@@ -727,8 +898,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                     if (value == null || value.trim().isEmpty) {
                       return 'Email is required';
                     }
-                    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+$')
-                        .hasMatch(value.trim())) {
+                    if (!RegExp(
+                      r'^[^@]+@[^@]+\.[^@]+$',
+                    ).hasMatch(value.trim())) {
                       return 'Enter a valid email address';
                     }
                     return null;
@@ -787,8 +959,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                   onChanged: (v) {
                     setState(() => _selectedProvince = v);
                     if (v != null) {
-                      WidgetsBinding.instance.addPostFrameCallback(
-                          (_) => _fetchCities(v.code));
+                      _fetchCities(v.code);
                     }
                   },
                 ),
@@ -805,8 +976,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                   onChanged: (v) {
                     setState(() => _selectedCity = v);
                     if (v != null) {
-                      WidgetsBinding.instance.addPostFrameCallback(
-                          (_) => _fetchBarangays(v.code));
+                      _fetchBarangays(v.code);
                     }
                   },
                 ),
@@ -833,8 +1003,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.forest,
                       foregroundColor: Colors.white,
-                      disabledBackgroundColor:
-                          AppColors.forest.withValues(alpha: 0.5),
+                      disabledBackgroundColor: AppColors.forest.withValues(
+                        alpha: 0.5,
+                      ),
                       minimumSize: const Size.fromHeight(54),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
@@ -873,145 +1044,151 @@ class _EditProfileScreenState extends State<EditProfileScreen>
               child: CircularProgressIndicator(color: AppColors.forest),
             )
           : _tractors.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.precision_manufacturing_outlined,
-                            size: 64,
-                            color: AppColors.mutedInk.withValues(alpha: 0.3)),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'No tractors assigned',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'No tractors are currently assigned to your account.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: AppColors.mutedInk,
-                          ),
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.precision_manufacturing_outlined,
+                      size: 64,
+                      color: AppColors.mutedInk.withValues(alpha: 0.3),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'No tractors assigned',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No tractors are currently assigned to your account.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: AppColors.mutedInk),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
+              itemCount: _tractors.length,
+              itemBuilder: (context, index) {
+                final tractor = _tractors[index];
+                final id = tractor['id'] as int;
+                final nameCtrl = _tractorNameControllers[id];
+                final isSaving = _savingTractorIds.contains(id);
+                final noPlate = tractor['no_plate']?.toString() ?? '';
+                final idNo = tractor['id_no']?.toString() ?? '';
+                final engineNo = tractor['engine_no']?.toString() ?? '';
+                final frontLoaderSn =
+                    tractor['front_loader_sn']?.toString() ?? '';
+                final rotaryTillerSn =
+                    tractor['rotary_tiller_sn']?.toString() ?? '';
+                final discPlowSn = tractor['disc_plow_sn']?.toString() ?? '';
+                final gpsImei = tractor['imei']?.toString() ?? '';
+                final deviceData = tractor['device'] as Map<String, dynamic>?;
+                final simNumber = deviceData?['sim']?.toString() ?? '';
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
                         ),
                       ],
                     ),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
-                  itemCount: _tractors.length,
-                  itemBuilder: (context, index) {
-                    final tractor = _tractors[index];
-                    final id = tractor['id'] as int;
-                    final nameCtrl = _tractorNameControllers[id];
-                    final isSaving = _savingTractorIds.contains(id);
-                    final noPlate = tractor['no_plate']?.toString() ?? '';
-                    final idNo = tractor['id_no']?.toString() ?? '';
-                    final engineNo = tractor['engine_no']?.toString() ?? '';
-                    final frontLoaderSn =
-                        tractor['front_loader_sn']?.toString() ?? '';
-                    final rotaryTillerSn =
-                        tractor['rotary_tiller_sn']?.toString() ?? '';
-                    final discPlowSn =
-                        tractor['disc_plow_sn']?.toString() ?? '';
-                    final gpsImei = tractor['imei']?.toString() ?? '';
-                    final deviceData = tractor['device'] as Map<String, dynamic>?;
-                    final simNumber = deviceData?['sim']?.toString() ?? '';
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.04),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Tractor header
+                          Row(
                             children: [
-                              // Tractor header
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 44,
-                                    height: 44,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.forest
-                                          .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: const Icon(
-                                      Icons.precision_manufacturing_rounded,
-                                      color: AppColors.forest,
-                                      size: 22,
-                                    ),
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: AppColors.forest.withValues(
+                                    alpha: 0.1,
                                   ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          noPlate.isNotEmpty
-                                              ? noPlate
-                                              : 'Tractor #$id',
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            color: AppColors.mutedInk,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          tractor['brand']?.toString() ?? '',
-                                          style: const TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w700,
-                                            color: AppColors.ink,
-                                          ),
-                                        ),
-                                      ],
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.precision_manufacturing_rounded,
+                                  color: AppColors.forest,
+                                  size: 22,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      noPlate.isNotEmpty
+                                          ? noPlate
+                                          : 'Tractor #$id',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: AppColors.mutedInk,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      tractor['brand']?.toString() ?? '',
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.ink,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              const SizedBox(height: 16),
-
-                              // Tractor name (renameable)
-                              _TractorField(
-                                label: 'Tractor Name',
-                                icon: Icons.edit_rounded,
-                                controller: nameCtrl,
-                                onSave: () => _renameTractor(id),
-                                isSaving: isSaving,
-                              ),
-                              const SizedBox(height: 16),
-
-                              // ─── Implement Details (editable) ───
-                              _buildImplementSection(id, idNo, engineNo,
-                                  frontLoaderSn, rotaryTillerSn, discPlowSn, gpsImei, simNumber),
                             ],
                           ),
-                        ),
+                          const SizedBox(height: 16),
+
+                          // Tractor name (renameable)
+                          _TractorField(
+                            label: 'Tractor Name',
+                            icon: Icons.edit_rounded,
+                            controller: nameCtrl,
+                            onSave: () => _renameTractor(id),
+                            isSaving: isSaving,
+                          ),
+                          const SizedBox(height: 16),
+
+                          // ─── Implement Details (editable) ───
+                          _buildImplementSection(
+                            id,
+                            idNo,
+                            engineNo,
+                            frontLoaderSn,
+                            rotaryTillerSn,
+                            discPlowSn,
+                            gpsImei,
+                            simNumber,
+                          ),
+                        ],
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 
@@ -1034,8 +1211,18 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     final fields = [
       ('id_no', 'Serial Number', Icons.qr_code_rounded, idNo),
       ('engine_no', 'Engine Number', Icons.engineering_rounded, engineNo),
-      ('front_loader_sn', 'Front Loader SN', Icons.hardware_rounded, frontLoaderSn),
-      ('rotary_tiller_sn', 'Rotavator SN', Icons.autorenew_rounded, rotaryTillerSn),
+      (
+        'front_loader_sn',
+        'Front Loader SN',
+        Icons.hardware_rounded,
+        frontLoaderSn,
+      ),
+      (
+        'rotary_tiller_sn',
+        'Rotavator SN',
+        Icons.autorenew_rounded,
+        rotaryTillerSn,
+      ),
       ('disc_plow_sn', 'Disk Plow SN', Icons.disc_full_rounded, discPlowSn),
     ];
 
@@ -1048,8 +1235,11 @@ class _EditProfileScreenState extends State<EditProfileScreen>
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: const Row(
             children: [
-              Icon(Icons.precision_manufacturing_rounded,
-                  size: 18, color: AppColors.pine),
+              Icon(
+                Icons.precision_manufacturing_rounded,
+                size: 18,
+                color: AppColors.pine,
+              ),
               SizedBox(width: 8),
               Text(
                 'Implement Details',
@@ -1086,8 +1276,11 @@ class _EditProfileScreenState extends State<EditProfileScreen>
             padding: const EdgeInsets.symmetric(vertical: 10),
             child: const Row(
               children: [
-                Icon(Icons.satellite_alt_rounded,
-                    size: 18, color: AppColors.pine),
+                Icon(
+                  Icons.satellite_alt_rounded,
+                  size: 18,
+                  color: AppColors.pine,
+                ),
                 SizedBox(width: 8),
                 Text(
                   'GPS Details',
@@ -1132,7 +1325,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
-                      strokeWidth: 2.5, color: Colors.white),
+                      strokeWidth: 2.5,
+                      color: Colors.white,
+                    ),
                   )
                 : const Icon(Icons.save_rounded, size: 20),
             label: Text(isSaving ? 'Saving...' : 'Save Implements'),
@@ -1146,7 +1341,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
               ),
               elevation: 0,
               textStyle: const TextStyle(
-                fontSize: 15, fontWeight: FontWeight.w700),
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ),
@@ -1257,11 +1454,9 @@ class _TractorFieldState extends State<_TractorField> {
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: widget.controller?.text.isNotEmpty ==
-                                      true
+                              color: widget.controller?.text.isNotEmpty == true
                                   ? AppColors.ink
-                                  : AppColors.mutedInk
-                                      .withValues(alpha: 0.5),
+                                  : AppColors.mutedInk.withValues(alpha: 0.5),
                             ),
                           ),
                         ),
@@ -1293,8 +1488,11 @@ class _TractorFieldState extends State<_TractorField> {
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(Icons.check_rounded,
-                            size: 18, color: Colors.white),
+                        : const Icon(
+                            Icons.check_rounded,
+                            size: 18,
+                            color: Colors.white,
+                          ),
                   ),
                 )
               else
@@ -1306,8 +1504,11 @@ class _TractorFieldState extends State<_TractorField> {
                       color: AppColors.forest.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(Icons.edit_rounded,
-                        size: 16, color: AppColors.forest),
+                    child: const Icon(
+                      Icons.edit_rounded,
+                      size: 16,
+                      color: AppColors.forest,
+                    ),
                   ),
                 ),
             ],
@@ -1589,10 +1790,7 @@ class _AvatarEditor extends StatelessWidget {
 
   DecorationImage? _resolveImage() {
     if (pickedPhoto != null) {
-      return DecorationImage(
-        image: FileImage(pickedPhoto!),
-        fit: BoxFit.cover,
-      );
+      return DecorationImage(image: FileImage(pickedPhoto!), fit: BoxFit.cover);
     }
     if (existingPhotoUrl != null && existingPhotoUrl!.isNotEmpty) {
       return DecorationImage(
@@ -1700,10 +1898,7 @@ class _ProfileField extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(
-                color: AppColors.forest,
-                width: 1.5,
-              ),
+              borderSide: const BorderSide(color: AppColors.forest, width: 1.5),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
@@ -1711,10 +1906,7 @@ class _ProfileField extends StatelessWidget {
             ),
             focusedErrorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(
-                color: AppColors.danger,
-                width: 1.5,
-              ),
+              borderSide: const BorderSide(color: AppColors.danger, width: 1.5),
             ),
           ),
         ),
@@ -1755,9 +1947,8 @@ class _GenderSelector extends StatelessWidget {
                 label: 'Male',
                 icon: Icons.male_rounded,
                 isSelected: selectedGender == 'male',
-                onTap: () => onChanged(
-                  selectedGender == 'male' ? null : 'male',
-                ),
+                onTap: () =>
+                    onChanged(selectedGender == 'male' ? null : 'male'),
               ),
             ),
             const SizedBox(width: 12),
@@ -1766,9 +1957,8 @@ class _GenderSelector extends StatelessWidget {
                 label: 'Female',
                 icon: Icons.female_rounded,
                 isSelected: selectedGender == 'female',
-                onTap: () => onChanged(
-                  selectedGender == 'female' ? null : 'female',
-                ),
+                onTap: () =>
+                    onChanged(selectedGender == 'female' ? null : 'female'),
               ),
             ),
           ],
@@ -1897,6 +2087,8 @@ class _LocationDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isEmpty = options.isEmpty && !isLoading;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1913,10 +2105,12 @@ class _LocationDropdown extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isEmpty ? AppColors.canvas : Colors.white,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: AppColors.mutedInk.withValues(alpha: 0.12),
+              color: isEmpty
+                  ? AppColors.mutedInk.withValues(alpha: 0.08)
+                  : AppColors.mutedInk.withValues(alpha: 0.12),
             ),
           ),
           child: DropdownButtonHideUnderline(
@@ -1929,9 +2123,11 @@ class _LocationDropdown extends StatelessWidget {
                   const SizedBox(width: 12),
                   Flexible(
                     child: Text(
-                      hint,
+                      isEmpty ? 'No options available' : hint,
                       style: TextStyle(
-                        color: AppColors.mutedInk.withValues(alpha: 0.4),
+                        color: isEmpty
+                            ? AppColors.mutedInk.withValues(alpha: 0.3)
+                            : AppColors.mutedInk.withValues(alpha: 0.4),
                         fontWeight: FontWeight.w400,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -1946,17 +2142,28 @@ class _LocationDropdown extends StatelessWidget {
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.keyboard_arrow_down_rounded),
-              items: options.map((o) {
-                return DropdownMenuItem<LocationOption>(
-                  value: o,
-                  child: Text(
-                    o.name,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                );
-              }).toList(),
-              onChanged: options.isEmpty ? null : onChanged,
+                  : Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: isEmpty
+                          ? AppColors.mutedInk.withValues(alpha: 0.25)
+                          : null,
+                    ),
+              items: options.isNotEmpty
+                  ? options.map((o) {
+                      return DropdownMenuItem<LocationOption>(
+                        value: o,
+                        child: Text(o.name, overflow: TextOverflow.ellipsis),
+                      );
+                    }).toList()
+                  : [
+                      const DropdownMenuItem<LocationOption>(
+                        value: null,
+                        child: Text(''),
+                      ),
+                    ],
+              onChanged: isLoading
+                  ? null
+                  : (options.isEmpty ? null : onChanged),
               dropdownColor: Colors.white,
               borderRadius: BorderRadius.circular(14),
               style: const TextStyle(
@@ -1971,5 +2178,3 @@ class _LocationDropdown extends StatelessWidget {
     );
   }
 }
-
-

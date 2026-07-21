@@ -5,7 +5,9 @@ import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:tanodmobile/frontend/shared/providers/booking_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/app_toast.dart';
+import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
 import 'package:tanodmobile/models/domain/booking.dart';
+import 'package:tanodmobile/services/storage/hive_service.dart';
 
 bool _isSameDay(DateTime a, DateTime? b) =>
     b != null && a.year == b.year && a.month == b.month && a.day == b.day;
@@ -21,6 +23,8 @@ class _BookingsScreenState extends State<BookingsScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final ScrollController _listScrollController = ScrollController();
+  final _bookButtonKey = GlobalKey();
+  final _tabKey = GlobalKey();
 
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
@@ -47,6 +51,49 @@ class _BookingsScreenState extends State<BookingsScreen>
         context.read<BookingProvider>().fetchMore();
       }
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
+  }
+
+  void _maybeShowTutorial() {
+    if (!mounted) return;
+    try {
+      final hive = context.read<HiveService>();
+      if (!hive.tutorialsEnabled) return;
+      if (hive.getPreference('tutorial_bookings') == 'true') return;
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (!mounted) return;
+        TutorialOverlay.show(
+          context: context,
+          steps: [
+            TutorialStep(
+              targetKey: _bookButtonKey,
+              title: 'Bookings & Reservations',
+              description:
+                  'Manage your tractor reservations here. Tap "Book" '
+                  'to create a new reservation for a specific date '
+                  'and time. FCAs can book on behalf of thei-r farmers.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+            TutorialStep(
+              targetKey: _tabKey,
+              title: 'Calendar & Listing',
+              description:
+                  'Switch between Calendar view to see bookings by '
+                  'date, or Listing view for a sorted list of all '
+                  'reservations.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+          ],
+          onComplete: _onTutorialComplete,
+          onSkip: _onTutorialComplete,
+        );
+      });
+    } catch (_) {}
+  }
+
+  void _onTutorialComplete() {
+    if (!mounted) return;
+    context.read<HiveService>().savePreference('tutorial_bookings', 'true');
   }
 
   @override
@@ -67,17 +114,24 @@ class _BookingsScreenState extends State<BookingsScreen>
   }
 
   List<Booking> _getEventsForDay(
-      DateTime day, Map<DateTime, List<Booking>> byDate) {
+    DateTime day,
+    Map<DateTime, List<Booking>> byDate,
+  ) {
     final key = DateTime(day.year, day.month, day.day);
     final events = byDate[key] ?? [];
     if (_selectedTractorId == null) return events;
     return events.where((b) => b.tractorId == _selectedTractorId).toList();
   }
 
-  void _showCreateBookingSheet() {
+  void _showCreateBookingSheet() async {
     final provider = context.read<BookingProvider>();
     final roles = context.read<AuthProvider>().session?.roles ?? [];
     final isFca = roles.contains('fca');
+
+    // Refresh farmers list so newly added farmers appear immediately
+    if (isFca) {
+      await provider.fetchFarmers();
+    }
 
     if (provider.tractors.isEmpty) {
       AppToast.warning('No tractors available');
@@ -215,8 +269,9 @@ class _BookingsScreenState extends State<BookingsScreen>
                                 context: ctx,
                                 initialDate: fromDate,
                                 firstDate: DateTime.now(),
-                                lastDate: DateTime.now()
-                                    .add(const Duration(days: 365)),
+                                lastDate: DateTime.now().add(
+                                  const Duration(days: 365),
+                                ),
                               );
                               if (picked != null) {
                                 setSheetState(() {
@@ -261,8 +316,9 @@ class _BookingsScreenState extends State<BookingsScreen>
                                     ? fromDate
                                     : toDate,
                                 firstDate: fromDate,
-                                lastDate: DateTime.now()
-                                    .add(const Duration(days: 365)),
+                                lastDate: DateTime.now().add(
+                                  const Duration(days: 365),
+                                ),
                               );
                               if (picked != null) {
                                 setSheetState(() => toDate = picked);
@@ -296,15 +352,21 @@ class _BookingsScreenState extends State<BookingsScreen>
                     // Farm area
                     _buildLabel('Farm Area (hectares)'),
                     const SizedBox(height: 6),
-                    _buildTextField(areaController, 'e.g. 2.5',
-                        keyboard: TextInputType.number),
+                    _buildTextField(
+                      areaController,
+                      'e.g. 2.5',
+                      keyboard: TextInputType.number,
+                    ),
                     const SizedBox(height: 14),
 
                     // Notes
                     _buildLabel('Notes (optional)'),
                     const SizedBox(height: 6),
-                    _buildTextField(notesController, 'Additional details...',
-                        maxLines: 3),
+                    _buildTextField(
+                      notesController,
+                      'Additional details...',
+                      maxLines: 3,
+                    ),
                     const SizedBox(height: 20),
 
                     // Submit button
@@ -343,12 +405,15 @@ class _BookingsScreenState extends State<BookingsScreen>
                           );
 
                           if (toDateTime.isBefore(fromDateTime)) {
-                            AppToast.warning('End date/time must be after start');
+                            AppToast.warning(
+                              'End date/time must be after start',
+                            );
                             return;
                           }
 
-                          final area =
-                              double.tryParse(areaController.text.trim());
+                          final area = double.tryParse(
+                            areaController.text.trim(),
+                          );
                           final notes = notesController.text.trim().isEmpty
                               ? null
                               : notesController.text.trim();
@@ -386,7 +451,9 @@ class _BookingsScreenState extends State<BookingsScreen>
                         child: const Text(
                           'Create Booking',
                           style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w700),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ),
@@ -404,17 +471,20 @@ class _BookingsScreenState extends State<BookingsScreen>
     final provider = context.read<BookingProvider>();
     final roles = context.read<AuthProvider>().session?.roles ?? [];
     final isFca = roles.contains('fca');
-    final isAdmin = roles.contains('super-admin') || roles.contains('sub-admin');
+    final isAdmin =
+        roles.contains('super-admin') || roles.contains('sub-admin');
     final isFarmer = !isFca && !isAdmin;
 
     int? tractorId = booking.tractorId;
     DateTime fromDate = booking.startDate ?? booking.bookingDate;
     DateTime toDate = booking.endDate ?? booking.bookingDate;
-    TimeOfDay fromTime = _parseTime(booking.startTime) ??
-        const TimeOfDay(hour: 8, minute: 0);
-    TimeOfDay toTime = _parseTime(booking.endTime) ??
-        const TimeOfDay(hour: 17, minute: 0);
-    final purposeController = TextEditingController(text: booking.purpose ?? '');
+    TimeOfDay fromTime =
+        _parseTime(booking.startTime) ?? const TimeOfDay(hour: 8, minute: 0);
+    TimeOfDay toTime =
+        _parseTime(booking.endTime) ?? const TimeOfDay(hour: 17, minute: 0);
+    final purposeController = TextEditingController(
+      text: booking.purpose ?? '',
+    );
     final areaController = TextEditingController(
       text: booking.farmAreaHectares?.toString() ?? '',
     );
@@ -474,9 +544,11 @@ class _BookingsScreenState extends State<BookingsScreen>
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.info_outline_rounded,
-                                size: 18,
-                                color: AppColors.gold.withValues(alpha: 0.8)),
+                            Icon(
+                              Icons.info_outline_rounded,
+                              size: 18,
+                              color: AppColors.gold.withValues(alpha: 0.8),
+                            ),
                             const SizedBox(width: 8),
                             const Expanded(
                               child: Text(
@@ -539,8 +611,9 @@ class _BookingsScreenState extends State<BookingsScreen>
                                 context: ctx,
                                 initialDate: fromDate,
                                 firstDate: DateTime(2020),
-                                lastDate: DateTime.now()
-                                    .add(const Duration(days: 365)),
+                                lastDate: DateTime.now().add(
+                                  const Duration(days: 365),
+                                ),
                               );
                               if (picked != null) {
                                 setSheetState(() {
@@ -585,8 +658,9 @@ class _BookingsScreenState extends State<BookingsScreen>
                                     ? fromDate
                                     : toDate,
                                 firstDate: fromDate,
-                                lastDate: DateTime.now()
-                                    .add(const Duration(days: 365)),
+                                lastDate: DateTime.now().add(
+                                  const Duration(days: 365),
+                                ),
                               );
                               if (picked != null) {
                                 setSheetState(() => toDate = picked);
@@ -620,15 +694,21 @@ class _BookingsScreenState extends State<BookingsScreen>
                     // Farm area
                     _buildLabel('Farm Area (hectares)'),
                     const SizedBox(height: 6),
-                    _buildTextField(areaController, 'e.g. 2.5',
-                        keyboard: TextInputType.number),
+                    _buildTextField(
+                      areaController,
+                      'e.g. 2.5',
+                      keyboard: TextInputType.number,
+                    ),
                     const SizedBox(height: 14),
 
                     // Notes
                     _buildLabel('Notes (optional)'),
                     const SizedBox(height: 6),
-                    _buildTextField(notesController, 'Additional details...',
-                        maxLines: 3),
+                    _buildTextField(
+                      notesController,
+                      'Additional details...',
+                      maxLines: 3,
+                    ),
                     const SizedBox(height: 20),
 
                     // Submit button
@@ -664,12 +744,14 @@ class _BookingsScreenState extends State<BookingsScreen>
 
                           if (toDateTime.isBefore(fromDateTime)) {
                             AppToast.warning(
-                                'End date/time must be after start');
+                              'End date/time must be after start',
+                            );
                             return;
                           }
 
-                          final area =
-                              double.tryParse(areaController.text.trim());
+                          final area = double.tryParse(
+                            areaController.text.trim(),
+                          );
                           final notes = notesController.text.trim().isEmpty
                               ? null
                               : notesController.text.trim();
@@ -707,7 +789,9 @@ class _BookingsScreenState extends State<BookingsScreen>
                         child: const Text(
                           'Update Booking',
                           style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w700),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ),
@@ -742,8 +826,12 @@ class _BookingsScreenState extends State<BookingsScreen>
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String hint,
-      {TextInputType? keyboard, int maxLines = 1}) {
+  Widget _buildTextField(
+    TextEditingController controller,
+    String hint, {
+    TextInputType? keyboard,
+    int maxLines = 1,
+  }) {
     return TextField(
       controller: controller,
       keyboardType: keyboard,
@@ -754,17 +842,21 @@ class _BookingsScreenState extends State<BookingsScreen>
           color: AppColors.mutedInk.withValues(alpha: 0.5),
           fontSize: 14,
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide:
-              BorderSide(color: AppColors.mutedInk.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: AppColors.mutedInk.withValues(alpha: 0.2),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide:
-              BorderSide(color: AppColors.mutedInk.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: AppColors.mutedInk.withValues(alpha: 0.2),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -777,9 +869,10 @@ class _BookingsScreenState extends State<BookingsScreen>
   Widget _buildCalendarTab(BookingProvider provider) {
     final byDate = provider.bookingsByDate;
     final daysInMonth = DateUtils.getDaysInMonth(
-        _focusedDay.year, _focusedDay.month);
-    final firstOfMonth =
-        DateTime(_focusedDay.year, _focusedDay.month, 1);
+      _focusedDay.year,
+      _focusedDay.month,
+    );
+    final firstOfMonth = DateTime(_focusedDay.year, _focusedDay.month, 1);
     // Monday = 1, Sunday = 7
     final startWeekday = firstOfMonth.weekday; // 1=Mon
     final totalCells = ((startWeekday - 1) + daysInMonth + 6) ~/ 7 * 7;
@@ -793,12 +886,16 @@ class _BookingsScreenState extends State<BookingsScreen>
           child: Row(
             children: [
               IconButton(
-                icon: const Icon(Icons.chevron_left_rounded,
-                    color: AppColors.forest),
+                icon: const Icon(
+                  Icons.chevron_left_rounded,
+                  color: AppColors.forest,
+                ),
                 onPressed: () {
                   setState(() {
                     _focusedDay = DateTime(
-                        _focusedDay.year, _focusedDay.month - 1);
+                      _focusedDay.year,
+                      _focusedDay.month - 1,
+                    );
                   });
                 },
               ),
@@ -808,8 +905,10 @@ class _BookingsScreenState extends State<BookingsScreen>
                   setState(() => _focusedDay = DateTime.now());
                 },
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   child: Text(
                     'Today',
                     style: TextStyle(
@@ -821,12 +920,16 @@ class _BookingsScreenState extends State<BookingsScreen>
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.chevron_right_rounded,
-                    color: AppColors.forest),
+                icon: const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.forest,
+                ),
                 onPressed: () {
                   setState(() {
                     _focusedDay = DateTime(
-                        _focusedDay.year, _focusedDay.month + 1);
+                      _focusedDay.year,
+                      _focusedDay.month + 1,
+                    );
                   });
                 },
               ),
@@ -849,19 +952,21 @@ class _BookingsScreenState extends State<BookingsScreen>
           padding: const EdgeInsets.only(bottom: 6),
           child: Row(
             children: ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
-                .map((d) => Expanded(
-                      child: Center(
-                        child: Text(
-                          d,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.mutedInk.withValues(alpha: 0.6),
-                            letterSpacing: 0.5,
-                          ),
+                .map(
+                  (d) => Expanded(
+                    child: Center(
+                      child: Text(
+                        d,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.mutedInk.withValues(alpha: 0.6),
+                          letterSpacing: 0.5,
                         ),
                       ),
-                    ))
+                    ),
+                  ),
+                )
                 .toList(),
           ),
         ),
@@ -921,7 +1026,11 @@ class _BookingsScreenState extends State<BookingsScreen>
 
                       final bStart = b.startDate ?? b.bookingDate;
                       final bEnd = b.endDate ?? bStart;
-                      final bs = DateTime(bStart.year, bStart.month, bStart.day);
+                      final bs = DateTime(
+                        bStart.year,
+                        bStart.month,
+                        bStart.day,
+                      );
                       final be = DateTime(bEnd.year, bEnd.month, bEnd.day);
 
                       // Check overlap
@@ -936,39 +1045,50 @@ class _BookingsScreenState extends State<BookingsScreen>
                       seen.add(b.id);
 
                       // Clamp to row bounds
-                      final clampedStart = bs.isBefore(rowStart) ? rowStart : bs;
+                      final clampedStart = bs.isBefore(rowStart)
+                          ? rowStart
+                          : bs;
                       final clampedEnd = be.isAfter(rowEnd) ? rowEnd : be;
 
-                      final startCol =
-                          clampedStart.difference(rowStart).inDays.clamp(0, 6);
-                      final endCol =
-                          clampedEnd.difference(rowStart).inDays.clamp(0, 6);
+                      final startCol = clampedStart
+                          .difference(rowStart)
+                          .inDays
+                          .clamp(0, 6);
+                      final endCol = clampedEnd
+                          .difference(rowStart)
+                          .inDays
+                          .clamp(0, 6);
 
-                      rowEvents.add(_RowEvent(
-                        booking: b,
-                        startCol: startCol,
-                        endCol: endCol,
-                        isStart: !bs.isBefore(rowStart),
-                        isEnd: !be.isAfter(rowEnd),
-                      ));
+                      rowEvents.add(
+                        _RowEvent(
+                          booking: b,
+                          startCol: startCol,
+                          endCol: endCol,
+                          isStart: !bs.isBefore(rowStart),
+                          isEnd: !be.isAfter(rowEnd),
+                        ),
+                      );
                     }
 
                     // Sort by startCol, then longer spans first
                     rowEvents.sort((a, b) {
                       final c = a.startCol.compareTo(b.startCol);
                       if (c != 0) return c;
-                      return (b.endCol - b.startCol)
-                          .compareTo(a.endCol - a.startCol);
+                      return (b.endCol - b.startCol).compareTo(
+                        a.endCol - a.startCol,
+                      );
                     });
 
                     // Lane assignment
                     final lanes = <Set<int>>[];
                     final laneAssignments = <int>[];
                     for (final e in rowEvents) {
-                      final cols = Set<int>.from(List.generate(
-                        e.endCol - e.startCol + 1,
-                        (i) => e.startCol + i,
-                      ));
+                      final cols = Set<int>.from(
+                        List.generate(
+                          e.endCol - e.startCol + 1,
+                          (i) => e.startCol + i,
+                        ),
+                      );
                       int assignedLane = -1;
                       for (int i = 0; i < lanes.length; i++) {
                         if (lanes[i].intersection(cols).isEmpty) {
@@ -988,9 +1108,11 @@ class _BookingsScreenState extends State<BookingsScreen>
                     final overflowCounts = List.filled(7, 0);
                     for (int i = 0; i < rowEvents.length; i++) {
                       if (laneAssignments[i] >= maxLanes) {
-                        for (int c = rowEvents[i].startCol;
-                            c <= rowEvents[i].endCol;
-                            c++) {
+                        for (
+                          int c = rowEvents[i].startCol;
+                          c <= rowEvents[i].endCol;
+                          c++
+                        ) {
                           overflowCounts[c]++;
                         }
                       }
@@ -999,6 +1121,7 @@ class _BookingsScreenState extends State<BookingsScreen>
                     return SizedBox(
                       height: cellHeight,
                       child: Stack(
+                        clipBehavior: Clip.hardEdge,
                         children: [
                           // Day number cells (background)
                           Row(
@@ -1006,12 +1129,14 @@ class _BookingsScreenState extends State<BookingsScreen>
                             children: List.generate(7, (col) {
                               final cellIndex = row * 7 + col;
                               final dayOffset = cellIndex - (startWeekday - 1);
-                              final isCurrentMonth = dayOffset >= 0 &&
-                                  dayOffset < daysInMonth;
+                              final isCurrentMonth =
+                                  dayOffset >= 0 && dayOffset < daysInMonth;
                               final cellDate = rowDates[col];
-                              final isToday = isCurrentMonth &&
+                              final isToday =
+                                  isCurrentMonth &&
                                   _isSameDay(cellDate, DateTime.now());
-                              final isSelected = isCurrentMonth &&
+                              final isSelected =
+                                  isCurrentMonth &&
                                   _selectedDay != null &&
                                   _isSameDay(cellDate, _selectedDay);
 
@@ -1028,7 +1153,9 @@ class _BookingsScreenState extends State<BookingsScreen>
                                           });
                                           if (dayEvents.isNotEmpty) {
                                             _showDayBookings(
-                                                cellDate, dayEvents);
+                                              cellDate,
+                                              dayEvents,
+                                            );
                                           }
                                         }
                                       : null,
@@ -1037,8 +1164,9 @@ class _BookingsScreenState extends State<BookingsScreen>
                                     decoration: BoxDecoration(
                                       border: Border(
                                         top: BorderSide(
-                                          color: AppColors.mutedInk
-                                              .withValues(alpha: 0.08),
+                                          color: AppColors.mutedInk.withValues(
+                                            alpha: 0.08,
+                                          ),
                                         ),
                                         right: col < 6
                                             ? BorderSide(
@@ -1048,8 +1176,9 @@ class _BookingsScreenState extends State<BookingsScreen>
                                             : BorderSide.none,
                                       ),
                                       color: isSelected
-                                          ? AppColors.forest
-                                              .withValues(alpha: 0.06)
+                                          ? AppColors.forest.withValues(
+                                              alpha: 0.06,
+                                            )
                                           : null,
                                     ),
                                     padding: const EdgeInsets.only(top: 4),
@@ -1076,10 +1205,11 @@ class _BookingsScreenState extends State<BookingsScreen>
                                               color: isToday
                                                   ? Colors.white
                                                   : (isCurrentMonth
-                                                      ? AppColors.ink
-                                                      : AppColors.mutedInk
-                                                          .withValues(
-                                                              alpha: 0.3)),
+                                                        ? AppColors.ink
+                                                        : AppColors.mutedInk
+                                                              .withValues(
+                                                                alpha: 0.3,
+                                                              )),
                                             ),
                                           ),
                                         ),
@@ -1087,7 +1217,8 @@ class _BookingsScreenState extends State<BookingsScreen>
                                         if (overflowCounts[col] > 0)
                                           Padding(
                                             padding: EdgeInsets.only(
-                                              top: maxLanes *
+                                              top:
+                                                  maxLanes *
                                                       (barHeight + barGap) +
                                                   2,
                                             ),
@@ -1117,19 +1248,20 @@ class _BookingsScreenState extends State<BookingsScreen>
                             }
                             return Positioned(
                               left: e.startCol * cellWidth + 2,
-                              top: dayNumberHeight +
-                                  lane * (barHeight + barGap),
-                              width: (e.endCol - e.startCol + 1) *
-                                      cellWidth -
-                                  4,
+                              top:
+                                  dayNumberHeight + lane * (barHeight + barGap),
+                              width:
+                                  (e.endCol - e.startCol + 1) * cellWidth - 4,
                               height: barHeight,
                               child: GestureDetector(
                                 onTap: () {
                                   final date =
                                       e.booking.startDate ??
                                       e.booking.bookingDate;
-                                  final dayEvents =
-                                      _getEventsForDay(date, byDate);
+                                  final dayEvents = _getEventsForDay(
+                                    date,
+                                    byDate,
+                                  );
                                   _showDayBookings(date, dayEvents);
                                 },
                                 child: _SpanningEventBar(
@@ -1189,13 +1321,11 @@ class _BookingsScreenState extends State<BookingsScreen>
               const SizedBox(height: 4),
               Text(
                 '${events.length} booking${events.length == 1 ? '' : 's'}',
-                style: const TextStyle(
-                    fontSize: 13, color: AppColors.mutedInk),
+                style: const TextStyle(fontSize: 13, color: AppColors.mutedInk),
               ),
               const SizedBox(height: 12),
               ...events.map((b) {
-                final roles =
-                    context.read<AuthProvider>().session?.roles ?? [];
+                final roles = context.read<AuthProvider>().session?.roles ?? [];
                 final isFca = roles.contains('fca');
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
@@ -1208,20 +1338,18 @@ class _BookingsScreenState extends State<BookingsScreen>
                             _confirmCancel(b.id);
                           }
                         : null,
-                    onApprove:
-                        isFca && b.isApprovable && b.farmerName != null
-                            ? () {
-                                Navigator.pop(ctx);
-                                _approveBooking(b.id);
-                              }
-                            : null,
-                    onReject:
-                        isFca && b.isApprovable && b.farmerName != null
-                            ? () {
-                                Navigator.pop(ctx);
-                                _showRejectDialog(b.id);
-                              }
-                            : null,
+                    onApprove: isFca && b.isApprovable && b.farmerName != null
+                        ? () {
+                            Navigator.pop(ctx);
+                            _approveBooking(b.id);
+                          }
+                        : null,
+                    onReject: isFca && b.isApprovable && b.farmerName != null
+                        ? () {
+                            Navigator.pop(ctx);
+                            _showRejectDialog(b.id);
+                          }
+                        : null,
                     onEdit: b.isEditable
                         ? () {
                             Navigator.pop(ctx);
@@ -1250,14 +1378,15 @@ class _BookingsScreenState extends State<BookingsScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline_rounded,
-                size: 48,
-                color: AppColors.danger.withValues(alpha: 0.7)),
+            Icon(
+              Icons.error_outline_rounded,
+              size: 48,
+              color: AppColors.danger.withValues(alpha: 0.7),
+            ),
             const SizedBox(height: 12),
             Text(
               provider.error!,
-              style:
-                  const TextStyle(fontSize: 14, color: AppColors.mutedInk),
+              style: const TextStyle(fontSize: 14, color: AppColors.mutedInk),
             ),
             const SizedBox(height: 12),
             TextButton(
@@ -1274,10 +1403,12 @@ class _BookingsScreenState extends State<BookingsScreen>
         .where((b) => b.status == 'pending' || b.status == 'approved')
         .toList();
     final done = filtered
-        .where((b) =>
-            b.status == 'completed' ||
-            b.status == 'cancelled' ||
-            b.status == 'rejected')
+        .where(
+          (b) =>
+              b.status == 'completed' ||
+              b.status == 'cancelled' ||
+              b.status == 'rejected',
+        )
         .toList();
 
     final roles = context.read<AuthProvider>().session?.roles ?? [];
@@ -1288,9 +1419,11 @@ class _BookingsScreenState extends State<BookingsScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.event_busy_rounded,
-                size: 56,
-                color: AppColors.mutedInk.withValues(alpha: 0.5)),
+            Icon(
+              Icons.event_busy_rounded,
+              size: 56,
+              color: AppColors.mutedInk.withValues(alpha: 0.5),
+            ),
             const SizedBox(height: 12),
             const Text(
               'No bookings found',
@@ -1321,25 +1454,23 @@ class _BookingsScreenState extends State<BookingsScreen>
               color: AppColors.forest,
             ),
             const SizedBox(height: 8),
-            ...active.map((b) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _CompactBookingCard(
-                    booking: b,
-                    isFca: isFca,
-                    onCancel: b.isCancellable
-                        ? () => _confirmCancel(b.id)
-                        : null,
-                    onApprove: isFca && b.isApprovable && b.farmerName != null
-                        ? () => _approveBooking(b.id)
-                        : null,
-                    onReject: isFca && b.isApprovable && b.farmerName != null
-                        ? () => _showRejectDialog(b.id)
-                        : null,
-                    onEdit: b.isEditable
-                        ? () => _showEditBookingSheet(b)
-                        : null,
-                  ),
-                )),
+            ...active.map(
+              (b) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _CompactBookingCard(
+                  booking: b,
+                  isFca: isFca,
+                  onCancel: b.isCancellable ? () => _confirmCancel(b.id) : null,
+                  onApprove: isFca && b.isApprovable && b.farmerName != null
+                      ? () => _approveBooking(b.id)
+                      : null,
+                  onReject: isFca && b.isApprovable && b.farmerName != null
+                      ? () => _showRejectDialog(b.id)
+                      : null,
+                  onEdit: b.isEditable ? () => _showEditBookingSheet(b) : null,
+                ),
+              ),
+            ),
           ],
 
           // Done / History section
@@ -1352,13 +1483,12 @@ class _BookingsScreenState extends State<BookingsScreen>
               color: AppColors.mutedInk,
             ),
             const SizedBox(height: 8),
-            ...done.map((b) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _CompactBookingCard(
-                    booking: b,
-                    isFca: isFca,
-                  ),
-                )),
+            ...done.map(
+              (b) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _CompactBookingCard(booking: b, isFca: isFca),
+              ),
+            ),
           ],
 
           if (provider.hasMore)
@@ -1369,7 +1499,9 @@ class _BookingsScreenState extends State<BookingsScreen>
                   width: 24,
                   height: 24,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: AppColors.forest),
+                    strokeWidth: 2,
+                    color: AppColors.forest,
+                  ),
                 ),
               ),
             ),
@@ -1379,8 +1511,9 @@ class _BookingsScreenState extends State<BookingsScreen>
   }
 
   void _approveBooking(int bookingId) async {
-    final success =
-        await context.read<BookingProvider>().approveBooking(bookingId);
+    final success = await context.read<BookingProvider>().approveBooking(
+      bookingId,
+    );
     if (mounted) {
       if (success) {
         AppToast.success('Booking approved');
@@ -1438,9 +1571,7 @@ class _BookingsScreenState extends State<BookingsScreen>
                 }
               }
             },
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.danger,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             child: const Text('Reject'),
           ),
         ],
@@ -1454,8 +1585,7 @@ class _BookingsScreenState extends State<BookingsScreen>
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Cancel Booking'),
-        content:
-            const Text('Are you sure you want to cancel this booking?'),
+        content: const Text('Are you sure you want to cancel this booking?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -1475,9 +1605,7 @@ class _BookingsScreenState extends State<BookingsScreen>
                 }
               }
             },
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.danger,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             child: const Text('Cancel Booking'),
           ),
         ],
@@ -1495,182 +1623,194 @@ class _BookingsScreenState extends State<BookingsScreen>
             color: AppColors.forest,
             onRefresh: () => provider.fetchBookings(),
             child: NestedScrollView(
-            headerSliverBuilder: (context, innerBoxIsScrolled) {
-              return [
-                SliverAppBar(
-                  floating: true,
-                  snap: true,
-                  backgroundColor: Colors.white,
-                  surfaceTintColor: Colors.transparent,
-                  elevation: 0,
-                  toolbarHeight: 70,
-                  title: const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Bookings',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.ink,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Manage tractor reservations',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.mutedInk,
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                    ],
-                  ),
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: _showCreateBookingSheet,
-                      icon: const Icon(Icons.add_rounded, size: 18),
-                      label: const Text('Book'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.forest,
-                        foregroundColor: Colors.white,
-                        textStyle: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                  ],
-                  bottom: PreferredSize(
-                    preferredSize: const Size.fromHeight(100),
-                    child: Column(
+              headerSliverBuilder: (context, innerBoxIsScrolled) {
+                return [
+                  SliverAppBar(
+                    floating: true,
+                    snap: true,
+                    backgroundColor: Colors.white,
+                    surfaceTintColor: Colors.transparent,
+                    elevation: 0,
+                    toolbarHeight: 70,
+                    title: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Tractor selector
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Container(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF5F7F6),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<int?>(
-                                value: _selectedTractorId,
-                                isExpanded: true,
-                                icon: const Icon(
-                                    Icons.keyboard_arrow_down_rounded,
-                                    color: AppColors.mutedInk),
-                                hint: Row(
-                                  children: [
-                                    Icon(Icons.agriculture_rounded,
-                                        size: 18,
-                                        color: AppColors.mutedInk
-                                            .withValues(alpha: 0.6)),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      'All Tractors',
-                                      style: TextStyle(
-                                          fontSize: 14,
-                                          color: AppColors.mutedInk),
-                                    ),
-                                  ],
-                                ),
-                                items: [
-                                  const DropdownMenuItem<int?>(
-                                    value: null,
-                                    child: Text('All Tractors',
-                                        style: TextStyle(fontSize: 14)),
-                                  ),
-                                  ...provider.tractors.map((t) {
-                                    final id = t['id'] as int;
-                                    final plate =
-                                        t['no_plate']?.toString() ?? '';
-                                    final brand =
-                                        t['brand']?.toString() ?? '';
-                                    return DropdownMenuItem<int?>(
-                                      value: id,
-                                      child: Text('$plate - $brand',
-                                          style:
-                                              const TextStyle(fontSize: 14)),
-                                    );
-                                  }),
-                                ],
-                                onChanged: (val) {
-                                  setState(
-                                      () => _selectedTractorId = val);
-                                },
-                              ),
-                            ),
+                        Text(
+                          'Bookings',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.ink,
                           ),
                         ),
-                        const SizedBox(height: 8),
-
-                        // Tabs
-                        Container(
-                          color: Colors.white,
-                          child: TabBar(
-                            controller: _tabController,
-                            labelColor: AppColors.forest,
-                            unselectedLabelColor: AppColors.mutedInk,
-                            indicatorColor: AppColors.forest,
-                            indicatorSize: TabBarIndicatorSize.label,
-                            labelStyle: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            unselectedLabelStyle: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            tabs: const [
-                              Tab(
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.calendar_month_rounded,
-                                        size: 18),
-                                    SizedBox(width: 6),
-                                    Text('Calendar'),
-                                  ],
-                                ),
-                              ),
-                              Tab(
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.list_alt_rounded, size: 18),
-                                    SizedBox(width: 6),
-                                    Text('Listing'),
-                                  ],
-                                ),
-                              ),
-                            ],
+                        SizedBox(height: 2),
+                        Text(
+                          'Manage tractor reservations',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.mutedInk,
+                            fontWeight: FontWeight.w400,
                           ),
                         ),
                       ],
                     ),
+                    actions: [
+                      FilledButton.icon(
+                        key: _bookButtonKey,
+                        onPressed: _showCreateBookingSheet,
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        label: const Text('Book'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.forest,
+                          foregroundColor: Colors.white,
+                          textStyle: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                    ],
+                    bottom: PreferredSize(
+                      preferredSize: const Size.fromHeight(100),
+                      child: Column(
+                        children: [
+                          // Tractor selector
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF5F7F6),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<int?>(
+                                  value: _selectedTractorId,
+                                  isExpanded: true,
+                                  icon: const Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    color: AppColors.mutedInk,
+                                  ),
+                                  hint: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.agriculture_rounded,
+                                        size: 18,
+                                        color: AppColors.mutedInk.withValues(
+                                          alpha: 0.6,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Text(
+                                        'All Tractors',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: AppColors.mutedInk,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  items: [
+                                    const DropdownMenuItem<int?>(
+                                      value: null,
+                                      child: Text(
+                                        'All Tractors',
+                                        style: TextStyle(fontSize: 14),
+                                      ),
+                                    ),
+                                    ...provider.tractors.map((t) {
+                                      final id = t['id'] as int;
+                                      final plate =
+                                          t['no_plate']?.toString() ?? '';
+                                      final brand =
+                                          t['brand']?.toString() ?? '';
+                                      return DropdownMenuItem<int?>(
+                                        value: id,
+                                        child: Text(
+                                          '$plate - $brand',
+                                          style: const TextStyle(fontSize: 14),
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                  onChanged: (val) {
+                                    setState(() => _selectedTractorId = val);
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // Tabs
+                          Container(
+                            color: Colors.white,
+                            child: TabBar(
+                              key: _tabKey,
+                              controller: _tabController,
+                              labelColor: AppColors.forest,
+                              unselectedLabelColor: AppColors.mutedInk,
+                              indicatorColor: AppColors.forest,
+                              indicatorSize: TabBarIndicatorSize.label,
+                              labelStyle: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              unselectedLabelStyle: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              tabs: const [
+                                Tab(
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.calendar_month_rounded,
+                                        size: 18,
+                                      ),
+                                      SizedBox(width: 6),
+                                      Text('Calendar'),
+                                    ],
+                                  ),
+                                ),
+                                Tab(
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.list_alt_rounded, size: 18),
+                                      SizedBox(width: 6),
+                                      Text('Listing'),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ];
-            },
-            body: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildCalendarTab(provider),
-                _buildListingTab(provider),
-              ],
+                ];
+              },
+              body: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildCalendarTab(provider),
+                  _buildListingTab(provider),
+                ],
+              ),
             ),
-          ),
           ),
         );
       },
@@ -1727,19 +1867,17 @@ class _SpanningEventBar extends StatelessWidget {
           right: isEnd ? const Radius.circular(4) : Radius.zero,
         ),
         border: Border(
-          left: isStart
-              ? BorderSide(color: color, width: 3)
-              : BorderSide.none,
+          left: isStart ? BorderSide(color: color, width: 3) : BorderSide.none,
         ),
       ),
       padding: EdgeInsets.only(
-        left: isStart ? 4 : 6,
-        right: isEnd ? 4 : 2,
+        left: isStart ? 2 : 4,
+        right: isEnd ? 2 : 1,
       ),
       alignment: Alignment.centerLeft,
       child: Row(
         children: [
-          Expanded(
+          Flexible(
             child: Text(
               label,
               maxLines: 1,
@@ -1752,7 +1890,7 @@ class _SpanningEventBar extends StatelessWidget {
             ),
           ),
           if (time != null) ...[
-            const SizedBox(width: 2),
+            const SizedBox(width: 1),
             Text(
               time,
               style: TextStyle(
@@ -1850,9 +1988,7 @@ class _CompactBookingCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border(
-          left: BorderSide(color: statusColor, width: 3),
-        ),
+        border: Border(left: BorderSide(color: statusColor, width: 3)),
         boxShadow: [
           BoxShadow(
             color: AppColors.ink.withValues(alpha: 0.03),
@@ -1912,8 +2048,10 @@ class _CompactBookingCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: statusColor.withValues(alpha: 0.10),
                     borderRadius: BorderRadius.circular(8),
@@ -1977,7 +2115,10 @@ class _CompactBookingCard extends StatelessWidget {
             ],
 
             // Action buttons
-            if (onApprove != null || onReject != null || onCancel != null || onEdit != null) ...[
+            if (onApprove != null ||
+                onReject != null ||
+                onCancel != null ||
+                onEdit != null) ...[
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -1988,8 +2129,10 @@ class _CompactBookingCard extends StatelessWidget {
                         child: FilledButton.icon(
                           onPressed: onApprove,
                           icon: const Icon(Icons.check_rounded, size: 16),
-                          label: const Text('Approve',
-                              style: TextStyle(fontSize: 12)),
+                          label: const Text(
+                            'Approve',
+                            style: TextStyle(fontSize: 12),
+                          ),
                           style: FilledButton.styleFrom(
                             backgroundColor: AppColors.success,
                             foregroundColor: Colors.white,
@@ -2010,8 +2153,10 @@ class _CompactBookingCard extends StatelessWidget {
                         child: OutlinedButton.icon(
                           onPressed: onReject,
                           icon: const Icon(Icons.close_rounded, size: 16),
-                          label: const Text('Reject',
-                              style: TextStyle(fontSize: 12)),
+                          label: const Text(
+                            'Reject',
+                            style: TextStyle(fontSize: 12),
+                          ),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppColors.danger,
                             side: BorderSide(
@@ -2034,8 +2179,10 @@ class _CompactBookingCard extends StatelessWidget {
                         child: OutlinedButton.icon(
                           onPressed: onEdit,
                           icon: const Icon(Icons.edit_rounded, size: 14),
-                          label: const Text('Edit',
-                              style: TextStyle(fontSize: 12)),
+                          label: const Text(
+                            'Edit',
+                            style: TextStyle(fontSize: 12),
+                          ),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppColors.forest,
                             side: BorderSide(
@@ -2067,8 +2214,10 @@ class _CompactBookingCard extends StatelessWidget {
                               borderRadius: BorderRadius.circular(8),
                             ),
                           ),
-                          child: const Text('Cancel',
-                              style: TextStyle(fontSize: 12)),
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(fontSize: 12),
+                          ),
                         ),
                       ),
                     ),
@@ -2083,11 +2232,7 @@ class _CompactBookingCard extends StatelessWidget {
 }
 
 class _InfoChip extends StatelessWidget {
-  const _InfoChip({
-    required this.icon,
-    required this.text,
-    this.color,
-  });
+  const _InfoChip({required this.icon, required this.text, this.color});
 
   final IconData icon;
   final String text;
@@ -2127,15 +2272,16 @@ class _DatePickerField extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         decoration: BoxDecoration(
-          border: Border.all(
-            color: AppColors.mutedInk.withValues(alpha: 0.2),
-          ),
+          border: Border.all(color: AppColors.mutedInk.withValues(alpha: 0.2)),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
-            const Icon(Icons.calendar_today_rounded,
-                size: 16, color: AppColors.mutedInk),
+            const Icon(
+              Icons.calendar_today_rounded,
+              size: 16,
+              color: AppColors.mutedInk,
+            ),
             const SizedBox(width: 8),
             Text(
               DateFormat('MMM dd, yyyy').format(date),
@@ -2164,15 +2310,16 @@ class _TimePickerField extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         decoration: BoxDecoration(
-          border: Border.all(
-            color: AppColors.mutedInk.withValues(alpha: 0.2),
-          ),
+          border: Border.all(color: AppColors.mutedInk.withValues(alpha: 0.2)),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
-            const Icon(Icons.schedule_rounded,
-                size: 16, color: AppColors.mutedInk),
+            const Icon(
+              Icons.schedule_rounded,
+              size: 16,
+              color: AppColors.mutedInk,
+            ),
             const SizedBox(width: 6),
             Text(
               label,
@@ -2184,4 +2331,3 @@ class _TimePickerField extends StatelessWidget {
     );
   }
 }
-

@@ -9,7 +9,9 @@ import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/shared/providers/geofence_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/app_toast.dart';
 import 'package:tanodmobile/frontend/shared/widgets/primary_button.dart';
+import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
 import 'package:tanodmobile/models/domain/geo_fence.dart';
+import 'package:tanodmobile/services/storage/hive_service.dart';
 
 class EditGeofenceScreen extends StatefulWidget {
   const EditGeofenceScreen({super.key, required this.geofenceId});
@@ -23,6 +25,15 @@ class EditGeofenceScreen extends StatefulWidget {
 class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
   final _nameController = TextEditingController();
   final MapController _mapController = MapController();
+
+  // Tutorial keys
+  final _nameKey = GlobalKey();
+  final _shapeKey = GlobalKey();
+  final _mapKey = GlobalKey();
+  final _radiusKey = GlobalKey();
+  final _alertKey = GlobalKey();
+  final _tractorKey = GlobalKey();
+  final _submitKey = GlobalKey();
 
   String _shape = 'circle';
   String _alertOn = 'both';
@@ -46,6 +57,93 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
   void initState() {
     super.initState();
     _loadData();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
+  }
+
+  void _maybeShowTutorial() {
+    if (!mounted) return;
+    try {
+      final hive = context.read<HiveService>();
+      if (!hive.tutorialsEnabled) return;
+      if (hive.getPreference('tutorial_edit_geofence') == 'true') return;
+      // Wait for data to load before showing
+      if (!_initialLoaded) {
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted && _initialLoaded) _showTutorialSteps();
+        });
+        return;
+      }
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) _showTutorialSteps();
+      });
+    } catch (_) {}
+  }
+
+  void _showTutorialSteps() {
+    if (!mounted) return;
+    TutorialOverlay.show(
+      context: context,
+      steps: [
+        TutorialStep(
+          targetKey: _nameKey,
+          title: '1. Edit Name',
+          description:
+              'The geofence name is pre-filled. Tap to change it to '
+              'something more descriptive if needed.',
+          tooltipPosition: TutorialTooltipPosition.bottom,
+        ),
+        TutorialStep(
+          targetKey: _shapeKey,
+          title: '2. Change Shape',
+          description:
+              'You can switch between Circle and Polygon. Switching '
+              'will clear the current shape so you can redraw it on '
+              'the map below.',
+          tooltipPosition: TutorialTooltipPosition.bottom,
+        ),
+        TutorialStep(
+          targetKey: _mapKey,
+          title: '3. Adjust on Map & Radius',
+              description:
+                  'The current boundary is shown on the map. Circle '
+                  'mode: tap a new spot to move the center, then drag '
+                  'the slider to resize. Polygon mode: tap to add '
+                  'more points or use Undo (↩) to remove the last. '
+                  'The boundary updates live.',
+          tooltipPosition: TutorialTooltipPosition.top,
+        ),
+        TutorialStep(
+          targetKey: _alertKey,
+          title: '4. Alert Settings',
+          description:
+              'Change when alerts trigger: "Enter", "Exit", or "Both".',
+          tooltipPosition: TutorialTooltipPosition.top,
+        ),
+        TutorialStep(
+          targetKey: _tractorKey,
+          title: '5. Assigned Tractors',
+          description:
+              'Select or deselect tractors to reassign. Previously '
+              'selected tractors will have a green border and checkmark.',
+          tooltipPosition: TutorialTooltipPosition.top,
+        ),
+        TutorialStep(
+          targetKey: _submitKey,
+          title: '6. Save Changes',
+          description:
+              'Tap "Update Geofence" to save your changes. The '
+              'geofence list will refresh with the updated info.',
+          tooltipPosition: TutorialTooltipPosition.top,
+        ),
+      ],
+      onComplete: () => _onTutorialComplete(),
+      onSkip: () => _onTutorialComplete(),
+    );
+  }
+
+  void _onTutorialComplete() {
+    if (!mounted) return;
+    context.read<HiveService>().savePreference('tutorial_edit_geofence', 'true');
   }
 
   Future<void> _loadData() async {
@@ -227,6 +325,7 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                 _SectionLabel(label: 'Name'),
                 const SizedBox(height: 6),
                 TextField(
+                  key: _nameKey,
                   controller: _nameController,
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
@@ -254,6 +353,7 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                 _SectionLabel(label: 'Shape'),
                 const SizedBox(height: 6),
                 Row(
+                  key: _shapeKey,
                   children: [
                     Expanded(
                       child: _ToggleChip(
@@ -295,6 +395,7 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                 ),
                 const SizedBox(height: 6),
                 ClipRRect(
+                  key: _mapKey,
                   borderRadius: BorderRadius.circular(16),
                   child: SizedBox(
                     height: 260,
@@ -439,6 +540,7 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                 if (_shape == 'circle' && _circleCenter != null) ...[
                   const SizedBox(height: 12),
                   Row(
+                    key: _radiusKey,
                     children: [
                       const Text('Radius:',
                           style: TextStyle(
@@ -485,6 +587,7 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                 _SectionLabel(label: 'Alert On'),
                 const SizedBox(height: 6),
                 Row(
+                  key: _alertKey,
                   children: [
                     _ToggleChip(
                       label: 'Enter',
@@ -511,6 +614,11 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                 // Device selection
                 _SectionLabel(label: 'Assign Tractors'),
                 const SizedBox(height: 6),
+                Container(
+                  key: _tractorKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                 if (!_devicesLoaded)
                   const Padding(
                     padding: EdgeInsets.all(16),
@@ -592,6 +700,9 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                       ),
                     );
                   }),
+                ],
+              ),
+            ),
 
                 const SizedBox(height: 24),
               ],
@@ -600,6 +711,7 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
 
           // Submit button
           StickyBottomButton(
+            key: _submitKey,
             label: 'Update Geofence',
             isLoading: provider.submitting,
             onPressed: _canSubmit && !provider.submitting ? _submit : null,

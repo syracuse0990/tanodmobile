@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
 import 'package:tanodmobile/frontend/shared/providers/geofence_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/elegant_dialog.dart';
+import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
 import 'package:tanodmobile/models/domain/geo_fence.dart';
+import 'package:tanodmobile/services/storage/hive_service.dart';
 
 class GeofencesScreen extends StatefulWidget {
   const GeofencesScreen({super.key});
@@ -14,10 +16,66 @@ class GeofencesScreen extends StatefulWidget {
 }
 
 class _GeofencesScreenState extends State<GeofencesScreen> {
+  final _titleKey = GlobalKey();
+  final _fabKey = GlobalKey();
+  final _listKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
     context.read<GeoFenceProvider>().fetchGeofences();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
+  }
+
+  void _maybeShowTutorial() {
+    if (!mounted) return;
+    try {
+      final hive = context.read<HiveService>();
+      if (!hive.tutorialsEnabled) return;
+      if (hive.getPreference('tutorial_geofences') == 'true') return;
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (!mounted) return;
+        TutorialOverlay.show(
+          context: context,
+          steps: [
+            TutorialStep(
+              targetKey: _titleKey,
+              title: 'Geo Fences',
+              description:
+                  'Geo fences are virtual boundaries you set on the map. '
+                  'When a tractor enters or exits an area, you\'ll get '
+                  'a notification. This helps you monitor field activity.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+            TutorialStep(
+              targetKey: _listKey,
+              title: 'Your Geofences',
+              description:
+                  'All your saved geofences appear here. Each card shows '
+                  'the name, shape (circle or polygon), alert type, and '
+                  'assigned tractors. Tap a card to view or edit it.',
+              tooltipPosition: TutorialTooltipPosition.bottom,
+            ),
+            TutorialStep(
+              targetKey: _fabKey,
+              title: 'Create Geofence',
+              description:
+                  'Tap the + button to create a new geofence. You\'ll '
+                  'set the name, draw the shape on the map, choose '
+                  'alert preferences, and assign tractors.',
+              tooltipPosition: TutorialTooltipPosition.top,
+            ),
+          ],
+          onComplete: () => _onTutorialComplete(),
+          onSkip: () => _onTutorialComplete(),
+        );
+      });
+    } catch (_) {}
+  }
+
+  void _onTutorialComplete() {
+    if (!mounted) return;
+    context.read<HiveService>().savePreference('tutorial_geofences', 'true');
   }
 
   Future<void> _onRefresh() async {
@@ -31,7 +89,7 @@ class _GeofencesScreenState extends State<GeofencesScreen> {
     return Scaffold(
       backgroundColor: AppColors.canvas,
       appBar: AppBar(
-        title: const Text('Geo Fences'),
+        title: Text('Geo Fences', key: _titleKey),
         backgroundColor: AppColors.forest,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -42,6 +100,7 @@ class _GeofencesScreenState extends State<GeofencesScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
+        key: _fabKey,
         backgroundColor: AppColors.forest,
         foregroundColor: Colors.white,
         onPressed: () => context.go('/account/geofences/create'),
@@ -96,6 +155,7 @@ class _GeofencesScreenState extends State<GeofencesScreen> {
                       ),
                     )
                   : RefreshIndicator(
+                      key: _listKey,
                       color: AppColors.forest,
                       onRefresh: _onRefresh,
                       child: ListView.separated(
