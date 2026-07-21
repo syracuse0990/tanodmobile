@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
@@ -59,7 +60,8 @@ class _ShareLocationSheetState extends State<_ShareLocationSheet> {
     final deviceId = widget.tractor.deviceId;
     if (deviceId == null) {
       setState(() {
-        _errorMessage = 'This tractor does not have a linked tracker device yet.';
+        _errorMessage =
+            'This tractor does not have a linked tracker device yet.';
       });
       return;
     }
@@ -271,33 +273,91 @@ class _TrackHistorySheet extends StatefulWidget {
   State<_TrackHistorySheet> createState() => _TrackHistorySheetState();
 }
 
-class _TrackHistorySheetState extends State<_TrackHistorySheet> {
+class _TrackHistorySheetState extends State<_TrackHistorySheet>
+    with SingleTickerProviderStateMixin {
   _TrackHistoryPeriod _period = _TrackHistoryPeriod.today;
   bool _loading = true;
   String? _errorMessage;
   List<_TrackHistoryPoint> _points = const [];
   String? _beginTime;
   String? _endTime;
-  Timer? _playbackTimer;
-  int _playbackIndex = 0;
   int _playbackSpeed = 1;
+
+  // ─── Smooth frame-based playback ───
+  double _playbackPosition =
+      0.0; // fractional index (e.g. 5.5 = between pt 5 & 6)
+  late final Ticker _ticker;
+  Duration? _lastTickTime;
 
   // Tutorial
   final _periodKey = GlobalKey();
   final _heroKey = GlobalKey();
   bool _showTutorial = false;
 
-  bool get _isPlaying => _playbackTimer != null;
+  bool get _isPlaying => _ticker.isActive;
 
-  Duration get _playbackStepDuration => switch (_playbackSpeed) {
-    2 => const Duration(milliseconds: 420),
-    4 => const Duration(milliseconds: 220),
-    _ => const Duration(milliseconds: 820),
-  };
+  /// Points-per-millisecond rate matching web behaviour:
+  ///   1× → 0.01 pts/ms (1 pt / 100ms)
+  ///   2× → 0.02 pts/ms
+  ///   4× → 0.04 pts/ms
+  ///   8× → 0.08 pts/ms
+  ///  16× → 0.16 pts/ms
+  double get _pointsPerMs => _playbackSpeed / 100.0;
+
+  /// Current segment index (integer part of _playbackPosition).
+  /// Maximum valid segment = points.length - 2 (last segment connects
+  /// second-to-last and last points).
+  int get _segmentIndex {
+    if (_points.length < 2) return 0;
+    return _playbackPosition.floor().clamp(0, _points.length - 2);
+  }
+
+  /// Progress (0.0–1.0) within the current segment
+  double get _segmentFraction =>
+      (_playbackPosition - _segmentIndex).clamp(0.0, 1.0);
+
+  /// Interpolated position using linear lerp between consecutive GPS points.
+  /// This gives a clean, predictable path that follows the actual track.
+  LatLng? get _interpolatedPosition {
+    if (_points.length < 2) return null;
+    final idx = _segmentIndex;
+    if (idx >= _points.length - 1) {
+      return LatLng(_points.last.lat, _points.last.lng);
+    }
+    final from = _points[idx];
+    final to = _points[idx + 1];
+    final f = _segmentFraction;
+    return LatLng(
+      from.lat + (to.lat - from.lat) * f,
+      from.lng + (to.lng - from.lng) * f,
+    );
+  }
+
+  /// Interpolated speed between two consecutive GPS points (linear)
+  double get _interpolatedSpeed {
+    if (_points.length < 2) return 0;
+    final idx = _segmentIndex;
+    if (idx >= _points.length - 1) return _points.last.speed;
+    final from = _points[idx];
+    final to = _points[idx + 1];
+    return from.speed + (to.speed - from.speed) * _segmentFraction;
+  }
+
+  /// Interpolated direction between two consecutive GPS points (linear)
+  double get _interpolatedDirection {
+    if (_points.length < 2) return 0;
+    final idx = _segmentIndex;
+    if (idx >= _points.length - 1) return _points.last.direction;
+    final from = _points[idx];
+    final to = _points[idx + 1];
+    return from.direction +
+        _shortestAngle(from.direction, to.direction) * _segmentFraction;
+  }
 
   @override
   void initState() {
     super.initState();
+    _ticker = createTicker(_onTick);
     _loadTrackHistory();
   }
 
@@ -307,7 +367,8 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
     try {
       final hive = context.read<HiveService>();
       if (!hive.tutorialsEnabled) return;
-      final alreadySeen = hive.getPreference('tutorial_track_history') == 'true';
+      final alreadySeen =
+          hive.getPreference('tutorial_track_history') == 'true';
       if (alreadySeen) return;
     } catch (_) {}
 
@@ -320,14 +381,62 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
   void _onTutorialComplete() {
     if (!mounted) return;
     try {
-      context.read<HiveService>().savePreference('tutorial_track_history', 'true');
+      context.read<HiveService>().savePreference(
+        'tutorial_track_history',
+        'true',
+      );
     } catch (_) {}
     setState(() => _showTutorial = false);
   }
 
+  /// Frame callback — advances playback based on elapsed real time
+  void _onTick(Duration elapsed) {
+    if (!mounted) {
+      _ticker.stop();
+      return;
+    }
+
+    final dt = _lastTickTime == null
+        ? 0
+        : (elapsed - _lastTickTime!).inMilliseconds;
+    _lastTickTime = elapsed;
+
+    // Ignore huge gaps (e.g. after app suspend) to avoid jumping wildly
+    if (dt <= 0 || dt > 2000) return;
+
+    final pointsToAdvance = dt * _pointsPerMs;
+
+    if (pointsToAdvance > 0) {
+      final newPosition = (_playbackPosition + pointsToAdvance).clamp(
+        0.0,
+        (_points.length - 1).toDouble(),
+      );
+
+      if (newPosition >= _points.length - 1) {
+        _playbackPosition = newPosition;
+        setState(() {});
+        _stopPlayback();
+        return;
+      }
+
+      setState(() {
+        _playbackPosition = newPosition;
+      });
+    }
+  }
+
+  /// Returns the shortest signed angle from [a] to [b] (handles 0°/360° wrap)
+  static double _shortestAngle(double a, double b) {
+    var diff = (b - a) % 360;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+    return diff;
+  }
+
   @override
   void dispose() {
-    _stopPlayback(updateState: false);
+    _ticker.stop();
+    _ticker.dispose();
     super.dispose();
   }
 
@@ -336,19 +445,23 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
     if (deviceId == null) {
       setState(() {
         _loading = false;
-        _errorMessage = 'This tractor does not have a linked tracker device yet.';
+        _errorMessage =
+            'This tractor does not have a linked tracker device yet.';
       });
       return;
     }
 
-    _stopPlayback(updateState: false);
+    _stopPlayback();
 
     setState(() {
       _loading = true;
       _errorMessage = null;
     });
 
-    final response = await widget.provider.fetchTrackData(deviceId, _period.apiValue);
+    final response = await widget.provider.fetchTrackData(
+      deviceId,
+      _period.apiValue,
+    );
     if (!mounted) {
       return;
     }
@@ -372,7 +485,8 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
       _beginTime = response['begin_time']?.toString();
       _endTime = response['end_time']?.toString();
       _points = parsedPoints;
-      _playbackIndex = 0;
+      _playbackPosition = 0.0;
+      _lastTickTime = null;
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
@@ -392,42 +506,29 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
       return;
     }
 
-    if (_playbackIndex >= _points.length - 1) {
-      _playbackIndex = 0;
+    if (_playbackPosition >= _points.length - 1) {
+      _playbackPosition = 0.0;
     }
 
-    _playbackTimer = Timer.periodic(_playbackStepDuration, (_) {
-      if (!mounted) {
-        _stopPlayback(updateState: false);
-        return;
-      }
-
-      if (_playbackIndex >= _points.length - 1) {
-        _stopPlayback();
-        return;
-      }
-
-      setState(() {
-        _playbackIndex += 1;
-      });
-    });
-
+    _lastTickTime = null;
+    _ticker.start();
     setState(() {});
   }
 
-  void _stopPlayback({bool updateState = true}) {
-    _playbackTimer?.cancel();
-    _playbackTimer = null;
+  void _stopPlayback() {
+    _ticker.stop();
+    _lastTickTime = null;
 
-    if (updateState && mounted) {
+    if (mounted) {
       setState(() {});
     }
   }
 
   void _resetPlayback() {
-    _stopPlayback(updateState: false);
+    _ticker.stop();
     setState(() {
-      _playbackIndex = 0;
+      _playbackPosition = 0.0;
+      _lastTickTime = null;
     });
   }
 
@@ -436,9 +537,10 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
       return;
     }
 
-    _stopPlayback(updateState: false);
+    _ticker.stop();
     setState(() {
-      _playbackIndex = nextValue.round().clamp(0, _points.length - 1);
+      _playbackPosition = nextValue.clamp(0.0, (_points.length - 1).toDouble());
+      _lastTickTime = null;
     });
   }
 
@@ -447,9 +549,13 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
       return;
     }
 
-    _stopPlayback(updateState: false);
+    _ticker.stop();
     setState(() {
-      _playbackIndex = (_playbackIndex + offset).clamp(0, _points.length - 1);
+      _playbackPosition = (_playbackPosition + offset).clamp(
+        0.0,
+        (_points.length - 1).toDouble(),
+      );
+      _lastTickTime = null;
     });
   }
 
@@ -459,9 +565,10 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
     }
 
     final wasPlaying = _isPlaying;
-    _stopPlayback(updateState: false);
+    _ticker.stop();
     setState(() {
       _playbackSpeed = speed;
+      _lastTickTime = null;
     });
 
     if (wasPlaying) {
@@ -477,328 +584,346 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
       0,
       (current, point) => point.speed > current ? point.speed : current,
     );
-    final duration = firstPoint?.recordedAt != null && lastPoint?.recordedAt != null
+    final duration =
+        firstPoint?.recordedAt != null && lastPoint?.recordedAt != null
         ? lastPoint!.recordedAt!.difference(firstPoint!.recordedAt!)
         : null;
     final playbackIndex = _points.isEmpty
         ? 0
-        : _playbackIndex.clamp(0, _points.length - 1);
+        : _playbackPosition.floor().clamp(0, _points.length - 1);
     final currentPoint = _points.isNotEmpty ? _points[playbackIndex] : null;
     final trailPoints = _points
         .map((point) => LatLng(point.lat, point.lng))
         .toList(growable: false);
+    final interpolatedPos = _interpolatedPosition;
+    final interpSpeed = _interpolatedSpeed;
+    final interpDirection = _interpolatedDirection;
 
     return _SheetFrame(
       heightFactor: 0.94,
       child: Stack(
         children: [
           Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SheetHandle(onClose: () => Navigator.of(context).pop()),
-          _SheetHero(
-            key: _heroKey,
-            icon: Icons.route_rounded,
-            title: 'Track History',
-            subtitle: widget.tractor.label,
-            caption: widget.tractor.subtitle,
-          ),
-          const SizedBox(height: 20),
-          Wrap(
-            key: _periodKey,
-            spacing: 10,
-            runSpacing: 10,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (final period in _TrackHistoryPeriod.values)
-                _PeriodChip(
-                  label: period.label,
-                  selected: _period == period,
-                  onTap: _loading && _period == period
-                      ? null
-                      : () {
-                          if (_period == period) {
-                            return;
-                          }
-                          setState(() => _period = period);
-                          _loadTrackHistory();
-                        },
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: _loading
-                ? const Center(
-                    child: CircularProgressIndicator(color: AppColors.pine),
-                  )
-                : _errorMessage != null
+              _SheetHandle(onClose: () => Navigator.of(context).pop()),
+              _SheetHero(
+                key: _heroKey,
+                icon: Icons.route_rounded,
+                title: 'Track History',
+                subtitle: widget.tractor.label,
+                caption: widget.tractor.subtitle,
+              ),
+              const SizedBox(height: 20),
+              Wrap(
+                key: _periodKey,
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  for (final period in _TrackHistoryPeriod.values)
+                    _PeriodChip(
+                      label: period.label,
+                      selected: _period == period,
+                      onTap: _loading && _period == period
+                          ? null
+                          : () {
+                              if (_period == period) {
+                                return;
+                              }
+                              setState(() => _period = period);
+                              _loadTrackHistory();
+                            },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: _loading
+                    ? const Center(
+                        child: CircularProgressIndicator(color: AppColors.pine),
+                      )
+                    : _errorMessage != null
                     ? _ErrorState(
                         message: _errorMessage!,
                         onRetry: _loadTrackHistory,
                       )
                     : _points.isEmpty
-                        ? _EmptyState(
-                            icon: Icons.alt_route_rounded,
-                            title: 'No track points found',
-                            message:
-                                'There are no recorded GPS points for the selected time range yet.',
-                            actionLabel: 'Reload',
-                            onTap: _loadTrackHistory,
-                          )
-                        : SingleChildScrollView(
-                            child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(
-                                height: 240,
-                                child: TractorTrackHistoryMap(
-                                  trailPoints: trailPoints,
-                                  playbackIndex: playbackIndex,
-                                  currentSpeed: currentPoint?.speed ?? 0,
-                                  currentDirection: currentPoint?.direction ?? 0,
-                                ),
+                    ? _EmptyState(
+                        icon: Icons.alt_route_rounded,
+                        title: 'No track points found',
+                        message:
+                            'There are no recorded GPS points for the selected time range yet.',
+                        actionLabel: 'Reload',
+                        onTap: _loadTrackHistory,
+                      )
+                    : SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              height: 240,
+                              child: TractorTrackHistoryMap(
+                                trailPoints: trailPoints,
+                                playbackIndex: playbackIndex,
+                                interpolatedPosition: interpolatedPos,
+                                currentSpeed: interpSpeed,
+                                currentDirection: interpDirection,
                               ),
-                              const SizedBox(height: 14),
-                              Row(
+                            ),
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _MetricCard(
+                                    label: 'Points',
+                                    value: '${_points.length}',
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _MetricCard(
+                                    label: 'Top Speed',
+                                    value:
+                                        '${maxSpeed.toStringAsFixed(1)} km/h',
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _MetricCard(
+                                    label: 'Window',
+                                    value: _formatDurationLabel(duration),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: AppColors.canvas,
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Expanded(
-                                    child: _MetricCard(
-                                      label: 'Points',
-                                      value: '${_points.length}',
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            const Text(
+                                              'Playback',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                                color: AppColors.mutedInk,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              _formatDateTimeLabel(
+                                                currentPoint?.recordedAt,
+                                              ),
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w700,
+                                                color: AppColors.ink,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      _SmallPill(
+                                        label:
+                                            '${(_playbackPosition + 1).toStringAsFixed(1)}/${_points.length}',
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      activeTrackColor: AppColors.pine,
+                                      inactiveTrackColor: AppColors.pine
+                                          .withValues(alpha: 0.12),
+                                      thumbColor: AppColors.pine,
+                                      overlayColor: AppColors.pine.withValues(
+                                        alpha: 0.12,
+                                      ),
+                                    ),
+                                    child: Slider(
+                                      value: _playbackPosition,
+                                      min: 0,
+                                      max: (_points.length - 1).toDouble(),
+                                      onChanged: _points.length > 1
+                                          ? _seekTo
+                                          : null,
                                     ),
                                   ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: _MetricCard(
-                                      label: 'Top Speed',
-                                      value: '${maxSpeed.toStringAsFixed(1)} km/h',
-                                    ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      _PlaybackButton(
+                                        icon: Icons.restart_alt_rounded,
+                                        onTap: _resetPlayback,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _PlaybackButton(
+                                        icon: Icons.skip_previous_rounded,
+                                        onTap: playbackIndex > 0
+                                            ? () => _stepBy(-1)
+                                            : null,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: FilledButton.icon(
+                                          onPressed: _points.length > 1
+                                              ? _togglePlayback
+                                              : null,
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor: AppColors.pine,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 14,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                            ),
+                                          ),
+                                          icon: Icon(
+                                            _isPlaying
+                                                ? Icons.pause_rounded
+                                                : Icons.play_arrow_rounded,
+                                          ),
+                                          label: Text(
+                                            _isPlaying
+                                                ? 'Pause Playback'
+                                                : 'Play Playback',
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _PlaybackButton(
+                                        icon: Icons.skip_next_rounded,
+                                        onTap:
+                                            playbackIndex < _points.length - 1
+                                            ? () => _stepBy(1)
+                                            : null,
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: _MetricCard(
-                                      label: 'Window',
-                                      value: _formatDurationLabel(duration),
-                                    ),
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      for (final speed in const [
+                                        1,
+                                        2,
+                                        4,
+                                        8,
+                                        16,
+                                      ])
+                                        _PlaybackSpeedChip(
+                                          label: '${speed}x',
+                                          selected: _playbackSpeed == speed,
+                                          onTap: () => _setPlaybackSpeed(speed),
+                                        ),
+                                    ],
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 14),
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: AppColors.canvas,
-                                  borderRadius: BorderRadius.circular(18),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              const Text(
-                                                'Playback',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: AppColors.mutedInk,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                _formatDateTimeLabel(
-                                                  currentPoint?.recordedAt,
-                                                ),
-                                                style: const TextStyle(
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: AppColors.ink,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        _SmallPill(
-                                          label:
-                                              '${playbackIndex + 1}/${_points.length}',
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    SliderTheme(
-                                      data: SliderTheme.of(context).copyWith(
-                                        activeTrackColor: AppColors.pine,
-                                        inactiveTrackColor: AppColors.pine
-                                            .withValues(alpha: 0.12),
-                                        thumbColor: AppColors.pine,
-                                        overlayColor: AppColors.pine
-                                            .withValues(alpha: 0.12),
-                                      ),
-                                      child: Slider(
-                                        value: playbackIndex.toDouble(),
-                                        min: 0,
-                                        max: (_points.length - 1).toDouble(),
-                                        onChanged:
-                                            _points.length > 1 ? _seekTo : null,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      children: [
-                                        _PlaybackButton(
-                                          icon: Icons.restart_alt_rounded,
-                                          onTap: _resetPlayback,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        _PlaybackButton(
-                                          icon: Icons.skip_previous_rounded,
-                                          onTap: playbackIndex > 0
-                                              ? () => _stepBy(-1)
-                                              : null,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: FilledButton.icon(
-                                            onPressed: _points.length > 1
-                                                ? _togglePlayback
-                                                : null,
-                                            style: FilledButton.styleFrom(
-                                              backgroundColor: AppColors.pine,
-                                              foregroundColor: Colors.white,
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    vertical: 14,
-                                                  ),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(16),
-                                              ),
-                                            ),
-                                            icon: Icon(
-                                              _isPlaying
-                                                  ? Icons.pause_rounded
-                                                  : Icons.play_arrow_rounded,
-                                            ),
-                                            label: Text(
-                                              _isPlaying
-                                                  ? 'Pause Playback'
-                                                  : 'Play Playback',
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        _PlaybackButton(
-                                          icon: Icons.skip_next_rounded,
-                                          onTap:
-                                              playbackIndex < _points.length - 1
-                                              ? () => _stepBy(1)
-                                              : null,
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 8,
-                                      children: [
-                                        for (final speed in const [1, 2, 4])
-                                          _PlaybackSpeedChip(
-                                            label: '${speed}x',
-                                            selected: _playbackSpeed == speed,
-                                            onTap: () => _setPlaybackSpeed(speed),
-                                          ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
+                            ),
+                            const SizedBox(height: 14),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: AppColors.canvas,
+                                borderRadius: BorderRadius.circular(18),
                               ),
-                              const SizedBox(height: 14),
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: AppColors.canvas,
-                                  borderRadius: BorderRadius.circular(18),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _SummaryLine(
-                                      label: 'Start',
-                                      value: _formatDateTimeLabel(firstPoint?.recordedAt),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    _SummaryLine(
-                                      label: 'Current',
-                                      value: currentPoint == null
-                                          ? 'Unavailable'
-                                          : '${currentPoint.lat.toStringAsFixed(5)}, ${currentPoint.lng.toStringAsFixed(5)} at ${currentPoint.speed.toStringAsFixed(1)} km/h',
-                                    ),
-                                    const SizedBox(height: 8),
-                                    _SummaryLine(
-                                      label: 'End',
-                                      value: _formatDateTimeLabel(lastPoint?.recordedAt),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    _SummaryLine(
-                                      label: 'Server Range',
-                                      value:
-                                          '${_formatDateTimeLabel(_parseDateTime(_beginTime))} to ${_formatDateTimeLabel(_parseDateTime(_endTime))}',
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text(
-                                    'GPS Timeline',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppColors.ink,
+                                  _SummaryLine(
+                                    label: 'Start',
+                                    value: _formatDateTimeLabel(
+                                      firstPoint?.recordedAt,
                                     ),
                                   ),
-                                  const Spacer(),
-                                  Text(
-                                    'Highlighted point follows playback',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors.mutedInk.withValues(
-                                        alpha: 0.90,
-                                      ),
+                                  const SizedBox(height: 8),
+                                  _SummaryLine(
+                                    label: 'Current',
+                                    value: interpolatedPos == null
+                                        ? 'Unavailable'
+                                        : '${interpolatedPos.latitude.toStringAsFixed(5)}, ${interpolatedPos.longitude.toStringAsFixed(5)} at ${interpSpeed.toStringAsFixed(1)} km/h',
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _SummaryLine(
+                                    label: 'End',
+                                    value: _formatDateTimeLabel(
+                                      lastPoint?.recordedAt,
                                     ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _SummaryLine(
+                                    label: 'Server Range',
+                                    value:
+                                        '${_formatDateTimeLabel(_parseDateTime(_beginTime))} to ${_formatDateTimeLabel(_parseDateTime(_endTime))}',
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 10),
-                              SizedBox(
-                                height: 260,
-                                child: ListView.separated(
-                                  itemCount: _points.length,
-                                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                                  itemBuilder: (context, index) {
-                                    final pointIndex = _points.length - 1 - index;
-                                    final point = _points[pointIndex];
-                                    return _TrackPointTile(
-                                      point: point,
-                                      isActive: pointIndex == playbackIndex,
-                                    );
-                                  },
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                const Text(
+                                  'GPS Timeline',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.ink,
+                                  ),
                                 ),
+                                const Spacer(),
+                                Text(
+                                  'Highlighted point follows playback',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.mutedInk.withValues(
+                                      alpha: 0.90,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              height: 260,
+                              child: ListView.separated(
+                                itemCount: _points.length,
+                                separatorBuilder: (_, _) =>
+                                    const SizedBox(height: 10),
+                                itemBuilder: (context, index) {
+                                  final pointIndex = _points.length - 1 - index;
+                                  final point = _points[pointIndex];
+                                  return _TrackPointTile(
+                                    point: point,
+                                    isActive: pointIndex == playbackIndex,
+                                  );
+                                },
                               ),
-                              const SizedBox(height: 20),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+              ),
+            ],
+          ),
 
           // ─── Tutorial overlay ───
           if (_showTutorial)
@@ -812,16 +937,16 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet> {
                       'for a selected time range. Choose a period above, '
                       'then use the playback controls below the map to '
                       'watch the tractor retrace its path. You can adjust '
-                      'the playback speed with the 1x, 2x, or 4x buttons.',
+                      'the playback speed with the 1x–16x buttons.',
                   tooltipPosition: TutorialTooltipPosition.bottom,
                 ),
               ],
               onComplete: _onTutorialComplete,
               onSkip: _onTutorialComplete,
             ),
-        ],  // ← closes Stack children
-      ),  // ← closes Stack
-    );  // ← closes _SheetFrame child
+        ], // ← closes Stack children
+      ), // ← closes Stack
+    ); // ← closes _SheetFrame child
   }
 }
 
@@ -931,10 +1056,7 @@ class _SheetHero extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 caption,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.mutedInk,
-                ),
+                style: const TextStyle(fontSize: 12, color: AppColors.mutedInk),
               ),
             ],
           ),
@@ -1178,9 +1300,7 @@ class _TrackPointTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: isActive
-            ? AppColors.pine.withValues(alpha: 0.05)
-            : Colors.white,
+        color: isActive ? AppColors.pine.withValues(alpha: 0.05) : Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: isActive
@@ -1235,7 +1355,9 @@ class _TrackPointTile extends StatelessWidget {
                     if (isActive) const _SmallPill(label: 'Playback point'),
                     if (isActive) const SizedBox(width: 8),
                     _SmallPill(label: '${point.speed.toStringAsFixed(1)} km/h'),
-                    _SmallPill(label: '${point.direction.toStringAsFixed(0)} deg'),
+                    _SmallPill(
+                      label: '${point.direction.toStringAsFixed(0)} deg',
+                    ),
                   ],
                 ),
               ],
@@ -1355,10 +1477,7 @@ class _ErrorState extends StatelessWidget {
           Text(
             message,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 13,
-              color: AppColors.mutedInk,
-            ),
+            style: const TextStyle(fontSize: 13, color: AppColors.mutedInk),
           ),
           const SizedBox(height: 14),
           OutlinedButton.icon(
@@ -1407,10 +1526,7 @@ class _EmptyState extends StatelessWidget {
           Text(
             message,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.mutedInk,
-            ),
+            style: const TextStyle(fontSize: 12, color: AppColors.mutedInk),
           ),
           if (actionLabel != null && onTap != null) ...[
             const SizedBox(height: 14),
@@ -1501,8 +1617,8 @@ String _formatDateTimeLabel(DateTime? value) {
   final hour = value.hour == 0
       ? 12
       : value.hour > 12
-          ? value.hour - 12
-          : value.hour;
+      ? value.hour - 12
+      : value.hour;
   final minute = value.minute.toString().padLeft(2, '0');
   final meridiem = value.hour >= 12 ? 'PM' : 'AM';
   return '${months[value.month - 1]} ${value.day}, ${value.year} $hour:$minute $meridiem';
@@ -1535,11 +1651,7 @@ Future<void> _copyToClipboard(
     return;
   }
 
-  _showSheetFeedback(
-    context,
-    message,
-    backgroundColor: AppColors.success,
-  );
+  _showSheetFeedback(context, message, backgroundColor: AppColors.success);
 }
 
 Future<void> _launchExternalUri(

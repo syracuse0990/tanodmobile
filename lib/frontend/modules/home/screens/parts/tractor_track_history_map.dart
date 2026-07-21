@@ -8,12 +8,14 @@ class TractorTrackHistoryMap extends StatefulWidget {
     super.key,
     required this.trailPoints,
     required this.playbackIndex,
+    this.interpolatedPosition,
     required this.currentSpeed,
     required this.currentDirection,
   });
 
   final List<LatLng> trailPoints;
   final int playbackIndex;
+  final LatLng? interpolatedPosition;
   final double currentSpeed;
   final double currentDirection;
 
@@ -50,10 +52,17 @@ class _TractorTrackHistoryMapState extends State<TractorTrackHistoryMap> {
       0,
       widget.trailPoints.length - 1,
     );
-    final currentPoint = widget.trailPoints[playbackIndex];
+    final currentPoint =
+        widget.interpolatedPosition ?? widget.trailPoints[playbackIndex];
     final progressPoints = widget.trailPoints
         .take(playbackIndex + 1)
-        .toList(growable: false);
+        .toList(growable: true);
+    // If we have an interpolated position, include it in the progress path
+    // for a perfectly smooth trailing line
+    if (widget.interpolatedPosition != null &&
+        playbackIndex < widget.trailPoints.length - 1) {
+      progressPoints.add(widget.interpolatedPosition!);
+    }
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -178,10 +187,7 @@ class _TractorTrackHistoryMapState extends State<TractorTrackHistoryMap> {
 
       final bounds = LatLngBounds.fromPoints(widget.trailPoints);
       _mapController.fitCamera(
-        CameraFit.bounds(
-          bounds: bounds,
-          padding: const EdgeInsets.all(40),
-        ),
+        CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(40)),
       );
     });
   }
@@ -218,6 +224,9 @@ class _TractorTrackHistoryMapState extends State<TractorTrackHistoryMap> {
     required double direction,
   }) {
     final assetPath = _tractorAssetForSpeed(speed);
+    // Convert bearing (0°=North, clockwise) to Flutter rotation
+    // (0 radians = East, clockwise)
+    final rotationRadians = (direction - 90) * 3.141592653589793 / 180;
 
     return Marker(
       point: point,
@@ -235,10 +244,13 @@ class _TractorTrackHistoryMapState extends State<TractorTrackHistoryMap> {
             ),
           ],
         ),
-        child: Image.asset(
-          assetPath,
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.high,
+        child: Transform.rotate(
+          angle: rotationRadians,
+          child: Image.asset(
+            assetPath,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+          ),
         ),
       ),
     );
