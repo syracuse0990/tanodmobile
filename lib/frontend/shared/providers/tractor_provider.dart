@@ -37,7 +37,9 @@ class TractorProvider extends ChangeNotifier {
   String get searchQuery => _searchQuery;
   int get movingCount => _tractors.where((t) => t.isMoving).length;
   int get onlineCount => _tractors.where((t) => t.isOnline).length;
-  int get idleCount => _tractors.where((t) => t.isIdle).length;
+  int get idlingCount => _tractors.where((t) => t.isIdling).length;
+  int get parkedCount => _tractors.where((t) => t.isParked).length;
+  int get idleCount => idlingCount + parkedCount;
   int get offlineCount => _tractors.where((t) => !t.isOnline).length;
   int? get focusedTractorId => _focusedTractorId;
   int get secondsUntilPoll => _secondsUntilPoll;
@@ -124,10 +126,7 @@ class TractorProvider extends ChangeNotifier {
       final results = await Future.wait([
         _apiClient.get(
           AppEndpoints.tractors,
-          queryParameters: {
-            ...tractorQueryParameters,
-            'page': '1',
-          },
+          queryParameters: {...tractorQueryParameters, 'page': '1'},
         ),
         _apiClient.get(AppEndpoints.devicesLiveLocations),
       ]);
@@ -135,8 +134,14 @@ class TractorProvider extends ChangeNotifier {
       final tractorResponse = results[0];
       final liveResponse = results[1];
 
-      if (
-          requestId != _latestAllRequestId ||
+      if (liveResponse['success'] == false) {
+        throw StateError(
+          liveResponse['message']?.toString() ??
+              'Live locations are temporarily unavailable.',
+        );
+      }
+
+      if (requestId != _latestAllRequestId ||
           sessionId != _pollSessionId ||
           isFocused) {
         return;
@@ -148,8 +153,7 @@ class TractorProvider extends ChangeNotifier {
       final lastPage = _extractLastPage(tractorResponse);
 
       for (var page = 2; page <= lastPage; page++) {
-        if (
-            requestId != _latestAllRequestId ||
+        if (requestId != _latestAllRequestId ||
             sessionId != _pollSessionId ||
             isFocused) {
           return;
@@ -157,14 +161,10 @@ class TractorProvider extends ChangeNotifier {
 
         final nextPageResponse = await _apiClient.get(
           AppEndpoints.tractors,
-          queryParameters: {
-            ...tractorQueryParameters,
-            'page': page.toString(),
-          },
+          queryParameters: {...tractorQueryParameters, 'page': page.toString()},
         );
 
-        if (
-            requestId != _latestAllRequestId ||
+        if (requestId != _latestAllRequestId ||
             sessionId != _pollSessionId ||
             isFocused) {
           return;
@@ -187,8 +187,7 @@ class TractorProvider extends ChangeNotifier {
       _tractors = _mergeTractorsWithLive(dataList, liveByDeviceId);
       _error = null;
     } catch (e) {
-      if (
-          requestId != _latestAllRequestId ||
+      if (requestId != _latestAllRequestId ||
           sessionId != _pollSessionId ||
           isFocused) {
         return;
@@ -197,8 +196,7 @@ class TractorProvider extends ChangeNotifier {
       _error = 'Failed to load tractors';
       debugPrint('TractorProvider._fetchAll error: $e');
     } finally {
-      if (
-          requestId == _latestAllRequestId &&
+      if (requestId == _latestAllRequestId &&
           sessionId == _pollSessionId &&
           !isFocused) {
         _loading = false;
@@ -233,7 +231,7 @@ class TractorProvider extends ChangeNotifier {
   }
 
   /// Fetch only the focused tractor's real-time location (10s polling).
-  /// Uses the direct follow endpoint — no cache on the server.
+  /// Uses the follow endpoint backed by the server's shared 10s JIMI cache.
   Future<void> _fetchFocused() async {
     final requestId = ++_latestFocusedRequestId;
     final sessionId = _pollSessionId;
@@ -242,9 +240,9 @@ class TractorProvider extends ChangeNotifier {
 
     // Find the device_id for the focused tractor.
     final focused = _tractors.cast<TractorLocation?>().firstWhere(
-          (t) => t?.id == focusedId,
-          orElse: () => null,
-        );
+      (t) => t?.id == focusedId,
+      orElse: () => null,
+    );
     if (focused == null || focused.deviceId == null) return;
 
     try {
@@ -252,30 +250,37 @@ class TractorProvider extends ChangeNotifier {
         '${AppEndpoints.devicesFollow}/${focused.deviceId}',
       );
 
+      if (response['success'] == false) {
+        throw StateError(
+          response['message']?.toString() ??
+              'Live location is temporarily unavailable.',
+        );
+      }
+
       final live = response['location'] as Map<String, dynamic>?;
 
-      if (
-          requestId != _latestFocusedRequestId ||
+      if (requestId != _latestFocusedRequestId ||
           sessionId != _pollSessionId ||
           _focusedTractorId != focusedId) {
         return;
       }
 
       // Update only the focused tractor in the list.
-      _tractors = _tractors.map((t) {
-        if (t.id != focusedId) return t;
+      _tractors = _tractors
+          .map((t) {
+            if (t.id != focusedId) return t;
 
-        return _mergeLiveIntoTractor(
-          t,
-          live,
-          keepLastKnownLocationOnMissing: true,
-        );
-      }).toList(growable: false);
+            return _mergeLiveIntoTractor(
+              t,
+              live,
+              keepLastKnownLocationOnMissing: true,
+            );
+          })
+          .toList(growable: false);
 
       _error = null;
     } catch (e) {
-      if (
-          requestId != _latestFocusedRequestId ||
+      if (requestId != _latestFocusedRequestId ||
           sessionId != _pollSessionId ||
           _focusedTractorId != focusedId) {
         return;
@@ -283,8 +288,7 @@ class TractorProvider extends ChangeNotifier {
 
       debugPrint('TractorProvider._fetchFocused error: $e');
     } finally {
-      if (
-          requestId == _latestFocusedRequestId &&
+      if (requestId == _latestFocusedRequestId &&
           sessionId == _pollSessionId &&
           _focusedTractorId == focusedId) {
         notifyListeners();
@@ -297,19 +301,22 @@ class TractorProvider extends ChangeNotifier {
     List<dynamic> dataList,
     Map<int, Map<String, dynamic>> liveByDeviceId,
   ) {
-    return dataList.whereType<Map<String, dynamic>>().map((json) {
-      final tractor = TractorLocation.fromTractorJson(
-        json,
-        includeDeviceLocation: false,
-      );
+    return dataList
+        .whereType<Map<String, dynamic>>()
+        .map((json) {
+          final tractor = TractorLocation.fromTractorJson(
+            json,
+            includeDeviceLocation: false,
+          );
 
-      // Merge live GPS if available for this tractor's device.
-      final live = tractor.deviceId != null
-          ? liveByDeviceId[tractor.deviceId]
-          : null;
+          // Merge live GPS if available for this tractor's device.
+          final live = tractor.deviceId != null
+              ? liveByDeviceId[tractor.deviceId]
+              : null;
 
-      return _mergeLiveIntoTractor(tractor, live);
-    }).toList(growable: false);
+          return _mergeLiveIntoTractor(tractor, live);
+        })
+        .toList(growable: false);
   }
 
   TractorLocation _mergeLiveIntoTractor(
@@ -323,37 +330,61 @@ class TractorProvider extends ChangeNotifier {
         noPlate: tractor.noPlate,
         brand: tractor.brand,
         model: tractor.model,
-        isOnline: false,
+        isOnline: keepLastKnownLocationOnMissing ? tractor.isOnline : false,
         lat: keepLastKnownLocationOnMissing ? tractor.lat : 0,
         lng: keepLastKnownLocationOnMissing ? tractor.lng : 0,
         speed: null,
         direction: null,
-        heartbeatAt:
-            keepLastKnownLocationOnMissing ? tractor.heartbeatAt : null,
+        heartbeatAt: keepLastKnownLocationOnMissing
+            ? tractor.heartbeatAt
+            : null,
+        gpsTime: keepLastKnownLocationOnMissing ? tractor.gpsTime : null,
+        gpsMinutesAgo: keepLastKnownLocationOnMissing
+            ? tractor.gpsMinutesAgo
+            : null,
+        liveStatus: keepLastKnownLocationOnMissing
+            ? tractor.liveStatus
+            : TractorLiveStatus.offline,
+        accStatus: keepLastKnownLocationOnMissing ? tractor.accStatus : null,
         deviceId: tractor.deviceId,
         imei: tractor.imei,
       );
     }
+
+    final liveStatus = TractorLiveStatus.fromApi(live['live_status']);
 
     return TractorLocation(
       id: tractor.id,
       noPlate: tractor.noPlate,
       brand: tractor.brand,
       model: tractor.model,
-      isOnline: (live['status'] as int?) == 1,
+      isOnline: liveStatus != null
+          ? liveStatus != TractorLiveStatus.offline
+          : (live['status'] as num?)?.toInt() == 1,
       lat: (live['lat'] as num?)?.toDouble() ?? tractor.lat,
       lng: (live['lng'] as num?)?.toDouble() ?? tractor.lng,
       speed: (live['speed'] as num?)?.toDouble(),
       direction: (live['direction'] as num?)?.toDouble(),
-      heartbeatAt: live['heartbeat_at']?.toString(),
+      heartbeatAt: (live['heartbeat_at_iso'] ?? live['heartbeat_at'])
+          ?.toString(),
+      gpsTime: live['gps_time']?.toString(),
+      gpsMinutesAgo: (live['gps_minutes_ago'] as num?)?.toInt(),
+      liveStatus: liveStatus,
+      accStatus: switch (live['acc_status']) {
+        final bool value => value,
+        final num value => value != 0,
+        _ => null,
+      },
       deviceId: tractor.deviceId,
       imei: tractor.imei,
     );
   }
 
   /// Create a share link for a device.
-  Future<Map<String, dynamic>?> createShare(int deviceId,
-      {int duration = 1}) async {
+  Future<Map<String, dynamic>?> createShare(
+    int deviceId, {
+    int duration = 1,
+  }) async {
     try {
       final response = await _apiClient.post(
         AppEndpoints.devicesShare,
