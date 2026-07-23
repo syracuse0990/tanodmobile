@@ -306,8 +306,7 @@ class _HomeScreenState extends State<HomeScreen>
             child: GestureDetector(
               onTap: () => _onMarkerTap(tractors[i]),
               child: _TractorMapMarker(
-                isOnline: tractors[i].isOnline,
-                isIdle: tractors[i].isIdle,
+                tractor: tractors[i],
                 isSelected: _selectedTractorId == tractors[i].id,
                 pulseAnimation: _pulseAnimation,
               ),
@@ -331,8 +330,7 @@ class _HomeScreenState extends State<HomeScreen>
             child: GestureDetector(
               onTap: () => _onMarkerTap(cluster.tractors.first),
               child: _TractorMapMarker(
-                isOnline: cluster.tractors.first.isOnline,
-                isIdle: cluster.tractors.first.isIdle,
+                tractor: cluster.tractors.first,
                 isSelected: _selectedTractorId == cluster.tractors.first.id,
                 pulseAnimation: _pulseAnimation,
               ),
@@ -588,6 +586,7 @@ class _HomeScreenState extends State<HomeScreen>
     final visibleTractors = tractorProvider.withLocation;
     final movingCount = tractorProvider.movingCount;
     final idleCount = tractorProvider.idleCount;
+    final parkedCount = tractorProvider.parkedCount;
     final offlineCount = tractorProvider.offlineCount;
     final hasSearchQuery = _searchController.text.trim().isNotEmpty;
     final appliedSearchQuery = tractorProvider.searchQuery;
@@ -742,6 +741,12 @@ class _HomeScreenState extends State<HomeScreen>
                       _StatusChip(
                         label: '$idleCount',
                         color: AppColors.warning,
+                        dark: _showSatellite,
+                      ),
+                      const SizedBox(width: 6),
+                      _StatusChip(
+                        label: '$parkedCount',
+                        color: AppColors.info,
                         dark: _showSatellite,
                       ),
                       const SizedBox(width: 6),
@@ -959,50 +964,43 @@ class _TractorCluster {
   final List<TractorLocation> tractors;
 }
 
-// ─── Helper to resolve tractor marker color ───
+// ─── Helper to resolve tractor marker color (matches web live view) ───
 Color _tractorColor(TractorLocation t) {
-  if (t.isMoving) return AppColors.success;
-  if (t.isIdle) return AppColors.warning;
-  return AppColors.danger;
+  if (t.isMoving) return AppColors.success;    // green
+  if (t.isIdle) return AppColors.warning;       // yellow
+  if (t.isParked) return AppColors.info;        // blue
+  return AppColors.danger;                       // red
 }
 
-String _tractorAssetForState({required bool isOnline, required bool isIdle}) {
-  if (!isOnline) {
+String _tractorAssetForState(TractorLocation t) {
+  if (!t.isOnline) {
     return 'assets/images/red_tractor.png';
   }
-
-  if (isIdle) {
+  if (t.isParked) {
+    return 'assets/images/blue_tractor.png';
+  }
+  if (t.isIdle) {
     return 'assets/images/yellow_tractor.png';
   }
-
   return 'assets/images/green_tractor.png';
 }
 
-// ─── Animated tractor marker ───
+// ─── Animated tractor marker (matches web live view colors) ───
 class _TractorMapMarker extends StatelessWidget {
   const _TractorMapMarker({
-    required this.isOnline,
-    required this.isIdle,
+    required this.tractor,
     required this.isSelected,
     required this.pulseAnimation,
   });
 
-  final bool isOnline;
-  final bool isIdle;
+  final TractorLocation tractor;
   final bool isSelected;
   final Animation<double> pulseAnimation;
 
   @override
   Widget build(BuildContext context) {
-    final Color color;
-    if (!isOnline) {
-      color = AppColors.danger;
-    } else if (isIdle) {
-      color = AppColors.warning;
-    } else {
-      color = AppColors.success;
-    }
-    final assetPath = _tractorAssetForState(isOnline: isOnline, isIdle: isIdle);
+    final color = _tractorColor(tractor);
+    final isOnline = tractor.isOnline;
 
     return AnimatedBuilder(
       animation: pulseAnimation,
@@ -1038,7 +1036,7 @@ class _TractorMapMarker extends StatelessWidget {
                   ],
                 ),
               ),
-            // Tractor marker image from the web Fleet tracker assets
+            // Tractor marker image from assets
             Container(
               width: isSelected ? 34 : 30,
               height: isSelected ? 34 : 30,
@@ -1052,7 +1050,7 @@ class _TractorMapMarker extends StatelessWidget {
                 ],
               ),
               child: Image.asset(
-                assetPath,
+                _tractorAssetForState(tractor),
                 fit: BoxFit.contain,
                 filterQuality: FilterQuality.high,
               ),
@@ -1238,10 +1236,7 @@ class _TractorDetailCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _tractorColor(tractor);
-    final assetPath = _tractorAssetForState(
-      isOnline: tractor.isOnline,
-      isIdle: tractor.isIdle,
-    );
+    final assetPath = _tractorAssetForState(tractor);
     final imei = tractor.imei;
     final imeiLabel = imei != null && imei.trim().isNotEmpty
         ? imei

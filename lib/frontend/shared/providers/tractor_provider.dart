@@ -38,6 +38,7 @@ class TractorProvider extends ChangeNotifier {
   int get movingCount => _tractors.where((t) => t.isMoving).length;
   int get onlineCount => _tractors.where((t) => t.isOnline).length;
   int get idleCount => _tractors.where((t) => t.isIdle).length;
+  int get parkedCount => _tractors.where((t) => t.isParked).length;
   int get offlineCount => _tractors.where((t) => !t.isOnline).length;
   int? get focusedTractorId => _focusedTractorId;
   int get secondsUntilPoll => _secondsUntilPoll;
@@ -332,6 +333,8 @@ class TractorProvider extends ChangeNotifier {
             keepLastKnownLocationOnMissing ? tractor.heartbeatAt : null,
         deviceId: tractor.deviceId,
         imei: tractor.imei,
+        accStatus: null,
+        liveStatus: 'offline',
       );
     }
 
@@ -348,6 +351,8 @@ class TractorProvider extends ChangeNotifier {
       heartbeatAt: live['heartbeat_at']?.toString(),
       deviceId: tractor.deviceId,
       imei: tractor.imei,
+      accStatus: (live['acc_status'] as int?) == 1,
+      liveStatus: live['live_status']?.toString(),
     );
   }
 

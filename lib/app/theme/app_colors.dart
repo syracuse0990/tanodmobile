@@ -14,5 +14,6 @@ class AppColors {
   static const Color mutedInk = Color(0xFF62706E);
   static const Color success = Color(0xFF2D8A61);
   static const Color warning = Color(0xFFEAA64D);
+  static const Color info = Color(0xFF3B82F6);
   static const Color danger = Color(0xFFBF5A43);
 }

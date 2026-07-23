@@ -1,4 +1,6 @@
 /// Represents a tractor with its device GPS location for the map.
+/// Status matches the web live view: moving (green), idling (yellow),
+/// parked (blue), offline (red).
 class TractorLocation {
   const TractorLocation({
     required this.id,
@@ -13,6 +15,8 @@ class TractorLocation {
     this.heartbeatAt,
     this.deviceId,
     this.imei,
+    this.accStatus,
+    this.liveStatus,
   });
 
   final int id;
@@ -28,25 +32,39 @@ class TractorLocation {
   final int? deviceId;
   final String? imei;
 
+  /// Ignition (ACC) status from the JIMI device — true = ignition ON.
+  final bool? accStatus;
+
+  /// Server-resolved live status: 'moving', 'idling', 'parked', 'offline'.
+  final String? liveStatus;
+
   /// Minimum speed (km/h) to consider a tractor as actually moving.
   /// Filters out GPS drift noise which commonly reports 2–10 km/h on
   /// stationary devices.
   static const double _movingThreshold = 3.0;
 
-  /// Online but speed is below moving threshold.
-  bool get isIdle => isOnline && (speed == null || speed! < _movingThreshold);
+  /// Online but ignition is OFF — engine not running, stationary.
+  bool get isParked =>
+      isOnline && accStatus == false;
 
-  /// Online and moving above the GPS noise threshold.
-  bool get isMoving => isOnline && speed != null && speed! >= _movingThreshold;
+  /// Online, ignition ON, but speed is below moving threshold.
+  bool get isIdle =>
+      isOnline && accStatus != false && (speed == null || speed! < _movingThreshold);
+
+  /// Online, ignition ON, and moving above the GPS noise threshold.
+  bool get isMoving =>
+      isOnline && accStatus == true && speed != null && speed! >= _movingThreshold;
 
   String get label => noPlate;
   String get subtitle => '$brand $model';
 
-  String get statusLabel => isMoving
-      ? 'Moving'
-      : isIdle
-          ? 'Idle'
-          : 'Offline';
+  /// Human-readable status matching the web live view.
+  String get statusLabel {
+    if (isMoving) return 'Moving';
+    if (isIdle) return 'Idle';
+    if (isParked) return 'Parked';
+    return 'Offline';
+  }
 
   DateTime? get lastHeartbeatAt {
     final rawHeartbeatAt = heartbeatAt;
