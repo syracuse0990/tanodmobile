@@ -10,10 +10,7 @@ import 'package:tanodmobile/models/domain/tractor_location.dart';
 import 'package:tanodmobile/frontend/shared/providers/auth_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-enum TractorInsightTab {
-  fcaDetails,
-  pmsHistory,
-}
+enum TractorInsightTab { fcaDetails, pmsHistory }
 
 Future<void> showTractorInsightSheet(
   BuildContext context, {
@@ -24,18 +21,13 @@ Future<void> showTractorInsightSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _TractorInsightSheet(
-      tractor: tractor,
-      initialTab: initialTab,
-    ),
+    builder: (_) =>
+        _TractorInsightSheet(tractor: tractor, initialTab: initialTab),
   );
 }
 
 class _TractorInsightSheet extends StatefulWidget {
-  const _TractorInsightSheet({
-    required this.tractor,
-    required this.initialTab,
-  });
+  const _TractorInsightSheet({required this.tractor, required this.initialTab});
 
   final TractorLocation tractor;
   final TractorInsightTab initialTab;
@@ -241,10 +233,7 @@ class _TractorInsightSheetState extends State<_TractorInsightSheet>
 }
 
 class _TractorInsightBundle {
-  const _TractorInsightBundle({
-    required this.detail,
-    required this.records,
-  });
+  const _TractorInsightBundle({required this.detail, required this.records});
 
   final TractorInsightDetail detail;
   final List<PmsRecord> records;
@@ -296,7 +285,8 @@ class _FcaDetailsTab extends StatelessWidget {
               child: contact == null || contact.isEmpty
                   ? const _EmptySectionMessage(
                       icon: Icons.person_off_rounded,
-                      message: 'No FCA details are assigned to this tractor yet.',
+                      message:
+                          'No FCA details are assigned to this tractor yet.',
                     )
                   : Column(
                       children: [
@@ -309,80 +299,72 @@ class _FcaDetailsTab extends StatelessWidget {
                         _ActionableDetailLine(
                           icon: Icons.email_outlined,
                           label: 'Email',
-                        value: contact.email ?? 'Unavailable',
-                        actions: [
-                          if (contact.email != null)
-                            _InlineActionData(
-                              icon: Icons.alternate_email_rounded,
-                              label: 'Email',
-                              onTap: () => _launchExternalUri(
-                                context,
-                                Uri(
-                                  scheme: 'mailto',
-                                  path: contact.email!,
+                          value: contact.email ?? 'Unavailable',
+                          actions: [
+                            if (contact.email != null)
+                              _InlineActionData(
+                                icon: Icons.alternate_email_rounded,
+                                label: 'Email',
+                                onTap: () => _launchExternalUri(
+                                  context,
+                                  Uri(scheme: 'mailto', path: contact.email!),
+                                  failureMessage: 'Unable to open email app.',
                                 ),
-                                failureMessage: 'Unable to open email app.',
                               ),
-                            ),
-                          if (contact.email != null)
-                            _InlineActionData(
-                              icon: Icons.copy_rounded,
-                              label: 'Copy',
-                              onTap: () => _copyValue(
-                                context,
-                                value: contact.email!,
-                                label: 'Email copied',
-                              ),
-                            ),
-                        ],
-                      ),
-                      const _SectionDivider(),
-                      _ActionableDetailLine(
-                        icon: Icons.phone_outlined,
-                        label: 'Mobile Number',
-                        value: contact.phone ?? 'Unavailable',
-                        actions: [
-                          if (contact.phone != null)
-                            _InlineActionData(
-                              icon: Icons.call_rounded,
-                              label: 'Call',
-                              onTap: () => _launchExternalUri(
-                                context,
-                                Uri(
-                                  scheme: 'tel',
-                                  path: contact.phone!,
+                            if (contact.email != null)
+                              _InlineActionData(
+                                icon: Icons.copy_rounded,
+                                label: 'Copy',
+                                onTap: () => _copyValue(
+                                  context,
+                                  value: contact.email!,
+                                  label: 'Email copied',
                                 ),
-                                failureMessage: 'Unable to open phone app.',
                               ),
-                            ),
-                          if (contact.phone != null)
-                            _InlineActionData(
-                              icon: Icons.sms_rounded,
-                              label: 'Text',
-                              onTap: () => _launchExternalUri(
-                                context,
-                                Uri(
-                                  scheme: 'sms',
-                                  path: contact.phone!,
+                          ],
+                        ),
+                        const _SectionDivider(),
+                        _ActionableDetailLine(
+                          icon: Icons.phone_outlined,
+                          label: 'Mobile Number',
+                          value: contact.phone ?? 'Unavailable',
+                          actions: [
+                            if (contact.phone != null)
+                              _InlineActionData(
+                                icon: Icons.call_rounded,
+                                label: 'Call',
+                                onTap: () => _launchExternalUri(
+                                  context,
+                                  Uri(scheme: 'tel', path: contact.phone!),
+                                  failureMessage: 'Unable to open phone app.',
                                 ),
-                                failureMessage: 'Unable to open messaging app.',
                               ),
-                            ),
-                          if (contact.phone != null)
-                            _InlineActionData(
-                              icon: Icons.copy_rounded,
-                              label: 'Copy',
-                              onTap: () => _copyValue(
-                                context,
-                                value: contact.phone!,
-                                label: 'Mobile number copied',
+                            if (contact.phone != null)
+                              _InlineActionData(
+                                icon: Icons.sms_rounded,
+                                label: 'Text',
+                                onTap: () => _launchExternalUri(
+                                  context,
+                                  Uri(scheme: 'sms', path: contact.phone!),
+                                  failureMessage:
+                                      'Unable to open messaging app.',
+                                ),
                               ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-          ),
+                            if (contact.phone != null)
+                              _InlineActionData(
+                                icon: Icons.copy_rounded,
+                                label: 'Copy',
+                                onTap: () => _copyValue(
+                                  context,
+                                  value: contact.phone!,
+                                  label: 'Mobile number copied',
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+            ),
           ],
           const SizedBox(height: 20),
           const _SectionHeading(
@@ -551,20 +533,14 @@ class _PmsHistoryTab extends StatelessWidget {
 }
 
 class _InsightHero extends StatelessWidget {
-  const _InsightHero({
-    required this.tractor,
-    required this.detail,
-  });
+  const _InsightHero({required this.tractor, required this.detail});
 
   final TractorLocation tractor;
   final TractorInsightDetail detail;
 
   @override
   Widget build(BuildContext context) {
-    final assetPath = _tractorAssetForState(
-      isOnline: tractor.isOnline,
-      isIdle: tractor.isIdle,
-    );
+    final assetPath = _tractorAssetForState(tractor.resolvedLiveStatus);
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -598,6 +574,8 @@ class _InsightHero extends StatelessWidget {
               assetPath,
               fit: BoxFit.contain,
               filterQuality: FilterQuality.high,
+              color: tractor.isParked ? AppColors.info : null,
+              colorBlendMode: tractor.isParked ? BlendMode.srcIn : null,
             ),
           ),
           const SizedBox(width: 14),
@@ -632,7 +610,8 @@ class _InsightHero extends StatelessWidget {
                     ),
                     _HeroPill(
                       icon: Icons.access_time_rounded,
-                      label: '${tractor.isOnline ? 'Last update' : 'Last online'} ${tractor.lastOnlineLabel}',
+                      label:
+                          '${tractor.isOnline ? 'Last update' : 'Last online'} ${tractor.lastOnlineLabel}',
                     ),
                   ],
                 ),
@@ -747,10 +726,7 @@ class _HistorySummaryTile extends StatelessWidget {
 }
 
 class _PmsHistoryCard extends StatefulWidget {
-  const _PmsHistoryCard({
-    required this.record,
-    this.initiallyExpanded = false,
-  });
+  const _PmsHistoryCard({required this.record, this.initiallyExpanded = false});
 
   final PmsRecord record;
   final bool initiallyExpanded;
@@ -858,14 +834,17 @@ class _PmsHistoryCardState extends State<_PmsHistoryCard> {
                       color: AppColors.mutedInk,
                     ),
                     maxLines: _expanded ? null : 2,
-                    overflow:
-                        _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                    overflow: _expanded
+                        ? TextOverflow.visible
+                        : TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       Text(
-                        _expanded ? 'Hide full details' : 'Tap to view full details',
+                        _expanded
+                            ? 'Hide full details'
+                            : 'Tap to view full details',
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
@@ -963,9 +942,11 @@ class _PmsHistoryCardState extends State<_PmsHistoryCard> {
                       ),
                       child: Column(
                         children: [
-                          for (int index = 0;
-                              index < record.checklist.length;
-                              index++) ...[
+                          for (
+                            int index = 0;
+                            index < record.checklist.length;
+                            index++
+                          ) ...[
                             Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 14,
@@ -999,7 +980,9 @@ class _PmsHistoryCardState extends State<_PmsHistoryCard> {
                                         ),
                                         if (record.checklist[index].notes !=
                                                 null &&
-                                            record.checklist[index].notes!
+                                            record
+                                                .checklist[index]
+                                                .notes!
                                                 .isNotEmpty) ...[
                                           const SizedBox(height: 4),
                                           Text(
@@ -1087,9 +1070,8 @@ class _PmsHistoryCardState extends State<_PmsHistoryCard> {
 }
 
 String _historyPreview(PmsRecord record) {
-  final actor = record.performer?.name ??
-      record.creator?.name ??
-      record.requester?.name;
+  final actor =
+      record.performer?.name ?? record.creator?.name ?? record.requester?.name;
 
   if (actor != null && actor.isNotEmpty) {
     return 'Lead contact: $actor';
@@ -1204,10 +1186,7 @@ class _MetricTile extends StatelessWidget {
 }
 
 class _HeroPill extends StatelessWidget {
-  const _HeroPill({
-    required this.icon,
-    required this.label,
-  });
+  const _HeroPill({required this.icon, required this.label});
 
   final IconData icon;
   final String label;
@@ -1242,10 +1221,7 @@ class _HeroPill extends StatelessWidget {
 }
 
 class _CompactChip extends StatelessWidget {
-  const _CompactChip({
-    required this.icon,
-    required this.label,
-  });
+  const _CompactChip({required this.icon, required this.label});
 
   final IconData icon;
   final String label;
@@ -1325,10 +1301,7 @@ class _NarrativeCard extends StatelessWidget {
 }
 
 class _SectionHeading extends StatelessWidget {
-  const _SectionHeading({
-    required this.title,
-    required this.subtitle,
-  });
+  const _SectionHeading({required this.title, required this.subtitle});
 
   final String title;
   final String subtitle;
@@ -1351,10 +1324,7 @@ class _SectionHeading extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.mutedInk,
-            ),
+            style: const TextStyle(fontSize: 12, color: AppColors.mutedInk),
           ),
         ],
       ),
@@ -1560,10 +1530,7 @@ class _InlineActionButton extends StatelessWidget {
 }
 
 class _EmptySectionMessage extends StatelessWidget {
-  const _EmptySectionMessage({
-    required this.icon,
-    required this.message,
-  });
+  const _EmptySectionMessage({required this.icon, required this.message});
 
   final IconData icon;
   final String message;
@@ -1632,10 +1599,7 @@ class _InsightErrorState extends StatelessWidget {
             const Text(
               'Please try again to fetch the FCA details and PMS history.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.mutedInk,
-              ),
+              style: TextStyle(fontSize: 12, color: AppColors.mutedInk),
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
@@ -1682,30 +1646,30 @@ class _StatusInfo {
 _StatusInfo _statusInfo(String status) {
   return switch (status) {
     'completed' => const _StatusInfo(
-        background: Color(0xFFE8F5E9),
-        foreground: AppColors.success,
-        label: 'COMPLETED',
-      ),
+      background: Color(0xFFE8F5E9),
+      foreground: AppColors.success,
+      label: 'COMPLETED',
+    ),
     'scheduled' => const _StatusInfo(
-        background: Color(0xFFFFF3E0),
-        foreground: AppColors.warning,
-        label: 'PENDING',
-      ),
+      background: Color(0xFFFFF3E0),
+      foreground: AppColors.warning,
+      label: 'PENDING',
+    ),
     'in_progress' => const _StatusInfo(
-        background: Color(0xFFE3F2FD),
-        foreground: Color(0xFF1565C0),
-        label: 'IN PROGRESS',
-      ),
+      background: Color(0xFFE3F2FD),
+      foreground: Color(0xFF1565C0),
+      label: 'IN PROGRESS',
+    ),
     'cancelled' => const _StatusInfo(
-        background: Color(0xFFFFEBEE),
-        foreground: AppColors.danger,
-        label: 'CANCELLED',
-      ),
+      background: Color(0xFFFFEBEE),
+      foreground: AppColors.danger,
+      label: 'CANCELLED',
+    ),
     _ => _StatusInfo(
-        background: const Color(0xFFF2F2F2),
-        foreground: AppColors.mutedInk,
-        label: status.toUpperCase(),
-      ),
+      background: const Color(0xFFF2F2F2),
+      foreground: AppColors.mutedInk,
+      label: status.toUpperCase(),
+    ),
   };
 }
 
@@ -1718,19 +1682,13 @@ Color _pmsStatusColor(String status) {
   };
 }
 
-String _tractorAssetForState({
-  required bool isOnline,
-  required bool isIdle,
-}) {
-  if (!isOnline) {
-    return 'assets/images/red_tractor.png';
-  }
-
-  if (isIdle) {
-    return 'assets/images/yellow_tractor.png';
-  }
-
-  return 'assets/images/green_tractor.png';
+String _tractorAssetForState(TractorLiveStatus status) {
+  return switch (status) {
+    TractorLiveStatus.moving => 'assets/images/green_tractor.png',
+    TractorLiveStatus.idling ||
+    TractorLiveStatus.parked => 'assets/images/yellow_tractor.png',
+    TractorLiveStatus.offline => 'assets/images/red_tractor.png',
+  };
 }
 
 String _formatDistance(double value) {
@@ -1806,11 +1764,7 @@ Future<void> _copyValue(
     return;
   }
 
-  _showInsightFeedback(
-    context,
-    label,
-    backgroundColor: AppColors.success,
-  );
+  _showInsightFeedback(context, label, backgroundColor: AppColors.success);
 }
 
 void _showInsightFeedback(

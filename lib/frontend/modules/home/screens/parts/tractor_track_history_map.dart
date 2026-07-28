@@ -7,6 +7,8 @@ class TractorTrackHistoryMap extends StatefulWidget {
   const TractorTrackHistoryMap({
     super.key,
     required this.trailPoints,
+    required this.segmentIds,
+    required this.gapMarkers,
     required this.playbackIndex,
     this.interpolatedPosition,
     required this.currentSpeed,
@@ -14,6 +16,8 @@ class TractorTrackHistoryMap extends StatefulWidget {
   });
 
   final List<LatLng> trailPoints;
+  final List<int> segmentIds;
+  final List<LatLng> gapMarkers;
   final int playbackIndex;
   final LatLng? interpolatedPosition;
   final double currentSpeed;
@@ -60,9 +64,19 @@ class _TractorTrackHistoryMapState extends State<TractorTrackHistoryMap> {
     // If we have an interpolated position, include it in the progress path
     // for a perfectly smooth trailing line
     if (widget.interpolatedPosition != null &&
-        playbackIndex < widget.trailPoints.length - 1) {
+        playbackIndex < widget.trailPoints.length - 1 &&
+        widget.segmentIds[playbackIndex] ==
+            widget.segmentIds[playbackIndex + 1]) {
       progressPoints.add(widget.interpolatedPosition!);
     }
+    final trackSegments = _splitSegments(widget.trailPoints, widget.segmentIds);
+    final progressSegmentIds = widget.segmentIds
+        .take(playbackIndex + 1)
+        .toList(growable: true);
+    if (progressPoints.length > progressSegmentIds.length) {
+      progressSegmentIds.add(widget.segmentIds[playbackIndex]);
+    }
+    final progressSegments = _splitSegments(progressPoints, progressSegmentIds);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -89,18 +103,20 @@ class _TractorTrackHistoryMapState extends State<TractorTrackHistoryMap> {
               ),
               PolylineLayer(
                 polylines: [
-                  if (widget.trailPoints.length > 1)
-                    Polyline(
-                      points: widget.trailPoints,
-                      strokeWidth: 4,
-                      color: AppColors.pine.withValues(alpha: 0.18),
-                    ),
-                  if (progressPoints.length > 1)
-                    Polyline(
-                      points: progressPoints,
-                      strokeWidth: 5,
-                      color: AppColors.pine,
-                    ),
+                  for (final segment in trackSegments)
+                    if (segment.length > 1)
+                      Polyline(
+                        points: segment,
+                        strokeWidth: 4,
+                        color: AppColors.pine.withValues(alpha: 0.18),
+                      ),
+                  for (final segment in progressSegments)
+                    if (segment.length > 1)
+                      Polyline(
+                        points: segment,
+                        strokeWidth: 5,
+                        color: AppColors.pine,
+                      ),
                 ],
               ),
               MarkerLayer(
@@ -115,6 +131,12 @@ class _TractorTrackHistoryMapState extends State<TractorTrackHistoryMap> {
                       point: widget.trailPoints.last,
                       icon: Icons.flag_rounded,
                       color: AppColors.danger,
+                    ),
+                  for (final gapMarker in widget.gapMarkers)
+                    _edgeMarker(
+                      point: gapMarker,
+                      icon: Icons.warning_amber_rounded,
+                      color: AppColors.warning,
                     ),
                   _playbackMarker(
                     point: currentPoint,
@@ -148,6 +170,18 @@ class _TractorTrackHistoryMapState extends State<TractorTrackHistoryMap> {
         ],
       ),
     );
+  }
+
+  List<List<LatLng>> _splitSegments(List<LatLng> points, List<int> segmentIds) {
+    final segments = <List<LatLng>>[];
+    for (var index = 0; index < points.length; index++) {
+      final segmentId = index < segmentIds.length ? segmentIds[index] : 0;
+      while (segments.length <= segmentId) {
+        segments.add(<LatLng>[]);
+      }
+      segments[segmentId].add(points[index]);
+    }
+    return segments;
   }
 
   bool _shouldRefitTrack(List<LatLng> oldPoints, List<LatLng> newPoints) {

@@ -223,6 +223,7 @@ class BookingProvider extends ChangeNotifier {
     String? startTime,
     String? endTime,
     double? farmAreaHectares,
+    double? cost,
     String? notes,
   }) async {
     try {
@@ -236,6 +237,7 @@ class BookingProvider extends ChangeNotifier {
         'start_time': ?startTime,
         'end_time': ?endTime,
         'farm_area_hectares': ?farmAreaHectares,
+        'cost': cost,
         'notes': ?notes,
       });
       await fetchBookings();
@@ -263,6 +265,7 @@ class BookingProvider extends ChangeNotifier {
           endDate: old.endDate,
           purpose: old.purpose,
           farmAreaHectares: old.farmAreaHectares,
+          cost: old.cost,
           notes: old.notes,
           startTime: old.startTime,
           endTime: old.endTime,
@@ -297,6 +300,7 @@ class BookingProvider extends ChangeNotifier {
     String? endTime,
     String? purpose,
     double? farmAreaHectares,
+    double? cost,
     String? notes,
   }) async {
     try {
@@ -309,6 +313,7 @@ class BookingProvider extends ChangeNotifier {
         'end_time': ?endTime,
         'purpose': ?purpose,
         'farm_area_hectares': ?farmAreaHectares,
+        'cost': cost,
         'notes': ?notes,
       });
       await fetchBookings();

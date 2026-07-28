@@ -146,6 +146,7 @@ class _BookingsScreenState extends State<BookingsScreen>
     TimeOfDay toTime = const TimeOfDay(hour: 17, minute: 0);
     final purposeController = TextEditingController();
     final areaController = TextEditingController();
+    final costController = TextEditingController();
     final notesController = TextEditingController();
 
     showModalBottomSheet(
@@ -181,13 +182,26 @@ class _BookingsScreenState extends State<BookingsScreen>
                       ),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'New Booking',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.ink,
-                      ),
+                    Row(
+                      children: [
+                        const Text(
+                          'New Booking',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          icon: const Icon(Icons.close_rounded, size: 22),
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          color: AppColors.mutedInk,
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 20),
 
@@ -359,6 +373,18 @@ class _BookingsScreenState extends State<BookingsScreen>
                     ),
                     const SizedBox(height: 14),
 
+                    // Cost of Booking (FCA / Admin only)
+                    if (isFca || roles.contains('super-admin') || roles.contains('sub-admin')) ...[
+                      _buildLabel('Cost of Booking (₱) (optional)'),
+                      const SizedBox(height: 6),
+                      _buildTextField(
+                        costController,
+                        'e.g. 1500.00',
+                        keyboard: const TextInputType.numberWithOptions(decimal: true),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+
                     // Notes
                     _buildLabel('Notes (optional)'),
                     const SizedBox(height: 6),
@@ -414,6 +440,10 @@ class _BookingsScreenState extends State<BookingsScreen>
                           final area = double.tryParse(
                             areaController.text.trim(),
                           );
+                          final costText = costController.text.trim();
+                          final cost = costText.isEmpty
+                              ? null
+                              : double.tryParse(costText);
                           final notes = notesController.text.trim().isEmpty
                               ? null
                               : notesController.text.trim();
@@ -428,6 +458,7 @@ class _BookingsScreenState extends State<BookingsScreen>
                             purpose: purposeController.text.trim(),
                             farmerId: farmerId,
                             farmAreaHectares: area,
+                            cost: cost,
                             notes: notes,
                           );
 
@@ -488,6 +519,9 @@ class _BookingsScreenState extends State<BookingsScreen>
     final areaController = TextEditingController(
       text: booking.farmAreaHectares?.toString() ?? '',
     );
+    final costController = TextEditingController(
+      text: booking.cost?.toString() ?? '',
+    );
     final notesController = TextEditingController(text: booking.notes ?? '');
 
     showModalBottomSheet(
@@ -523,13 +557,26 @@ class _BookingsScreenState extends State<BookingsScreen>
                       ),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'Edit Booking',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.ink,
-                      ),
+                    Row(
+                      children: [
+                        const Text(
+                          'Edit Booking',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          icon: const Icon(Icons.close_rounded, size: 22),
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          color: AppColors.mutedInk,
+                        ),
+                      ],
                     ),
                     if (isFarmer) ...[
                       const SizedBox(height: 8),
@@ -701,6 +748,18 @@ class _BookingsScreenState extends State<BookingsScreen>
                     ),
                     const SizedBox(height: 14),
 
+                    // Cost of Booking (FCA / Admin only)
+                    if (isFca || isAdmin) ...[
+                      _buildLabel('Cost of Booking (₱) (optional)'),
+                      const SizedBox(height: 6),
+                      _buildTextField(
+                        costController,
+                        'e.g. 1500.00',
+                        keyboard: const TextInputType.numberWithOptions(decimal: true),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+
                     // Notes
                     _buildLabel('Notes (optional)'),
                     const SizedBox(height: 6),
@@ -752,6 +811,10 @@ class _BookingsScreenState extends State<BookingsScreen>
                           final area = double.tryParse(
                             areaController.text.trim(),
                           );
+                          final costText = costController.text.trim();
+                          final cost = costText.isEmpty
+                              ? null
+                              : double.tryParse(costText);
                           final notes = notesController.text.trim().isEmpty
                               ? null
                               : notesController.text.trim();
@@ -766,6 +829,7 @@ class _BookingsScreenState extends State<BookingsScreen>
                             endTime: timeFmt.format(toDateTime),
                             purpose: purposeController.text.trim(),
                             farmAreaHectares: area,
+                            cost: cost,
                             notes: notes,
                           );
 
@@ -2089,6 +2153,15 @@ class _CompactBookingCard extends StatelessWidget {
                     icon: Icons.straighten_rounded,
                     text: '${booking.farmAreaHectares} ha',
                   ),
+                _InfoChip(
+                  icon: Icons.payments_rounded,
+                  text: booking.cost != null
+                      ? 'Cost - ${booking.cost!.toStringAsFixed(2)} (₱)'
+                      : 'No Cost',
+                  color: booking.cost != null
+                      ? AppColors.forest
+                      : AppColors.mutedInk,
+                ),
               ],
             ),
 

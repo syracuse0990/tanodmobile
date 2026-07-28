@@ -123,7 +123,10 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _onTractorTutorialComplete() {
     if (!mounted) return;
-    context.read<HiveService>().savePreference('tutorial_tractor_detail', 'true');
+    context.read<HiveService>().savePreference(
+      'tutorial_tractor_detail',
+      'true',
+    );
     setState(() => _showTractorTutorial = false);
   }
 
@@ -258,7 +261,8 @@ class _HomeScreenState extends State<HomeScreen>
     if (!_showTutorial) {
       try {
         final hive = context.read<HiveService>();
-        final seenDetail = hive.getPreference('tutorial_tractor_detail') == 'true';
+        final seenDetail =
+            hive.getPreference('tutorial_tractor_detail') == 'true';
         if (!seenDetail && mounted) {
           setState(() => _showTractorTutorial = true);
         }
@@ -306,7 +310,7 @@ class _HomeScreenState extends State<HomeScreen>
             child: GestureDetector(
               onTap: () => _onMarkerTap(tractors[i]),
               child: _TractorMapMarker(
-                tractor: tractors[i],
+                status: tractors[i].resolvedLiveStatus,
                 isSelected: _selectedTractorId == tractors[i].id,
                 pulseAnimation: _pulseAnimation,
               ),
@@ -330,7 +334,7 @@ class _HomeScreenState extends State<HomeScreen>
             child: GestureDetector(
               onTap: () => _onMarkerTap(cluster.tractors.first),
               child: _TractorMapMarker(
-                tractor: cluster.tractors.first,
+                status: cluster.tractors.first.resolvedLiveStatus,
                 isSelected: _selectedTractorId == cluster.tractors.first.id,
                 pulseAnimation: _pulseAnimation,
               ),
@@ -585,7 +589,7 @@ class _HomeScreenState extends State<HomeScreen>
     final tractorProvider = context.watch<TractorProvider>();
     final visibleTractors = tractorProvider.withLocation;
     final movingCount = tractorProvider.movingCount;
-    final idleCount = tractorProvider.idleCount;
+    final idlingCount = tractorProvider.idlingCount;
     final parkedCount = tractorProvider.parkedCount;
     final offlineCount = tractorProvider.offlineCount;
     final hasSearchQuery = _searchController.text.trim().isNotEmpty;
@@ -702,7 +706,7 @@ class _HomeScreenState extends State<HomeScreen>
               child: Column(
                 children: [
                   Row(
-                    key: _statusChipsKey,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
                         child: Column(
@@ -732,28 +736,39 @@ class _HomeScreenState extends State<HomeScreen>
                           ],
                         ),
                       ),
-                      _StatusChip(
-                        label: '$movingCount',
-                        color: AppColors.success,
-                        dark: _showSatellite,
-                      ),
-                      const SizedBox(width: 6),
-                      _StatusChip(
-                        label: '$idleCount',
-                        color: AppColors.warning,
-                        dark: _showSatellite,
-                      ),
-                      const SizedBox(width: 6),
-                      _StatusChip(
-                        label: '$parkedCount',
-                        color: AppColors.info,
-                        dark: _showSatellite,
-                      ),
-                      const SizedBox(width: 6),
-                      _StatusChip(
-                        label: '$offlineCount',
-                        color: AppColors.danger,
-                        dark: _showSatellite,
+                      Flexible(
+                        child: Wrap(
+                          key: _statusChipsKey,
+                          alignment: WrapAlignment.end,
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            _StatusChip(
+                              label: '$movingCount',
+                              tooltip: 'Moving',
+                              color: AppColors.success,
+                              dark: _showSatellite,
+                            ),
+                            _StatusChip(
+                              label: '$idlingCount',
+                              tooltip: 'Idling',
+                              color: AppColors.warning,
+                              dark: _showSatellite,
+                            ),
+                            _StatusChip(
+                              label: '$parkedCount',
+                              tooltip: 'Parked',
+                              color: AppColors.info,
+                              dark: _showSatellite,
+                            ),
+                            _StatusChip(
+                              label: '$offlineCount',
+                              tooltip: 'Offline',
+                              color: AppColors.danger,
+                              dark: _showSatellite,
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -898,8 +913,8 @@ class _HomeScreenState extends State<HomeScreen>
                   title: 'Tractor Status at a Glance',
                   description:
                       'These chips show how many tractors are moving '
-                      '(green), idle (yellow), or offline (red). Tap any '
-                      'marker on the map for more details.',
+                      '(green), idling (yellow), parked (blue), or offline '
+                      '(red). Tap any marker on the map for more details.',
                   tooltipPosition: TutorialTooltipPosition.bottom,
                 ),
                 TutorialStep(
@@ -915,9 +930,9 @@ class _HomeScreenState extends State<HomeScreen>
                   title: 'Interactive Map',
                   description:
                       'The map shows the live location of every tractor. '
-                      'Green markers are moving, yellow are idle, and red '
-                      'are offline. Tap a marker to see its details card '
-                      'with status, speed, IMEI, and last update time.',
+                      'Green markers are moving, yellow are idling, blue '
+                      'are parked, and red are offline. Tap a marker to see '
+                      'status, current speed, IMEI, and update times.',
                   tooltipPosition: TutorialTooltipPosition.top,
                 ),
                 TutorialStep(
@@ -964,43 +979,47 @@ class _TractorCluster {
   final List<TractorLocation> tractors;
 }
 
-// ─── Helper to resolve tractor marker color (matches web live view) ───
+// ─── Helper to resolve tractor marker color ───
 Color _tractorColor(TractorLocation t) {
-  if (t.isMoving) return AppColors.success;    // green
-  if (t.isIdle) return AppColors.warning;       // yellow
-  if (t.isParked) return AppColors.info;        // blue
-  return AppColors.danger;                       // red
+  return switch (t.resolvedLiveStatus) {
+    TractorLiveStatus.moving => AppColors.success,
+    TractorLiveStatus.idling => AppColors.warning,
+    TractorLiveStatus.parked => AppColors.info,
+    TractorLiveStatus.offline => AppColors.danger,
+  };
 }
 
-String _tractorAssetForState(TractorLocation t) {
-  if (!t.isOnline) {
-    return 'assets/images/red_tractor.png';
-  }
-  if (t.isParked) {
-    return 'assets/images/blue_tractor.png';
-  }
-  if (t.isIdle) {
-    return 'assets/images/yellow_tractor.png';
-  }
-  return 'assets/images/green_tractor.png';
+String _tractorAssetForState(TractorLiveStatus status) {
+  return switch (status) {
+    TractorLiveStatus.moving => 'assets/images/green_tractor.png',
+    TractorLiveStatus.idling ||
+    TractorLiveStatus.parked => 'assets/images/yellow_tractor.png',
+    TractorLiveStatus.offline => 'assets/images/red_tractor.png',
+  };
 }
 
-// ─── Animated tractor marker (matches web live view colors) ───
+// ─── Animated tractor marker ───
 class _TractorMapMarker extends StatelessWidget {
   const _TractorMapMarker({
-    required this.tractor,
+    required this.status,
     required this.isSelected,
     required this.pulseAnimation,
   });
 
-  final TractorLocation tractor;
+  final TractorLiveStatus status;
   final bool isSelected;
   final Animation<double> pulseAnimation;
 
   @override
   Widget build(BuildContext context) {
-    final color = _tractorColor(tractor);
-    final isOnline = tractor.isOnline;
+    final color = switch (status) {
+      TractorLiveStatus.moving => AppColors.success,
+      TractorLiveStatus.idling => AppColors.warning,
+      TractorLiveStatus.parked => AppColors.info,
+      TractorLiveStatus.offline => AppColors.danger,
+    };
+    final isOnline = status != TractorLiveStatus.offline;
+    final assetPath = _tractorAssetForState(status);
 
     return AnimatedBuilder(
       animation: pulseAnimation,
@@ -1036,7 +1055,7 @@ class _TractorMapMarker extends StatelessWidget {
                   ],
                 ),
               ),
-            // Tractor marker image from assets
+            // Tractor marker image from the web Fleet tracker assets
             Container(
               width: isSelected ? 34 : 30,
               height: isSelected ? 34 : 30,
@@ -1050,9 +1069,15 @@ class _TractorMapMarker extends StatelessWidget {
                 ],
               ),
               child: Image.asset(
-                _tractorAssetForState(tractor),
+                assetPath,
                 fit: BoxFit.contain,
                 filterQuality: FilterQuality.high,
+                color: status == TractorLiveStatus.parked
+                    ? AppColors.info
+                    : null,
+                colorBlendMode: status == TractorLiveStatus.parked
+                    ? BlendMode.srcIn
+                    : null,
               ),
             ),
           ],
@@ -1179,41 +1204,46 @@ class _SearchFeedbackCard extends StatelessWidget {
 class _StatusChip extends StatelessWidget {
   const _StatusChip({
     required this.label,
+    required this.tooltip,
     required this.color,
     required this.dark,
   });
 
   final String label;
+  final String tooltip;
   final Color color;
   final bool dark;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: dark ? 0.25 : 0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-          ),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: dark ? Colors.white : color,
+    return Tooltip(
+      message: tooltip,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: dark ? 0.25 : 0.12),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: color),
             ),
-          ),
-        ],
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: dark ? Colors.white : color,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1236,7 +1266,7 @@ class _TractorDetailCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _tractorColor(tractor);
-    final assetPath = _tractorAssetForState(tractor);
+    final assetPath = _tractorAssetForState(tractor.resolvedLiveStatus);
     final imei = tractor.imei;
     final imeiLabel = imei != null && imei.trim().isNotEmpty
         ? imei
@@ -1273,6 +1303,8 @@ class _TractorDetailCard extends StatelessWidget {
                   assetPath,
                   fit: BoxFit.contain,
                   filterQuality: FilterQuality.high,
+                  color: tractor.isParked ? AppColors.info : null,
+                  colorBlendMode: tractor.isParked ? BlendMode.srcIn : null,
                 ),
               ),
               const SizedBox(width: 14),
@@ -1317,7 +1349,7 @@ class _TractorDetailCard extends StatelessWidget {
                             color: color,
                           ),
                         ),
-                        if (tractor.speed != null && tractor.isOnline) ...[
+                        if (tractor.speed != null && tractor.isMoving) ...[
                           const SizedBox(width: 12),
                           Text(
                             '${tractor.speed!.toStringAsFixed(1)} km/h',
@@ -1362,6 +1394,29 @@ class _TractorDetailCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 4),
+                    if (tractor.gpsTime != null) ...[
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.gps_fixed_rounded,
+                            size: 13,
+                            color: AppColors.mutedInk,
+                          ),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              'Last fix ${tractor.lastGpsFixLabel}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: AppColors.mutedInk,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                    ],
                     Row(
                       children: [
                         const Icon(

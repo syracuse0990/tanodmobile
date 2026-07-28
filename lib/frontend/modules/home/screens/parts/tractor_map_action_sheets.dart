@@ -278,9 +278,16 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet>
   _TrackHistoryPeriod _period = _TrackHistoryPeriod.today;
   bool _loading = true;
   String? _errorMessage;
+  String? _warningMessage;
   List<_TrackHistoryPoint> _points = const [];
+  List<LatLng> _gapMarkers = const [];
   String? _beginTime;
   String? _endTime;
+  double _distanceKm = 0;
+  int _movingDuration = 0;
+  int _idleDuration = 0;
+  int _stopCount = 0;
+  int _gapCount = 0;
   int _playbackSpeed = 1;
 
   // ─── Smooth frame-based playback ───
@@ -326,6 +333,9 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet>
     }
     final from = _points[idx];
     final to = _points[idx + 1];
+    if (from.segment != to.segment) {
+      return LatLng(from.lat, from.lng);
+    }
     final f = _segmentFraction;
     return LatLng(
       from.lat + (to.lat - from.lat) * f,
@@ -340,6 +350,7 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet>
     if (idx >= _points.length - 1) return _points.last.speed;
     final from = _points[idx];
     final to = _points[idx + 1];
+    if (from.segment != to.segment) return from.speed;
     return from.speed + (to.speed - from.speed) * _segmentFraction;
   }
 
@@ -350,6 +361,7 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet>
     if (idx >= _points.length - 1) return _points.last.direction;
     final from = _points[idx];
     final to = _points[idx + 1];
+    if (from.segment != to.segment) return from.direction;
     return from.direction +
         _shortestAngle(from.direction, to.direction) * _segmentFraction;
   }
@@ -456,6 +468,7 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet>
     setState(() {
       _loading = true;
       _errorMessage = null;
+      _warningMessage = null;
     });
 
     final response = await widget.provider.fetchTrackData(
@@ -467,10 +480,15 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet>
     }
 
     final rawPoints = response?['points'] as List<dynamic>?;
-    if (response == null || rawPoints == null) {
+    final warnings = response?['warnings'] as List<dynamic>? ?? const [];
+    final firstWarning = warnings.isNotEmpty && warnings.first is Map
+        ? (warnings.first as Map)['message']?.toString()
+        : null;
+    if (response == null || rawPoints == null || response['success'] == false) {
       setState(() {
         _loading = false;
-        _errorMessage = 'Unable to load track history right now.';
+        _errorMessage =
+            firstWarning ?? 'Unable to load track history right now.';
       });
       return;
     }
@@ -479,12 +497,34 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet>
         .whereType<Map<String, dynamic>>()
         .map(_TrackHistoryPoint.fromJson)
         .toList(growable: false);
+    final track = response['track'] as Map<String, dynamic>?;
+    final rawGaps = track?['gaps'] as List<dynamic>? ?? const [];
+    final gapMarkers = rawGaps
+        .whereType<Map<String, dynamic>>()
+        .map((gap) {
+          final lat = (gap['marker_lat'] as num?)?.toDouble();
+          final lng = (gap['marker_lng'] as num?)?.toDouble();
+          return lat != null && lng != null ? LatLng(lat, lng) : null;
+        })
+        .whereType<LatLng>()
+        .toList(growable: false);
 
     setState(() {
       _loading = false;
-      _beginTime = response['begin_time']?.toString();
-      _endTime = response['end_time']?.toString();
+      _beginTime = (response['begin_time_local'] ?? response['begin_time'])
+          ?.toString();
+      _endTime = (response['end_time_local'] ?? response['end_time'])
+          ?.toString();
+      _warningMessage = response['partial'] == true
+          ? '${warnings.length} JIMI time range could not be loaded.'
+          : null;
       _points = parsedPoints;
+      _gapMarkers = gapMarkers;
+      _distanceKm = (track?['distance_km'] as num?)?.toDouble() ?? 0;
+      _movingDuration = (track?['moving_duration'] as num?)?.toInt() ?? 0;
+      _idleDuration = (track?['idle_duration'] as num?)?.toInt() ?? 0;
+      _stopCount = (track?['stop_count'] as num?)?.toInt() ?? 0;
+      _gapCount = (track?['gap_count'] as num?)?.toInt() ?? 0;
       _playbackPosition = 0.0;
       _lastTickTime = null;
     });
@@ -595,6 +635,9 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet>
     final trailPoints = _points
         .map((point) => LatLng(point.lat, point.lng))
         .toList(growable: false);
+    final trailSegmentIds = _points
+        .map((point) => point.segment)
+        .toList(growable: false);
     final interpolatedPos = _interpolatedPosition;
     final interpSpeed = _interpolatedSpeed;
     final interpDirection = _interpolatedDirection;
@@ -660,10 +703,38 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            if (_warningMessage != null) ...[
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.warning.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: AppColors.warning.withValues(
+                                      alpha: 0.35,
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  _warningMessage!,
+                                  style: const TextStyle(
+                                    color: AppColors.warning,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                            ],
                             SizedBox(
                               height: 240,
                               child: TractorTrackHistoryMap(
                                 trailPoints: trailPoints,
+                                segmentIds: trailSegmentIds,
+                                gapMarkers: _gapMarkers,
                                 playbackIndex: playbackIndex,
                                 interpolatedPosition: interpolatedPos,
                                 currentSpeed: interpSpeed,
@@ -692,6 +763,54 @@ class _TrackHistorySheetState extends State<_TrackHistorySheet>
                                   child: _MetricCard(
                                     label: 'Window',
                                     value: _formatDurationLabel(duration),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _MetricCard(
+                                    label: 'Distance',
+                                    value:
+                                        '${_distanceKm.toStringAsFixed(1)} km',
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _MetricCard(
+                                    label: 'Stops',
+                                    value: '$_stopCount',
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _MetricCard(
+                                    label: 'Gaps / Spikes',
+                                    value: '$_gapCount',
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _MetricCard(
+                                    label: 'Moving',
+                                    value: _formatDurationLabel(
+                                      Duration(seconds: _movingDuration),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _MetricCard(
+                                    label: 'Idle',
+                                    value: _formatDurationLabel(
+                                      Duration(seconds: _idleDuration),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -1562,6 +1681,7 @@ class _TrackHistoryPoint {
     required this.speed,
     required this.direction,
     required this.recordedAt,
+    required this.segment,
   });
 
   final double lat;
@@ -1569,6 +1689,7 @@ class _TrackHistoryPoint {
   final double speed;
   final double direction;
   final DateTime? recordedAt;
+  final int segment;
 
   factory _TrackHistoryPoint.fromJson(Map<String, dynamic> json) {
     return _TrackHistoryPoint(
@@ -1577,6 +1698,7 @@ class _TrackHistoryPoint {
       speed: (json['speed'] as num?)?.toDouble() ?? 0,
       direction: (json['direction'] as num?)?.toDouble() ?? 0,
       recordedAt: _parseDateTime(json['gps_time']?.toString()),
+      segment: (json['segment'] as num?)?.toInt() ?? 0,
     );
   }
 }
