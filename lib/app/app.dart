@@ -230,6 +230,17 @@ class _RouterAppState extends State<_RouterApp> {
     final ticketId = payload['ticket_id'];
     if (ticketId != null) {
       _router.go('/chat/$ticketId');
+      return;
+    }
+
+    // Handle booking timeline notifications (pickup / return check)
+    final type = payload['type']?.toString() ?? '';
+    final bookingIdRaw = payload['booking_id'];
+    if ((type == 'booking_pickup_check' || type == 'booking_return_check') &&
+        bookingIdRaw != null) {
+      // Store the action in BookingProvider so the bookings screen shows the dialog
+      context.read<BookingProvider>().setPendingTimelineAction(payload);
+      _router.go('/bookings');
     }
   }
 

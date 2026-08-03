@@ -51,6 +51,18 @@ class BookingProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get farmers => _farmers;
   bool get loadingFarmers => _loadingFarmers;
 
+  // ─── Pending timeline action (for notification tap handling) ───
+
+  /// When a pickup_check or return_check notification is tapped, the payload
+  /// is stored here so the bookings screen can show the response dialog.
+  Map<String, dynamic>? _pendingTimelineAction;
+  Map<String, dynamic>? get pendingTimelineAction => _pendingTimelineAction;
+
+  void setPendingTimelineAction(Map<String, dynamic>? action) {
+    _pendingTimelineAction = action;
+    _safeNotify();
+  }
+
   // ─── Filter helpers ────────────────────────────
 
   List<Booking> get upcoming =>
@@ -349,6 +361,38 @@ class BookingProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint('BookingProvider.rejectBooking error: $e');
+      return false;
+    }
+  }
+
+  // ─── Pickup status (FCA / Admin) ──────────────
+
+  Future<bool> confirmPickupStatus(int bookingId, String status) async {
+    try {
+      await _apiClient.post(
+        '${AppEndpoints.bookings}/$bookingId/pickup-status',
+        data: {'status': status},
+      );
+      await fetchBookings();
+      return true;
+    } catch (e) {
+      debugPrint('BookingProvider.confirmPickupStatus error: $e');
+      return false;
+    }
+  }
+
+  // ─── Return status (FCA / Admin) ─────────────
+
+  Future<bool> confirmReturnStatus(int bookingId, String status) async {
+    try {
+      await _apiClient.post(
+        '${AppEndpoints.bookings}/$bookingId/return-status',
+        data: {'status': status},
+      );
+      await fetchBookings();
+      return true;
+    } catch (e) {
+      debugPrint('BookingProvider.confirmReturnStatus error: $e');
       return false;
     }
   }

@@ -51,7 +51,10 @@ class _BookingsScreenState extends State<BookingsScreen>
         context.read<BookingProvider>().fetchMore();
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTutorial());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowTutorial();
+      _checkPendingTimelineAction();
+    });
   }
 
   void _maybeShowTutorial() {
@@ -94,6 +97,246 @@ class _BookingsScreenState extends State<BookingsScreen>
   void _onTutorialComplete() {
     if (!mounted) return;
     context.read<HiveService>().savePreference('tutorial_bookings', 'true');
+  }
+
+  void _checkPendingTimelineAction() {
+    if (!mounted) return;
+    final provider = context.read<BookingProvider>();
+    final action = provider.pendingTimelineAction;
+    if (action == null) return;
+
+    // Consume immediately so it doesn't re-trigger
+    provider.setPendingTimelineAction(null);
+
+    final type = action['type']?.toString() ?? '';
+    final bookingIdRaw = action['booking_id'];
+    if (bookingIdRaw == null) return;
+
+    final bookingId = int.tryParse(bookingIdRaw.toString());
+    if (bookingId == null) return;
+
+    if (type == 'booking_pickup_check') {
+      _showPickupConfirmationDialog(bookingId);
+    } else if (type == 'booking_return_check') {
+      _showReturnConfirmationDialog(bookingId);
+    }
+  }
+
+  void _showPickupConfirmationDialog(int bookingId) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.agriculture_rounded, color: AppColors.forest, size: 22),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Tractor Pickup',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Has the tractor been picked up for this booking?',
+          style: TextStyle(fontSize: 14, color: AppColors.ink),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _confirmCancelBookingWithReason(bookingId);
+            },
+            child: const Text(
+              'Cancel Booking',
+              style: TextStyle(color: AppColors.danger),
+            ),
+          ),
+          const Spacer(),
+          OutlinedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final success = await context
+                  .read<BookingProvider>()
+                  .confirmPickupStatus(bookingId, 'not_picked_up');
+              if (mounted) {
+                AppToast.info('Noted. Will check again later.');
+              }
+            },
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.mutedInk,
+              side: BorderSide(
+                color: AppColors.mutedInk.withValues(alpha: 0.3),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text('Not Yet'),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final success = await context
+                  .read<BookingProvider>()
+                  .confirmPickupStatus(bookingId, 'picked_up');
+              if (mounted) {
+                if (success) {
+                  AppToast.success('Tractor confirmed picked up!');
+                } else {
+                  AppToast.error('Failed to confirm pickup');
+                }
+              }
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.forest,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text('Yes, Picked Up'),
+          ),
+        ],
+        actionsOverflowAlignment: OverflowBarAlignment.center,
+      ),
+    );
+  }
+
+  void _confirmCancelBookingWithReason(int bookingId) {
+    final reasonController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Cancel Booking'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Please provide a reason for cancellation.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              maxLines: 2,
+              decoration: InputDecoration(
+                hintText: 'Reason...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final success = await context
+                  .read<BookingProvider>()
+                  .confirmPickupStatus(bookingId, 'cancelled');
+              if (mounted) {
+                if (success) {
+                  AppToast.success('Booking cancelled');
+                } else {
+                  AppToast.error('Failed to cancel booking');
+                }
+              }
+            },
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            child: const Text('Cancel Booking'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showReturnConfirmationDialog(int bookingId) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle_outline_rounded,
+                color: AppColors.forest, size: 22),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Tractor Return',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Has the tractor been returned for this booking?',
+          style: TextStyle(fontSize: 14, color: AppColors.ink),
+        ),
+        actions: [
+          OutlinedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final success = await context
+                  .read<BookingProvider>()
+                  .confirmReturnStatus(bookingId, 'not_returned');
+              if (mounted) {
+                AppToast.info('Noted. Will check again later.');
+              }
+            },
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.mutedInk,
+              side: BorderSide(
+                color: AppColors.mutedInk.withValues(alpha: 0.3),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text('Not Yet'),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final success = await context
+                  .read<BookingProvider>()
+                  .confirmReturnStatus(bookingId, 'returned');
+              if (mounted) {
+                if (success) {
+                  AppToast.success('Tractor confirmed returned!');
+                } else {
+                  AppToast.error('Failed to confirm return');
+                }
+              }
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.forest,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text('Yes, Returned'),
+          ),
+        ],
+        actionsOverflowAlignment: OverflowBarAlignment.center,
+      ),
+    );
   }
 
   @override
@@ -1681,6 +1924,15 @@ class _BookingsScreenState extends State<BookingsScreen>
   Widget build(BuildContext context) {
     return Consumer<BookingProvider>(
       builder: (context, provider, _) {
+        // Check for pending timeline action (triggered by notification tap)
+        final pending = provider.pendingTimelineAction;
+        if (pending != null) {
+          // Schedule post-frame to avoid showing dialog during build
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _checkPendingTimelineAction();
+          });
+        }
+
         return Scaffold(
           backgroundColor: const Color(0xFFF5F7F6),
           body: RefreshIndicator(

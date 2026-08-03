@@ -233,7 +233,11 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       debugPrint('_fetchCities: full response data = ${response.data}');
 
       final raw = response.data;
-      final list = raw is List ? raw : (raw is Map ? raw['data'] : null);
+      dynamic list = raw is List ? raw : (raw is Map ? raw['data'] : null);
+      // Handle when 'data' is a Map (object) instead of a List
+      if (list is Map) {
+        list = list.values.toList();
+      }
       if (list is List) {
         _cityOptions = list
             .map<LocationOption>(
@@ -294,7 +298,11 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       debugPrint('_fetchBarangays: full response data = ${response.data}');
 
       final raw = response.data;
-      final list = raw is List ? raw : (raw is Map ? raw['data'] : null);
+      dynamic list = raw is List ? raw : (raw is Map ? raw['data'] : null);
+      // Handle when 'data' is a Map (object) instead of a List
+      if (list is Map) {
+        list = list.values.toList();
+      }
       if (list is List) {
         _barangayOptions = list
             .map<LocationOption>(

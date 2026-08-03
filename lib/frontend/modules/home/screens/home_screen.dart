@@ -992,8 +992,8 @@ Color _tractorColor(TractorLocation t) {
 String _tractorAssetForState(TractorLiveStatus status) {
   return switch (status) {
     TractorLiveStatus.moving => 'assets/images/green_tractor.png',
-    TractorLiveStatus.idling ||
-    TractorLiveStatus.parked => 'assets/images/yellow_tractor.png',
+    TractorLiveStatus.idling => 'assets/images/yellow_tractor.png',
+    TractorLiveStatus.parked => 'assets/images/blue_tractor.png',
     TractorLiveStatus.offline => 'assets/images/red_tractor.png',
   };
 }
@@ -1072,12 +1072,6 @@ class _TractorMapMarker extends StatelessWidget {
                 assetPath,
                 fit: BoxFit.contain,
                 filterQuality: FilterQuality.high,
-                color: status == TractorLiveStatus.parked
-                    ? AppColors.info
-                    : null,
-                colorBlendMode: status == TractorLiveStatus.parked
-                    ? BlendMode.srcIn
-                    : null,
               ),
             ),
           ],
