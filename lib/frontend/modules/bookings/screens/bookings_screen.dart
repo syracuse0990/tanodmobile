@@ -381,8 +381,11 @@ class _BookingsScreenState extends State<BookingsScreen>
       return;
     }
 
+    bool? isMember;
     int? tractorId;
     int? farmerId;
+    final contactNameController = TextEditingController();
+    final contactPhoneController = TextEditingController();
     DateTime fromDate = DateTime.now().add(const Duration(days: 1));
     TimeOfDay fromTime = const TimeOfDay(hour: 8, minute: 0);
     DateTime toDate = DateTime.now().add(const Duration(days: 1));
@@ -448,9 +451,50 @@ class _BookingsScreenState extends State<BookingsScreen>
                     ),
                     const SizedBox(height: 20),
 
-                    // Farmer dropdown (FCA only)
-                    if (isFca) ...[
-                      _buildLabel('Farmer'),
+                    // ── Step 1: Member / Non-member ──
+                    _buildLabel('Booking Type'),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildToggleButton(
+                            label: 'Member',
+                            icon: Icons.group_rounded,
+                            selected: isMember == true,
+                            onTap: () {
+                              setSheetState(() {
+                                isMember = true;
+                                farmerId = null;
+                                contactNameController.clear();
+                                contactPhoneController.clear();
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildToggleButton(
+                            label: 'Non-member',
+                            icon: Icons.person_rounded,
+                            selected: isMember == false,
+                            onTap: () {
+                              setSheetState(() {
+                                isMember = false;
+                                farmerId = null;
+                                contactNameController.clear();
+                                contactPhoneController.clear();
+                              });
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // ── Step 2+ : Rest of form (only after type selected) ──
+                    if (isMember != null) ...[
+                      // Tractor dropdown
+                      _buildLabel('Tractor'),
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -462,58 +506,76 @@ class _BookingsScreenState extends State<BookingsScreen>
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<int>(
-                            value: farmerId,
+                            value: tractorId,
                             isExpanded: true,
-                            hint: const Text('Select farmer'),
-                            items: provider.farmers.map((f) {
-                              final id = f['id'] as int;
-                              final name = f['name']?.toString() ?? '';
+                            hint: const Text('Select tractor'),
+                            items: provider.tractors.map((t) {
+                              final id = t['id'] as int;
+                              final plate = t['no_plate']?.toString() ?? '';
+                              final brand = t['brand']?.toString() ?? '';
                               return DropdownMenuItem(
                                 value: id,
-                                child: Text(name),
+                                child: Text('$plate - $brand'),
                               );
                             }).toList(),
                             onChanged: (val) =>
-                                setSheetState(() => farmerId = val),
+                                setSheetState(() => tractorId = val),
                           ),
                         ),
                       ),
                       const SizedBox(height: 14),
-                    ],
 
-                    // Tractor dropdown
-                    _buildLabel('Tractor'),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: AppColors.mutedInk.withValues(alpha: 0.2),
+                      // ── Farmer (Member) ──
+                      if (isMember == true) ...[
+                        _buildLabel('Farmer'),
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: AppColors.mutedInk.withValues(alpha: 0.2),
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: farmerId,
+                              isExpanded: true,
+                              hint: const Text('Select farmer'),
+                              items: provider.farmers.map((f) {
+                                final id = f['id'] as int;
+                                final name = f['name']?.toString() ?? '';
+                                return DropdownMenuItem(
+                                  value: id,
+                                  child: Text(name),
+                                );
+                              }).toList(),
+                              onChanged: (val) =>
+                                  setSheetState(() => farmerId = val),
+                            ),
+                          ),
                         ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<int>(
-                          value: tractorId,
-                          isExpanded: true,
-                          hint: const Text('Select tractor'),
-                          items: provider.tractors.map((t) {
-                            final id = t['id'] as int;
-                            final plate = t['no_plate']?.toString() ?? '';
-                            final brand = t['brand']?.toString() ?? '';
-                            return DropdownMenuItem(
-                              value: id,
-                              child: Text('$plate - $brand'),
-                            );
-                          }).toList(),
-                          onChanged: (val) =>
-                              setSheetState(() => tractorId = val),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
+                        const SizedBox(height: 14),
+                      ],
 
-                    // From - Date & Time
+                      // ── Contact Info (Non-member) ──
+                      if (isMember == false) ...[
+                        _buildLabel('Contact Name'),
+                        const SizedBox(height: 6),
+                        _buildTextField(
+                          contactNameController,
+                          'Full name',
+                        ),
+                        const SizedBox(height: 14),
+                        _buildLabel('Contact Phone'),
+                        const SizedBox(height: 6),
+                        _buildTextField(
+                          contactPhoneController,
+                          '09xxxxxxxxx',
+                          keyboard: TextInputType.phone,
+                        ),
+                        const SizedBox(height: 14),
+                      ],
                     _buildLabel('From'),
                     const SizedBox(height: 6),
                     Row(
@@ -644,15 +706,35 @@ class _BookingsScreenState extends State<BookingsScreen>
                       child: FilledButton(
                         onPressed: () async {
                           if (tractorId == null) {
-                            AppToast.warning('Please select a tractor');
+                            AppToast.warning(
+                              'Please select a tractor before submitting.',
+                            );
                             return;
                           }
-                          if (isFca && farmerId == null) {
-                            AppToast.warning('Please select a farmer');
+                          if (isMember == true && farmerId == null) {
+                            AppToast.warning(
+                              'Please select a farmer for this member booking.',
+                            );
                             return;
+                          }
+                          if (isMember == false) {
+                            if (contactNameController.text.trim().isEmpty) {
+                              AppToast.warning(
+                                'Please enter the contact name for this non-member booking.',
+                              );
+                              return;
+                            }
+                            if (contactPhoneController.text.trim().isEmpty) {
+                              AppToast.warning(
+                                'Please enter the contact phone number.',
+                              );
+                              return;
+                            }
                           }
                           if (purposeController.text.trim().isEmpty) {
-                            AppToast.warning('Please enter a purpose');
+                            AppToast.warning(
+                              'Please describe the purpose of this booking.',
+                            );
                             return;
                           }
 
@@ -673,9 +755,10 @@ class _BookingsScreenState extends State<BookingsScreen>
                             toTime.minute,
                           );
 
-                          if (toDateTime.isBefore(fromDateTime)) {
+                          if (toDateTime.isBefore(fromDateTime) ||
+                              toDateTime.isAtSameMomentAs(fromDateTime)) {
                             AppToast.warning(
-                              'End date/time must be after start',
+                              'The end date/time must be after the start date/time.',
                             );
                             return;
                           }
@@ -691,7 +774,7 @@ class _BookingsScreenState extends State<BookingsScreen>
                               ? null
                               : notesController.text.trim();
 
-                          final success = await provider.createBooking(
+                          final error = await provider.createBooking(
                             tractorId: tractorId!,
                             bookingDate: dateFmt.format(fromDate),
                             startDate: dateFmt.format(fromDate),
@@ -699,18 +782,25 @@ class _BookingsScreenState extends State<BookingsScreen>
                             startTime: timeFmt.format(fromDateTime),
                             endTime: timeFmt.format(toDateTime),
                             purpose: purposeController.text.trim(),
-                            farmerId: farmerId,
+                            isMember: isMember,
+                            farmerId: isMember == true ? farmerId : null,
+                            contactName: isMember == false
+                                ? contactNameController.text.trim()
+                                : null,
+                            contactPhone: isMember == false
+                                ? contactPhoneController.text.trim()
+                                : null,
                             farmAreaHectares: area,
                             cost: cost,
                             notes: notes,
                           );
 
                           if (ctx.mounted) {
-                            Navigator.of(ctx).pop();
-                            if (success) {
-                              AppToast.success('Booking created!');
+                            if (error == null) {
+                              Navigator.of(ctx).pop();
+                              AppToast.success('Booking created successfully!');
                             } else {
-                              AppToast.error('Failed to create booking');
+                              AppToast.error(error);
                             }
                           }
                         },
@@ -732,12 +822,58 @@ class _BookingsScreenState extends State<BookingsScreen>
                       ),
                     ),
                   ],
+                ],
                 ),
               ),
             );
           },
         );
       },
+    );
+  }
+
+  // ── Toggle button for member/non-member ──
+  Widget _buildToggleButton({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected
+                ? AppColors.forest
+                : AppColors.mutedInk.withValues(alpha: 0.2),
+            width: selected ? 2 : 1,
+          ),
+          color: selected
+              ? AppColors.forest.withValues(alpha: 0.06)
+              : Colors.white,
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              size: 22,
+              color: selected ? AppColors.forest : AppColors.mutedInk,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: selected ? AppColors.forest : AppColors.mutedInk,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

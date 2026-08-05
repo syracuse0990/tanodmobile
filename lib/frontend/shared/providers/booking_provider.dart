@@ -225,11 +225,15 @@ class BookingProvider extends ChangeNotifier {
 
   // ─── Create booking ───────────────────────────
 
-  Future<bool> createBooking({
+  /// Returns null on success, error message on failure.
+  Future<String?> createBooking({
     required int tractorId,
     required String bookingDate,
     required String purpose,
+    bool? isMember,
     int? farmerId,
+    String? contactName,
+    String? contactPhone,
     String? startDate,
     String? endDate,
     String? startTime,
@@ -243,7 +247,10 @@ class BookingProvider extends ChangeNotifier {
         'tractor_id': tractorId,
         'booking_date': bookingDate,
         'purpose': purpose,
+        'is_member': isMember,
         'farmer_id': ?farmerId,
+        'contact_name': ?contactName,
+        'contact_phone': ?contactPhone,
         'start_date': ?startDate,
         'end_date': ?endDate,
         'start_time': ?startTime,
@@ -253,10 +260,27 @@ class BookingProvider extends ChangeNotifier {
         'notes': ?notes,
       });
       await fetchBookings();
-      return true;
+      return null;
     } catch (e) {
       debugPrint('BookingProvider.createBooking error: $e');
-      return false;
+      try {
+        final dioErr = e as dynamic;
+        final data = dioErr.response?.data;
+        if (data is Map) {
+          // Laravel 422: {"errors": {"field": ["msg"]}}
+          if (data['errors'] is Map) {
+            final errors = data['errors'] as Map;
+            final first = errors.values.first;
+            if (first is List && first.isNotEmpty) {
+              return first.first.toString();
+            }
+          }
+          if (data['message'] != null) {
+            return data['message'].toString();
+          }
+        }
+      } catch (_) {}
+      return 'Unable to create booking. Please check your connection and try again.';
     }
   }
 
