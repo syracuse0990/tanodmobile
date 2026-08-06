@@ -66,7 +66,7 @@ class BookingProvider extends ChangeNotifier {
   // ─── Filter helpers ────────────────────────────
 
   List<Booking> get upcoming =>
-      _bookings.where((b) => b.status == 'pending' || b.status == 'approved').toList();
+      _bookings.where((b) => b.status == 'pending' || b.status == 'approved' || b.status == 'in_use').toList();
 
   List<Booking> get completed =>
       _bookings.where((b) => b.status == 'rejected' || b.status == 'cancelled').toList();

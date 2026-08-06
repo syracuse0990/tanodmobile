@@ -163,7 +163,7 @@ class _BookingsScreenState extends State<BookingsScreen>
           OutlinedButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              final success = await context
+              await context
                   .read<BookingProvider>()
                   .confirmPickupStatus(bookingId, 'not_picked_up');
               if (mounted) {
@@ -292,7 +292,7 @@ class _BookingsScreenState extends State<BookingsScreen>
           OutlinedButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              final success = await context
+              await context
                   .read<BookingProvider>()
                   .confirmReturnStatus(bookingId, 'not_returned');
               if (mounted) {
@@ -1799,6 +1799,12 @@ class _BookingsScreenState extends State<BookingsScreen>
                             _showEditBookingSheet(b);
                           }
                         : null,
+                    onChangeStatus: isFca && b.availableTransitions.isNotEmpty
+                        ? () {
+                            Navigator.pop(ctx);
+                            _showChangeStatusSheet(b);
+                          }
+                        : null,
                   ),
                 );
               }),
@@ -1843,7 +1849,7 @@ class _BookingsScreenState extends State<BookingsScreen>
 
     final filtered = _filterBookings(provider.bookings);
     final active = filtered
-        .where((b) => b.status == 'pending' || b.status == 'approved')
+        .where((b) => b.status == 'pending' || b.status == 'approved' || b.status == 'in_use')
         .toList();
     final done = filtered
         .where(
@@ -1911,6 +1917,9 @@ class _BookingsScreenState extends State<BookingsScreen>
                       ? () => _showRejectDialog(b.id)
                       : null,
                   onEdit: b.isEditable ? () => _showEditBookingSheet(b) : null,
+                  onChangeStatus: isFca && b.availableTransitions.isNotEmpty
+                      ? () => _showChangeStatusSheet(b)
+                      : null,
                 ),
               ),
             ),
@@ -1929,7 +1938,13 @@ class _BookingsScreenState extends State<BookingsScreen>
             ...done.map(
               (b) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: _CompactBookingCard(booking: b, isFca: isFca),
+                child: _CompactBookingCard(
+                  booking: b,
+                  isFca: isFca,
+                  onChangeStatus: isFca && b.availableTransitions.isNotEmpty
+                      ? () => _showChangeStatusSheet(b)
+                      : null,
+                ),
               ),
             ),
           ],
@@ -2054,6 +2069,150 @@ class _BookingsScreenState extends State<BookingsScreen>
         ],
       ),
     );
+  }
+
+  void _showChangeStatusSheet(Booking booking) {
+    final transitions = booking.availableTransitions;
+    if (transitions.isEmpty) return;
+
+    final statusLabels = <String, String>{
+      'approved': 'Approve',
+      'rejected': 'Reject',
+      'cancelled': 'Cancel',
+      'in_use': 'Mark as In Use (Picked Up)',
+      'completed': 'Mark as Completed (Returned)',
+    };
+
+    final statusIcons = <String, IconData>{
+      'approved': Icons.check_circle_rounded,
+      'rejected': Icons.cancel_rounded,
+      'cancelled': Icons.remove_circle_rounded,
+      'in_use': Icons.agriculture_rounded,
+      'completed': Icons.task_alt_rounded,
+    };
+
+    final statusColors = <String, Color>{
+      'approved': AppColors.success,
+      'rejected': AppColors.danger,
+      'cancelled': AppColors.warning,
+      'in_use': AppColors.moss,
+      'completed': AppColors.pine,
+    };
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.mutedInk.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Change Status — ${booking.tractorLabel ?? 'Booking #${booking.id}'}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Current: ${booking.statusLabel}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.mutedInk,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ...transitions.map((newStatus) {
+                final color = statusColors[newStatus] ?? AppColors.forest;
+                final icon = statusIcons[newStatus] ?? Icons.swap_horiz_rounded;
+                final label = statusLabels[newStatus] ?? newStatus;
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        await _applyStatusChange(booking, newStatus);
+                      },
+                      icon: Icon(icon, size: 20, color: color),
+                      label: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: color,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: color,
+                        side: BorderSide(
+                          color: color.withValues(alpha: 0.4),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _applyStatusChange(Booking booking, String newStatus) async {
+    final provider = context.read<BookingProvider>();
+    bool success = false;
+
+    switch (newStatus) {
+      case 'approved':
+        success = await provider.approveBooking(booking.id);
+        if (mounted && success) AppToast.success('Booking approved');
+        break;
+      case 'rejected':
+        // Show reject reason dialog
+        _showRejectDialog(booking.id);
+        return; // _showRejectDialog handles its own flow
+      case 'cancelled':
+        _confirmCancel(booking.id);
+        return; // _confirmCancel handles its own flow
+      case 'in_use':
+        success = await provider.confirmPickupStatus(booking.id, 'picked_up');
+        if (mounted && success) AppToast.success('Tractor picked up — booking in use');
+        break;
+      case 'completed':
+        success = await provider.confirmReturnStatus(booking.id, 'returned');
+        if (mounted && success) AppToast.success('Tractor returned — booking completed');
+        break;
+    }
+
+    if (mounted && !success && newStatus != 'rejected' && newStatus != 'cancelled') {
+      AppToast.error('Failed to change status');
+    }
   }
 
   @override
@@ -2414,6 +2573,7 @@ class _CompactBookingCard extends StatelessWidget {
     this.onApprove,
     this.onReject,
     this.onEdit,
+    this.onChangeStatus,
   });
 
   final Booking booking;
@@ -2422,6 +2582,7 @@ class _CompactBookingCard extends StatelessWidget {
   final VoidCallback? onApprove;
   final VoidCallback? onReject;
   final VoidCallback? onEdit;
+  final VoidCallback? onChangeStatus;
 
   static const _statusColors = {
     'approved': AppColors.success,
@@ -2579,7 +2740,8 @@ class _CompactBookingCard extends StatelessWidget {
             if (onApprove != null ||
                 onReject != null ||
                 onCancel != null ||
-                onEdit != null) ...[
+                onEdit != null ||
+                onChangeStatus != null) ...[
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -2622,6 +2784,32 @@ class _CompactBookingCard extends StatelessWidget {
                             foregroundColor: AppColors.danger,
                             side: BorderSide(
                               color: AppColors.danger.withValues(alpha: 0.3),
+                            ),
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  if (onChangeStatus != null) ...[
+                    Expanded(
+                      child: SizedBox(
+                        height: 32,
+                        child: OutlinedButton.icon(
+                          onPressed: onChangeStatus,
+                          icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                          label: const Text(
+                            'Status',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.forest,
+                            side: BorderSide(
+                              color: AppColors.forest.withValues(alpha: 0.4),
                             ),
                             padding: EdgeInsets.zero,
                             shape: RoundedRectangleBorder(

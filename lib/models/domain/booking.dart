@@ -54,6 +54,10 @@ class Booking {
         return 'Rejected';
       case 'cancelled':
         return 'Cancelled';
+      case 'in_use':
+        return 'In Use';
+      case 'completed':
+        return 'Completed';
       default:
         return status;
     }
@@ -64,6 +68,22 @@ class Booking {
   bool get isCancellable => status == 'pending' || status == 'approved';
   bool get isApprovable => status == 'pending';
   bool get isEditable => status == 'pending' || status == 'approved';
+  bool get isInUse => status == 'in_use';
+  bool get isCompleted => status == 'completed';
+
+  /// Returns the list of statuses this booking can be changed to.
+  List<String> get availableTransitions {
+    switch (status) {
+      case 'pending':
+        return ['approved', 'rejected', 'cancelled'];
+      case 'approved':
+        return ['in_use', 'cancelled'];
+      case 'in_use':
+        return ['completed'];
+      default:
+        return []; // completed, cancelled, rejected — terminal states
+    }
+  }
 
   /// Human-readable date like "Mar 30, 2026" or range "Mar 30 - Apr 2, 2026".
   String get formattedDate {
