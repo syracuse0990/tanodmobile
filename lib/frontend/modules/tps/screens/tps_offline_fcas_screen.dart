@@ -17,7 +17,6 @@ class TpsOfflineFcasScreen extends StatefulWidget {
 class _TpsOfflineFcasScreenState extends State<TpsOfflineFcasScreen> {
   bool _loading = true;
   final DateFormat _dateFormat = DateFormat('MMM d, yyyy');
-  final DateFormat _timestampFormat = DateFormat('MMM d, yyyy • h:mm a');
 
   @override
   void initState() {
@@ -108,14 +107,6 @@ class _TpsOfflineFcasScreenState extends State<TpsOfflineFcasScreen> {
     await _loadData();
   }
 
-  String _formatTimestamp(DateTime? value) {
-    if (value == null) {
-      return 'Not updated yet';
-    }
-
-    return _timestampFormat.format(value.toLocal());
-  }
-
   @override
   Widget build(BuildContext context) {
     return Consumer2<TpsProvider, AuthProvider>(
@@ -192,9 +183,7 @@ class _DraftFeedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateLabel = draft.updatedAt != null
-        ? dateFormat.format(draft.updatedAt!.toLocal())
-        : (draft.createdAt != null ? dateFormat.format(draft.createdAt!.toLocal()) : '');
+    final dateLabel = dateFormat.format(draft.updatedAt.toLocal());
     return Material(
       color: Colors.transparent,
       child: InkWell(

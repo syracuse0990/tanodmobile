@@ -374,6 +374,7 @@ class _BookingsScreenState extends State<BookingsScreen>
     // Refresh farmers list so newly added farmers appear immediately
     if (isFca) {
       await provider.fetchFarmers();
+      if (!mounted) return;
     }
 
     if (provider.tractors.isEmpty) {

@@ -172,6 +172,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
           // Cascade: if province matched, load cities and barangays for pre-selection
           if (match != null && match.code.isNotEmpty) {
             await _fetchCities(match.code);
+            if (!mounted) return;
             // Auto-select saved city from user profile
             final savedCity = context.read<AuthProvider>().currentUser?.city;
             if (savedCity != null && savedCity.isNotEmpty) {
@@ -182,6 +183,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
               if (cityMatch != null) {
                 _selectedCity = cityMatch;
                 await _fetchBarangays(cityMatch.code);
+                if (!mounted) return;
                 // Auto-select saved barangay from user profile
                 final savedBrgy = context
                     .read<AuthProvider>()
@@ -419,67 +421,6 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     );
   }
 
-  /// Extracts a [List] from various API response shapes.
-  /// Handles:
-  ///   `[...]`
-  ///   `{'data': [...]}`
-  ///   `{'data': {'cities': [...]}}`
-  ///   `{'cities': [...]}` / `{'barangays': [...]}`
-  ///   `{'data': {'data': [...]}}`
-  ///   and any Map whose first list-valued value is the target.
-  List<dynamic>? _extractListData(dynamic response) {
-    if (response is List) return response;
-    if (response is! Map) return null;
-
-    // Try common generic wrapper keys
-    for (final key in ['data', 'result', 'results', 'items', 'records']) {
-      final value = response[key];
-      if (value is List) return value;
-      if (value is Map) {
-        // Nested inside a wrapper: e.g. data: { cities: [...] }
-        // Try generic keys first, then any list value
-        for (final innerKey in [
-          'data',
-          'result',
-          'results',
-          'items',
-          'records',
-          'cities',
-          'barangays',
-          'provinces',
-          'municipalities',
-          'locations',
-        ]) {
-          final inner = value[innerKey];
-          if (inner is List) return inner;
-        }
-        // Fallback: first value that is a List
-        for (final inner in value.values) {
-          if (inner is List) return inner;
-        }
-      }
-    }
-
-    // Try resource-specific keys at the top level
-    for (final key in [
-      'cities',
-      'barangays',
-      'provinces',
-      'municipalities',
-      'locations',
-    ]) {
-      final value = response[key];
-      if (value is List) return value;
-    }
-
-    // Last resort: any top-level value that is a List
-    for (final value in response.values) {
-      if (value is List) return value;
-    }
-
-    return null;
-  }
-
   // ─── Tractors ───
 
   Future<void> _fetchTractors() async {
@@ -667,8 +608,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       if (mounted) AppToast.show(msg, type: ToastType.error);
     } catch (e) {
       debugPrint('Image upload error for $fieldKey: $e');
-      if (mounted)
+      if (mounted) {
         AppToast.show('Failed to upload image', type: ToastType.error);
+      }
     } finally {
       if (mounted) {
         setState(() {

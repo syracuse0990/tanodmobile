@@ -123,16 +123,6 @@ class _TpsOfflineDownloadScreenState extends State<TpsOfflineDownloadScreen> {
     router.go('/tps');
   }
 
-  void _continueToDashboard() {
-    if (widget.isManualSync) {
-      _closeScreen();
-      return;
-    }
-
-    context.read<AuthProvider>().completeTpsOfflineSync();
-    GoRouter.of(context).go('/home');
-  }
-
   _SyncStepStatus _statusFor({bool locations = false, bool tractors = false, bool users = false}) {
     if (_errorMessage != null) {
       if (locations && _activeStep == _OfflineSyncStep.locations) return _SyncStepStatus.error;

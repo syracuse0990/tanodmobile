@@ -67,18 +67,6 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  String? _validateSignupContact() {
-    final email = _signupEmailController.text.trim();
-    final phone = _signupPhoneController.text.trim();
-    if (email.isEmpty && phone.isEmpty) {
-      return 'Please provide either an email address or a mobile number.';
-    }
-    if (email.isNotEmpty && !RegExp(r'^[^@]+@[^@]+\.[^@]+$').hasMatch(email)) {
-      return 'Enter a valid email address.';
-    }
-    return null;
-  }
-
   void _toggleMode() {
     setState(() {
       _authMode = _authMode == AuthMode.login

@@ -229,11 +229,35 @@ class _FakeAuthRepository implements AuthRepository {
     required String password,
     required String passwordConfirmation,
     String? coopName,
+    String? phone,
   }) async {
     final nextSession = signInSession ?? _tpsSession();
     session = nextSession;
     return nextSession;
   }
+
+  @override
+  Future<Map<String, dynamic>> sendForgotPasswordOtp({
+    required String contact,
+  }) async {
+    return {'sent': true};
+  }
+
+  @override
+  Future<Map<String, dynamic>> verifyForgotPasswordOtp({
+    required String contact,
+    required String otp,
+  }) async {
+    return {'verified': true};
+  }
+
+  @override
+  Future<void> resetForgotPassword({
+    required String contact,
+    required String verifiedToken,
+    required String password,
+    required String passwordConfirmation,
+  }) async {}
 
   @override
   Future<void> setOfflineModeEnabled(bool enabled) async {

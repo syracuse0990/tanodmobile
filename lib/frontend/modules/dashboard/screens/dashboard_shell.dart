@@ -49,17 +49,6 @@ class _DashboardShellState extends State<DashboardShell> {
     return tabIndex >= 0 ? tabIndex : visibleBranches.length - 1;
   }
 
-  String _branchRootPath(int branchIndex, bool isTps) {
-    return switch (branchIndex) {
-      0 => '/home',
-      1 => '/alerts',
-      2 => isTps ? '/tps' : '/bookings',
-      3 => '/chat',
-      5 => '/account',
-      _ => '/home',
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
     final isTps = _isTps(context);

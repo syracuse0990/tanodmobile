@@ -286,7 +286,7 @@ class _PmsRecordScreenState extends State<PmsRecordScreen> {
   // ── Nameplate ──
 
   Future<void> _pickNameplateFromGallery() async {
-    if (_nameplatePhotos.length >= 1) {
+    if (_nameplatePhotos.isNotEmpty) {
       AppToast.show('Only 1 nameplate photo is allowed.',
           type: ToastType.error);
       return;
@@ -307,7 +307,7 @@ class _PmsRecordScreenState extends State<PmsRecordScreen> {
   }
 
   Future<void> _captureNameplate() async {
-    if (_nameplatePhotos.length >= 1) {
+    if (_nameplatePhotos.isNotEmpty) {
       AppToast.show('Only 1 nameplate photo is allowed.',
           type: ToastType.error);
       return;
@@ -338,7 +338,7 @@ class _PmsRecordScreenState extends State<PmsRecordScreen> {
   // ── Dashboard ──
 
   Future<void> _pickDashboardFromGallery() async {
-    if (_dashboardPhotos.length >= 1) {
+    if (_dashboardPhotos.isNotEmpty) {
       AppToast.show('Only 1 dashboard photo is allowed.',
           type: ToastType.error);
       return;
@@ -359,7 +359,7 @@ class _PmsRecordScreenState extends State<PmsRecordScreen> {
   }
 
   Future<void> _captureDashboard() async {
-    if (_dashboardPhotos.length >= 1) {
+    if (_dashboardPhotos.isNotEmpty) {
       AppToast.show('Only 1 dashboard photo is allowed.',
           type: ToastType.error);
       return;

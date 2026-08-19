@@ -196,7 +196,7 @@ class _CreateFeedbackScreenState extends State<CreateFeedbackScreen> {
                     const _FieldLabel('Category'),
                     const SizedBox(height: 6),
                     DropdownButtonFormField<String>(
-                      value: _selectedCategory,
+                      initialValue: _selectedCategory,
                       decoration: _inputDecoration('Select category (optional)'),
                       isExpanded: true,
                       items: [

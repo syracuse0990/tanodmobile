@@ -61,7 +61,6 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
 
   // PMS Checklist (shown when subject is PMS)
   List<PmsChecklistItem> _checklist = [];
-  bool _checklistLoaded = false;
   String? _selectedActionTaken;
 
   static const _actionTakenOptionsPms = [
@@ -286,7 +285,6 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
         _checklist = provider.defaultChecklist
             .map((item) => PmsChecklistItem(name: item.name))
             .toList();
-        _checklistLoaded = true;
       });
     }
   }
@@ -370,7 +368,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   }
 
   Future<void> _pickNameplateFromGallery() async {
-    if (_nameplatePhotos.length >= 1) {
+    if (_nameplatePhotos.isNotEmpty) {
       AppToast.show('Only 1 nameplate photo is allowed.', type: ToastType.error);
       return;
     }
@@ -388,7 +386,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   }
 
   Future<void> _captureNameplate() async {
-    if (_nameplatePhotos.length >= 1) {
+    if (_nameplatePhotos.isNotEmpty) {
       AppToast.show('Only 1 nameplate photo is allowed.', type: ToastType.error);
       return;
     }
@@ -413,7 +411,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   }
 
   Future<void> _pickDashboardFromGallery() async {
-    if (_dashboardPhotos.length >= 1) {
+    if (_dashboardPhotos.isNotEmpty) {
       AppToast.show('Only 1 dashboard photo is allowed.', type: ToastType.error);
       return;
     }
@@ -431,7 +429,7 @@ class _CreateTicketScreenState extends State<CreateTicketScreen> {
   }
 
   Future<void> _captureDashboard() async {
-    if (_dashboardPhotos.length >= 1) {
+    if (_dashboardPhotos.isNotEmpty) {
       AppToast.show('Only 1 dashboard photo is allowed.', type: ToastType.error);
       return;
     }

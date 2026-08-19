@@ -35,20 +35,20 @@ class _CreateOfflineTicketScreenState extends State<CreateOfflineTicketScreen> {
 
   // Nameplate
   List<TicketIssuePhoto> _nameplatePhotos = const [];
-  bool _nameplateProcessing = false;
-  String _nameplateProcessingLabel = 'Processing...';
+  final bool _nameplateProcessing = false;
+  final String _nameplateProcessingLabel = 'Processing...';
   String? _nameplateError;
 
   // Dashboard
   List<TicketIssuePhoto> _dashboardPhotos = const [];
-  bool _dashboardProcessing = false;
-  String _dashboardProcessingLabel = 'Processing...';
+  final bool _dashboardProcessing = false;
+  final String _dashboardProcessingLabel = 'Processing...';
   String? _dashboardError;
 
   // Damaged Parts
   List<TicketIssuePhoto> _damagePhotos = const [];
-  bool _damageProcessing = false;
-  String _damageProcessingLabel = 'Processing...';
+  final bool _damageProcessing = false;
+  final String _damageProcessingLabel = 'Processing...';
   String? _damageError;
 
   bool _submitting = false;
@@ -130,6 +130,7 @@ class _CreateOfflineTicketScreenState extends State<CreateOfflineTicketScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final tp = context.read<TicketProvider>();
       await tp.fetchTractors();
+      if (!mounted) return;
       if (tp.tractors.isNotEmpty) {
         context.read<OfflineTicketProvider>().cacheTractors(tp.tractors);
       }
@@ -148,7 +149,7 @@ class _CreateOfflineTicketScreenState extends State<CreateOfflineTicketScreen> {
 
   Future<void> _pickNameplateFromGallery() async {
     final photos = await _photoService.pickFromGallery(remainingSlots: 1);
-    if (photos != null && photos.isNotEmpty) {
+    if (photos.isNotEmpty) {
       setState(() {
         _nameplatePhotos = photos;
         _nameplateError = null;
@@ -175,7 +176,7 @@ class _CreateOfflineTicketScreenState extends State<CreateOfflineTicketScreen> {
 
   Future<void> _pickDashboardFromGallery() async {
     final photos = await _photoService.pickFromGallery(remainingSlots: 1);
-    if (photos != null && photos.isNotEmpty) {
+    if (photos.isNotEmpty) {
       setState(() {
         _dashboardPhotos = photos;
         _dashboardError = null;
@@ -204,7 +205,7 @@ class _CreateOfflineTicketScreenState extends State<CreateOfflineTicketScreen> {
     final remaining = 3 - _damagePhotos.length;
     if (remaining <= 0) return;
     final photos = await _photoService.pickFromGallery(remainingSlots: remaining);
-    if (photos != null && photos.isNotEmpty) {
+    if (photos.isNotEmpty) {
       setState(() {
         _damagePhotos = [..._damagePhotos, ...photos];
         _damageError = null;
@@ -352,7 +353,7 @@ class _CreateOfflineTicketScreenState extends State<CreateOfflineTicketScreen> {
               _FieldLabel(label: 'Subject'),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                value: _selectedSubject,
+                initialValue: _selectedSubject,
                 decoration: _inputDecoration('Select subject'),
                 isExpanded: true,
                 items: _subjects.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
@@ -408,7 +409,7 @@ class _CreateOfflineTicketScreenState extends State<CreateOfflineTicketScreen> {
 
                   _useManualTractor = false;
                   return DropdownButtonFormField<int>(
-                    value: _selectedTractorId,
+                    initialValue: _selectedTractorId,
                     decoration: _inputDecoration('Select a tractor (optional)'),
                     isExpanded: true,
                     items: [
@@ -444,7 +445,7 @@ class _CreateOfflineTicketScreenState extends State<CreateOfflineTicketScreen> {
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
                 key: ValueKey('action_$_selectedSubject'),
-                value: _selectedActionTaken,
+                initialValue: _selectedActionTaken,
                 decoration: _inputDecoration('Select resolution type'),
                 isExpanded: true,
                 items: _currentActionTakenOptions
