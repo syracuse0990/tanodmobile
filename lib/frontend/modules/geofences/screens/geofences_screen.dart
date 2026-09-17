@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
+import 'package:tanodmobile/frontend/modules/geofences/geofence_measurements.dart';
 import 'package:tanodmobile/frontend/shared/providers/geofence_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/elegant_dialog.dart';
 import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
@@ -52,8 +53,9 @@ class _GeofencesScreenState extends State<GeofencesScreen> {
               title: 'Your Geofences',
               description:
                   'All your saved geofences appear here. Each card shows '
-                  'the name, shape (circle or polygon), alert type, and '
-                  'assigned tractors. Tap a card to view or edit it.',
+                  'the name, the total area covered, shape (circle or '
+                  'polygon), alert type, and assigned tractors. Tap a '
+                  'card to view or edit it.',
               tooltipPosition: TutorialTooltipPosition.bottom,
             ),
             TutorialStep(
@@ -107,74 +109,83 @@ class _GeofencesScreenState extends State<GeofencesScreen> {
         child: const Icon(Icons.add_rounded),
       ),
       body: provider.loading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.forest))
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.forest),
+            )
           : provider.error != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.error_outline_rounded,
-                          size: 48,
-                          color: AppColors.mutedInk.withValues(alpha: 0.4)),
-                      const SizedBox(height: 12),
-                      Text(provider.error!,
-                          style: const TextStyle(color: AppColors.mutedInk)),
-                      const SizedBox(height: 16),
-                      TextButton(
-                        onPressed: _onRefresh,
-                        child: const Text('Retry',
-                            style: TextStyle(color: AppColors.forest)),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.error_outline_rounded,
+                    size: 48,
+                    color: AppColors.mutedInk.withValues(alpha: 0.4),
                   ),
-                )
-              : provider.geofences.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.fence_rounded,
-                              size: 56,
-                              color: AppColors.mutedInk.withValues(alpha: 0.3)),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'No geofences yet',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.mutedInk,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Tap + to create a geofence',
-                            style: TextStyle(
-                                fontSize: 13, color: AppColors.mutedInk),
-                          ),
-                        ],
-                      ),
-                    )
-                  : RefreshIndicator(
-                      key: _listKey,
-                      color: AppColors.forest,
-                      onRefresh: _onRefresh,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-                        itemCount: provider.geofences.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 10),
-                        itemBuilder: (context, index) {
-                          final geofence = provider.geofences[index];
-                          return _GeofenceCard(
-                            geofence: geofence,
-                            onTap: () => context
-                                .go('/account/geofences/${geofence.id}'),
-                            onEdit: () => context
-                                .go('/account/geofences/${geofence.id}/edit'),
-                            onDelete: () => _confirmDelete(geofence),
-                          );
-                        },
-                      ),
+                  const SizedBox(height: 12),
+                  Text(
+                    provider.error!,
+                    style: const TextStyle(color: AppColors.mutedInk),
+                  ),
+                  const SizedBox(height: 16),
+                  TextButton(
+                    onPressed: _onRefresh,
+                    child: const Text(
+                      'Retry',
+                      style: TextStyle(color: AppColors.forest),
                     ),
+                  ),
+                ],
+              ),
+            )
+          : provider.geofences.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.fence_rounded,
+                    size: 56,
+                    color: AppColors.mutedInk.withValues(alpha: 0.3),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'No geofences yet',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.mutedInk,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Tap + to create a geofence',
+                    style: TextStyle(fontSize: 13, color: AppColors.mutedInk),
+                  ),
+                ],
+              ),
+            )
+          : RefreshIndicator(
+              key: _listKey,
+              color: AppColors.forest,
+              onRefresh: _onRefresh,
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                itemCount: provider.geofences.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final geofence = provider.geofences[index];
+                  return _GeofenceCard(
+                    geofence: geofence,
+                    onTap: () =>
+                        context.go('/account/geofences/${geofence.id}'),
+                    onEdit: () =>
+                        context.go('/account/geofences/${geofence.id}/edit'),
+                    onDelete: () => _confirmDelete(geofence),
+                  );
+                },
+              ),
+            ),
     );
   }
 
@@ -186,11 +197,13 @@ class _GeofencesScreenState extends State<GeofencesScreen> {
       message: 'Delete "${geofence.name}"? This cannot be undone.',
       confirmText: 'Delete',
       onConfirmAsync: () async {
-        final success =
-            await context.read<GeoFenceProvider>().deleteGeofence(geofence.id);
+        final success = await context.read<GeoFenceProvider>().deleteGeofence(
+          geofence.id,
+        );
         if (!success && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Failed to delete geofence')));
+            const SnackBar(content: Text('Failed to delete geofence')),
+          );
         }
       },
     );
@@ -216,6 +229,7 @@ class _GeofenceCard extends StatelessWidget {
         .where((d) => d.tractor != null)
         .map((d) => d.tractor!.label)
         .toList();
+    final areaLabel = geofence.areaLabel;
 
     return Material(
       color: Colors.white,
@@ -256,20 +270,27 @@ class _GeofenceCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
                       children: [
                         _InfoChip(
                           icon: Icons.agriculture_rounded,
                           label: '${geofence.devices.length}',
                         ),
-                        const SizedBox(width: 8),
                         _InfoChip(
                           icon: geofence.isCircle
                               ? Icons.radio_button_unchecked
                               : Icons.change_history_rounded,
                           label: geofence.isCircle ? 'Circle' : 'Polygon',
                         ),
-                        const SizedBox(width: 8),
+                        // Total area covered — works for circles and polygons
+                        if (areaLabel != null)
+                          _InfoChip(
+                            icon: Icons.square_foot_rounded,
+                            label: areaLabel,
+                            highlight: true,
+                          ),
                         _InfoChip(
                           icon: Icons.notifications_active_outlined,
                           label: geofence.alertOnLabel,
@@ -297,14 +318,20 @@ class _GeofenceCard extends StatelessWidget {
                   if (value == 'edit') onEdit();
                   if (value == 'delete') onDelete();
                 },
-                icon: Icon(Icons.more_vert_rounded,
-                    color: AppColors.mutedInk.withValues(alpha: 0.5)),
+                icon: Icon(
+                  Icons.more_vert_rounded,
+                  color: AppColors.mutedInk.withValues(alpha: 0.5),
+                ),
                 itemBuilder: (_) => [
                   const PopupMenuItem(
                     value: 'view',
                     child: Row(
                       children: [
-                        Icon(Icons.visibility_outlined, size: 18, color: AppColors.ink),
+                        Icon(
+                          Icons.visibility_outlined,
+                          size: 18,
+                          color: AppColors.ink,
+                        ),
                         SizedBox(width: 10),
                         Text('View'),
                       ],
@@ -314,7 +341,11 @@ class _GeofenceCard extends StatelessWidget {
                     value: 'edit',
                     child: Row(
                       children: [
-                        Icon(Icons.edit_outlined, size: 18, color: AppColors.ink),
+                        Icon(
+                          Icons.edit_outlined,
+                          size: 18,
+                          color: AppColors.ink,
+                        ),
                         SizedBox(width: 10),
                         Text('Edit'),
                       ],
@@ -324,10 +355,16 @@ class _GeofenceCard extends StatelessWidget {
                     value: 'delete',
                     child: Row(
                       children: [
-                        Icon(Icons.delete_outlined, size: 18, color: AppColors.danger),
+                        Icon(
+                          Icons.delete_outlined,
+                          size: 18,
+                          color: AppColors.danger,
+                        ),
                         SizedBox(width: 10),
-                        Text('Delete',
-                            style: TextStyle(color: AppColors.danger)),
+                        Text(
+                          'Delete',
+                          style: TextStyle(color: AppColors.danger),
+                        ),
                       ],
                     ),
                   ),
@@ -342,21 +379,32 @@ class _GeofenceCard extends StatelessWidget {
 }
 
 class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.icon, required this.label});
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+    this.highlight = false,
+  });
 
   final IconData icon;
   final String label;
+  final bool highlight;
 
   @override
   Widget build(BuildContext context) {
+    final color = highlight ? AppColors.forest : AppColors.mutedInk;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 13, color: AppColors.mutedInk),
+        Icon(icon, size: 13, color: color),
         const SizedBox(width: 3),
         Text(
           label,
-          style: const TextStyle(fontSize: 12, color: AppColors.mutedInk),
+          style: TextStyle(
+            fontSize: 12,
+            color: color,
+            fontWeight: highlight ? FontWeight.w700 : FontWeight.w400,
+          ),
         ),
       ],
     );

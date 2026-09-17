@@ -158,7 +158,15 @@ class ChatUnreadProvider extends ChangeNotifier with WidgetsBindingObserver {
       do {
         final response = await _apiClient.get(
           AppEndpoints.notifications,
-          queryParameters: {'unread': '1', 'page': '$page', 'per_page': '100'},
+          queryParameters: {
+            'unread': '1',
+            'page': '$page',
+            'per_page': '100',
+            // TPS accounts should only be badged for tickets that are really
+            // assigned to them — not for tickets on a tractor they merely
+            // distributed. The API applies this flag for the TPS role only.
+            'assigned_chat_only': '1',
+          },
         );
 
         final dataList = response['data'] as List<dynamic>? ?? const [];

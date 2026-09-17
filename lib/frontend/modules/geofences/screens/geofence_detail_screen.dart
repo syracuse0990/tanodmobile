@@ -5,6 +5,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
+import 'package:tanodmobile/core/utils/geo_area.dart';
+import 'package:tanodmobile/frontend/modules/geofences/geofence_measurements.dart';
+import 'package:tanodmobile/frontend/modules/geofences/screens/parts/geofence_area_summary.dart';
 import 'package:tanodmobile/frontend/shared/providers/geofence_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/tutorial_overlay.dart';
 import 'package:tanodmobile/models/domain/geo_fence.dart';
@@ -74,8 +77,9 @@ class _GeofenceDetailScreenState extends State<GeofenceDetailScreen> {
           title: 'Geofence Details',
           description:
               'This card shows the key info: shape (Circle or Polygon), '
-              'radius (if circle), alert trigger (Enter/Exit/Both), '
-              'and whether the geofence is currently Active or Inactive.',
+              'the total area covered in hectares, radius/perimeter '
+              '(if circle), alert trigger (Enter/Exit/Both), and whether '
+              'the geofence is currently Active or Inactive.',
           tooltipPosition: TutorialTooltipPosition.top,
         ),
         TutorialStep(
@@ -95,13 +99,16 @@ class _GeofenceDetailScreenState extends State<GeofenceDetailScreen> {
 
   void _onTutorialComplete() {
     if (!mounted) return;
-    context.read<HiveService>().savePreference('tutorial_geofence_detail', 'true');
+    context.read<HiveService>().savePreference(
+      'tutorial_geofence_detail',
+      'true',
+    );
   }
 
   Future<void> _loadDetail() async {
-    final detail = await context
-        .read<GeoFenceProvider>()
-        .fetchGeofenceDetail(widget.geofenceId);
+    final detail = await context.read<GeoFenceProvider>().fetchGeofenceDetail(
+      widget.geofenceId,
+    );
     if (mounted) {
       setState(() {
         _geofence = detail;
@@ -137,22 +144,48 @@ class _GeofenceDetailScreenState extends State<GeofenceDetailScreen> {
 
     for (int i = 0; i <= segments; i++) {
       final angle = (i * 360 / segments) * (math.pi / 180);
-      final latOffset =
-          radiusMeters / earthRadius * (180 / math.pi);
-      final lngOffset = radiusMeters /
+      final latOffset = radiusMeters / earthRadius * (180 / math.pi);
+      final lngOffset =
+          radiusMeters /
           (earthRadius * math.cos(center.latitude * math.pi / 180)) *
           (180 / math.pi);
 
-      points.add(LatLng(
-        center.latitude + latOffset * math.sin(angle),
-        center.longitude + lngOffset * math.cos(angle),
-      ));
+      points.add(
+        LatLng(
+          center.latitude + latOffset * math.sin(angle),
+          center.longitude + lngOffset * math.cos(angle),
+        ),
+      );
     }
     return points;
   }
 
+  /// Where the area badge is drawn on the map: the polygon centroid, or a
+  /// spot just above a circle's centre marker.
+  LatLng? _areaBadgePoint(GeoFence geofence) {
+    if (geofence.isCircle) {
+      final lat = geofence.centerLat;
+      final lng = geofence.centerLng;
+      final radius = geofence.radius;
+      if (lat == null || lng == null || radius == null) return null;
+
+      final latOffset = radius / GeoArea.earthRadiusMeters * (180 / math.pi);
+      return LatLng(lat + latOffset, lng);
+    }
+
+    final ring = geofence.ring;
+    if (ring.length < 3) return null;
+    return GeoArea.polygonCentroid(ring);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final geofence = _geofence;
+    final areaSquareMeters = geofence?.areaSquareMeters;
+    final areaBadgePoint = geofence == null ? null : _areaBadgePoint(geofence);
+    final areaLabel = geofence?.areaLabel;
+    final boundaryLabel = geofence?.boundaryLabel;
+
     return Scaffold(
       backgroundColor: AppColors.canvas,
       appBar: AppBar(
@@ -164,202 +197,259 @@ class _GeofenceDetailScreenState extends State<GeofenceDetailScreen> {
       ),
       body: _loading
           ? const Center(
-              child: CircularProgressIndicator(color: AppColors.forest))
+              child: CircularProgressIndicator(color: AppColors.forest),
+            )
           : _geofence == null
-              ? const Center(
-                  child: Text('Geofence not found',
-                      style: TextStyle(color: AppColors.mutedInk)))
-              : Column(
-                  children: [
-                    // Map
-                    SizedBox(
-                      key: _mapKey,
-                      height: 300,
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                            bottom: Radius.circular(20)),
-                        child: FlutterMap(
-                          mapController: _mapController,
-                          options: MapOptions(
-                            initialCenter: _center,
-                            initialZoom: _geofence!.isCircle ? 14.0 : 13.0,
+          ? const Center(
+              child: Text(
+                'Geofence not found',
+                style: TextStyle(color: AppColors.mutedInk),
+              ),
+            )
+          : Column(
+              children: [
+                // Map
+                SizedBox(
+                  key: _mapKey,
+                  height: 300,
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(20),
+                    ),
+                    child: FlutterMap(
+                      mapController: _mapController,
+                      options: MapOptions(
+                        initialCenter: _center,
+                        initialZoom: _geofence!.isCircle ? 14.0 : 13.0,
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                              'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+                          userAgentPackageName: 'com.tanod.tanodmobile',
+                        ),
+                        if (_geofence!.isCircle &&
+                            _geofence!.centerLat != null &&
+                            _geofence!.centerLng != null &&
+                            _geofence!.radius != null)
+                          PolygonLayer(
+                            polygons: [
+                              Polygon(
+                                points: _circlePoints(
+                                  LatLng(
+                                    _geofence!.centerLat!,
+                                    _geofence!.centerLng!,
+                                  ),
+                                  _geofence!.radius!,
+                                ),
+                                color: AppColors.forest.withValues(alpha: 0.15),
+                                borderColor: AppColors.forest,
+                                borderStrokeWidth: 2,
+                              ),
+                            ],
                           ),
+                        if (_geofence!.isPolygon &&
+                            _geofence!.coordinates != null &&
+                            _geofence!.coordinates!.length >= 3)
+                          PolygonLayer(
+                            polygons: [
+                              Polygon(
+                                points: _geofence!.coordinates!
+                                    .map((c) => LatLng(c.lat, c.lng))
+                                    .toList(),
+                                color: AppColors.forest.withValues(alpha: 0.15),
+                                borderColor: AppColors.forest,
+                                borderStrokeWidth: 2,
+                              ),
+                            ],
+                          ),
+                        // Center marker for circles
+                        if (_geofence!.isCircle &&
+                            _geofence!.centerLat != null &&
+                            _geofence!.centerLng != null)
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: LatLng(
+                                  _geofence!.centerLat!,
+                                  _geofence!.centerLng!,
+                                ),
+                                width: 24,
+                                height: 24,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: AppColors.forest,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.center_focus_strong,
+                                    size: 12,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        // Total area covered by the zone
+                        if (areaSquareMeters != null && areaBadgePoint != null)
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: areaBadgePoint,
+                                width: 120,
+                                height: 34,
+                                child: MapAreaBadge(
+                                  label: GeoArea.areaLabel(areaSquareMeters),
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Details
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      // Info card
+                      Container(
+                        key: _infoKey,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            TileLayer(
-                              urlTemplate:
-                                  'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-                              userAgentPackageName: 'com.tanod.tanodmobile',
+                            _DetailRow(
+                              label: 'Shape',
+                              value: _geofence!.isCircle ? 'Circle' : 'Polygon',
                             ),
                             if (_geofence!.isCircle &&
-                                _geofence!.centerLat != null &&
-                                _geofence!.centerLng != null &&
                                 _geofence!.radius != null)
-                              PolygonLayer(
-                                polygons: [
-                                  Polygon(
-                                    points: _circlePoints(
-                                      LatLng(_geofence!.centerLat!,
-                                          _geofence!.centerLng!),
-                                      _geofence!.radius!,
-                                    ),
-                                    color: AppColors.forest
-                                        .withValues(alpha: 0.15),
-                                    borderColor: AppColors.forest,
-                                    borderStrokeWidth: 2,
-                                  ),
-                                ],
+                              _DetailRow(
+                                label: 'Radius',
+                                value:
+                                    '${_geofence!.radius!.toStringAsFixed(0)} m',
                               ),
                             if (_geofence!.isPolygon &&
-                                _geofence!.coordinates != null &&
-                                _geofence!.coordinates!.length >= 3)
-                              PolygonLayer(
-                                polygons: [
-                                  Polygon(
-                                    points: _geofence!.coordinates!
-                                        .map((c) => LatLng(c.lat, c.lng))
-                                        .toList(),
-                                    color: AppColors.forest
-                                        .withValues(alpha: 0.15),
-                                    borderColor: AppColors.forest,
-                                    borderStrokeWidth: 2,
-                                  ),
-                                ],
+                                _geofence!.ring.isNotEmpty)
+                              _DetailRow(
+                                label: 'Points',
+                                value: '${_geofence!.ring.length}',
                               ),
-                            // Center marker for circles
-                            if (_geofence!.isCircle &&
-                                _geofence!.centerLat != null &&
-                                _geofence!.centerLng != null)
-                              MarkerLayer(
-                                markers: [
-                                  Marker(
-                                    point: LatLng(_geofence!.centerLat!,
-                                        _geofence!.centerLng!),
-                                    width: 24,
-                                    height: 24,
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: AppColors.forest,
-                                        border: Border.all(
-                                            color: Colors.white, width: 2),
-                                      ),
-                                      child: const Icon(Icons.center_focus_strong,
-                                          size: 12, color: Colors.white),
-                                    ),
-                                  ),
-                                ],
+                            _DetailRow(
+                              label: 'Area',
+                              value: areaLabel ?? 'Unavailable',
+                              highlight: areaLabel != null,
+                            ),
+                            if (boundaryLabel != null)
+                              _DetailRow(
+                                label: 'Perimeter',
+                                value: boundaryLabel,
                               ),
+                            _DetailRow(
+                              label: 'Alert On',
+                              value: _geofence!.alertOnLabel,
+                            ),
+                            _DetailRow(
+                              label: 'Status',
+                              value: _geofence!.isActive
+                                  ? 'Active'
+                                  : 'Inactive',
+                            ),
                           ],
                         ),
                       ),
-                    ),
 
-                    // Details
-                    Expanded(
-                      child: ListView(
-                        padding: const EdgeInsets.all(16),
-                        children: [
-                          // Info card
-                          Container(
-                            key: _infoKey,
-                            padding: const EdgeInsets.all(16),
+                      const SizedBox(height: 16),
+
+                      // Devices
+                      Text(
+                        'Assigned Tractors',
+                        key: _tractorKey,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (_geofence!.devices.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'No tractors assigned',
+                            style: TextStyle(color: AppColors.mutedInk),
+                          ),
+                        )
+                      else
+                        ...(_geofence!.devices.map((device) {
+                          final label =
+                              device.tractor?.label ?? 'Device #${device.id}';
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Row(
                               children: [
-                                _DetailRow(
-                                    label: 'Shape',
-                                    value: _geofence!.isCircle
-                                        ? 'Circle'
-                                        : 'Polygon'),
-                                if (_geofence!.isCircle &&
-                                    _geofence!.radius != null)
-                                  _DetailRow(
-                                      label: 'Radius',
-                                      value:
-                                          '${_geofence!.radius!.toStringAsFixed(0)} m'),
-                                _DetailRow(
-                                    label: 'Alert On',
-                                    value: _geofence!.alertOnLabel),
-                                _DetailRow(
-                                    label: 'Status',
-                                    value: _geofence!.isActive
-                                        ? 'Active'
-                                        : 'Inactive'),
+                                const Icon(
+                                  Icons.agriculture_rounded,
+                                  size: 20,
+                                  color: AppColors.pine,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    label,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.ink,
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // Devices
-                          Text(
-                            'Assigned Tractors',
-                            key: _tractorKey,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.ink,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          if (_geofence!.devices.isEmpty)
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Text(
-                                'No tractors assigned',
-                                style: TextStyle(color: AppColors.mutedInk),
-                              ),
-                            )
-                          else
-                            ...(_geofence!.devices.map((device) {
-                              final label =
-                                  device.tractor?.label ?? 'Device #${device.id}';
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 12),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.agriculture_rounded,
-                                        size: 20, color: AppColors.pine),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(label,
-                                          style: const TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600,
-                                              color: AppColors.ink)),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            })),
-                        ],
-                      ),
-                    ),
-                  ],
+                          );
+                        })),
+                    ],
+                  ),
                 ),
+              ],
+            ),
     );
   }
 }
 
 class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.label, required this.value});
+  const _DetailRow({
+    required this.label,
+    required this.value,
+    this.highlight = false,
+  });
 
   final String label;
   final String value;
+  final bool highlight;
 
   @override
   Widget build(BuildContext context) {
@@ -369,16 +459,20 @@ class _DetailRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 80,
-            child: Text(label,
-                style: const TextStyle(
-                    fontSize: 13, color: AppColors.mutedInk)),
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 13, color: AppColors.mutedInk),
+            ),
           ),
           Expanded(
-            child: Text(value,
-                style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.ink)),
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: highlight ? 15 : 14,
+                fontWeight: FontWeight.w600,
+                color: highlight ? AppColors.forest : AppColors.ink,
+              ),
+            ),
           ),
         ],
       ),

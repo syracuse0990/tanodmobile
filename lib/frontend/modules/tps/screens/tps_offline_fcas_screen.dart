@@ -99,7 +99,7 @@ class _TpsOfflineFcasScreenState extends State<TpsOfflineFcasScreen> {
       return;
     }
 
-    await context.push('/tps/offline-download?manual=1');
+    await context.push('/tps/offline-download');
     if (!mounted) {
       return;
     }
@@ -125,15 +125,29 @@ class _TpsOfflineFcasScreenState extends State<TpsOfflineFcasScreen> {
             ),
             title: const Text(
               'Offline Revisit',
-              style: TextStyle(color: AppColors.ink, fontWeight: FontWeight.w800),
+              style: TextStyle(
+                color: AppColors.ink,
+                fontWeight: FontWeight.w800,
+              ),
             ),
             actions: [
               TextButton.icon(
                 onPressed: () => _refreshSavedData(authProvider),
-                icon: Icon(Icons.cloud_sync_rounded, size: 18,
-                    color: authProvider.isConnected ? AppColors.forest : AppColors.mutedInk),
-                label: Text('Sync', style: TextStyle(
-                    color: authProvider.isConnected ? AppColors.forest : AppColors.mutedInk)),
+                icon: Icon(
+                  Icons.cloud_sync_rounded,
+                  size: 18,
+                  color: authProvider.isConnected
+                      ? AppColors.forest
+                      : AppColors.mutedInk,
+                ),
+                label: Text(
+                  'Sync',
+                  style: TextStyle(
+                    color: authProvider.isConnected
+                        ? AppColors.forest
+                        : AppColors.mutedInk,
+                  ),
+                ),
               ),
             ],
           ),
@@ -145,26 +159,28 @@ class _TpsOfflineFcasScreenState extends State<TpsOfflineFcasScreen> {
             label: const Text('New draft'),
           ),
           body: _loading
-              ? const Center(child: CircularProgressIndicator(color: AppColors.forest))
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppColors.forest),
+                )
               : drafts.isEmpty
-                  ? const _OfflineFcaEmptyState(
-                      icon: Icons.edit_note_rounded,
-                      title: 'No drafts yet',
-                      message: 'Tap New draft to add a revisit.',
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
-                      itemCount: drafts.length,
-                      itemBuilder: (context, index) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: _DraftFeedCard(
-                          draft: drafts[index],
-                          dateFormat: _dateFormat,
-                          onTap: () => _openDraftEditor(drafts[index]),
-                          onDelete: () => _deleteDraft(drafts[index]),
-                        ),
-                      ),
+              ? const _OfflineFcaEmptyState(
+                  icon: Icons.edit_note_rounded,
+                  title: 'No drafts yet',
+                  message: 'Tap New draft to add a revisit.',
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+                  itemCount: drafts.length,
+                  itemBuilder: (context, index) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _DraftFeedCard(
+                      draft: drafts[index],
+                      dateFormat: _dateFormat,
+                      onTap: () => _openDraftEditor(drafts[index]),
+                      onDelete: () => _deleteDraft(drafts[index]),
                     ),
+                  ),
+                ),
         );
       },
     );
@@ -173,8 +189,10 @@ class _TpsOfflineFcasScreenState extends State<TpsOfflineFcasScreen> {
 
 class _DraftFeedCard extends StatelessWidget {
   const _DraftFeedCard({
-    required this.draft, required this.dateFormat,
-    required this.onTap, required this.onDelete,
+    required this.draft,
+    required this.dateFormat,
+    required this.onTap,
+    required this.onDelete,
   });
   final OfflineFcaDraft draft;
   final DateFormat dateFormat;
@@ -194,46 +212,113 @@ class _DraftFeedCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: [BoxShadow(color: AppColors.ink.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))],
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.ink.withValues(alpha: 0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 42, height: 42,
-                decoration: BoxDecoration(color: AppColors.forest.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.groups_2_rounded, color: AppColors.forest, size: 22),
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: AppColors.forest.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.groups_2_rounded,
+                  color: AppColors.forest,
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(draft.organizationName, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
+                    Text(
+                      draft.organizationName,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink,
+                      ),
+                    ),
                     if (draft.contactName.isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      Text(draft.contactName, maxLines: 2, overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13, color: AppColors.mutedInk, height: 1.35)),
+                      Text(
+                        draft.contactName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.mutedInk,
+                          height: 1.35,
+                        ),
+                      ),
                     ],
                     if (draft.locationLabel.isNotEmpty) ...[
                       const SizedBox(height: 3),
-                      Row(children: [
-                        Icon(Icons.place_outlined, size: 14, color: AppColors.mutedInk.withValues(alpha: 0.7)),
-                        const SizedBox(width: 4),
-                        Flexible(child: Text(draft.locationLabel, maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 11, color: AppColors.mutedInk.withValues(alpha: 0.7)))),
-                      ]),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.place_outlined,
+                            size: 14,
+                            color: AppColors.mutedInk.withValues(alpha: 0.7),
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              draft.locationLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppColors.mutedInk.withValues(
+                                  alpha: 0.7,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                     const SizedBox(height: 10),
-                    Row(children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(color: AppColors.forest.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(6)),
-                        child: const Text('Draft', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.forest)),
-                      ),
-                      const Spacer(),
-                      Text(dateLabel, style: const TextStyle(fontSize: 11, color: AppColors.mutedInk)),
-                    ]),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.forest.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Draft',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.forest,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          dateLabel,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.mutedInk,
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -241,7 +326,11 @@ class _DraftFeedCard extends StatelessWidget {
                 onTap: onDelete,
                 child: Padding(
                   padding: const EdgeInsets.only(left: 8),
-                  child: Icon(Icons.delete_outline_rounded, size: 20, color: AppColors.mutedInk.withValues(alpha: 0.5)),
+                  child: Icon(
+                    Icons.delete_outline_rounded,
+                    size: 20,
+                    color: AppColors.mutedInk.withValues(alpha: 0.5),
+                  ),
                 ),
               ),
             ],
@@ -253,23 +342,52 @@ class _DraftFeedCard extends StatelessWidget {
 }
 
 class _OfflineFcaEmptyState extends StatelessWidget {
-  const _OfflineFcaEmptyState({required this.icon, required this.title, required this.message});
-  final IconData icon; final String title; final String message;
+  const _OfflineFcaEmptyState({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+  final IconData icon;
+  final String title;
+  final String message;
   @override
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 80),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 64, height: 64, decoration: BoxDecoration(
-            color: AppColors.forest.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(20)),
-            child: Icon(icon, color: AppColors.forest, size: 32)),
-          const SizedBox(height: 20),
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.ink)),
-          const SizedBox(height: 8),
-          Text(message, textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14, color: AppColors.mutedInk, height: 1.45)),
-        ]),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: AppColors.forest.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(icon, color: AppColors.forest, size: 32),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppColors.mutedInk,
+                height: 1.45,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

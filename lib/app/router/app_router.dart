@@ -73,15 +73,9 @@ class AppRouter {
             state.matchedLocation == '/forgot-password' ||
             state.matchedLocation == '/forgot-password/verify-otp' ||
             state.matchedLocation == '/forgot-password/reset-password';
-        final isOfflineSyncRoute =
-            state.matchedLocation == '/tps/offline-download';
         final isOfflineWorkspaceRoute =
             state.matchedLocation == '/tps/offline' ||
             state.matchedLocation.startsWith('/tps/offline/');
-        final isManualOfflineSync =
-            state.uri.queryParameters['manual'] == '1' &&
-            !authProvider.requiresTpsOfflineSync;
-        final requiresSync = authProvider.requiresTpsOfflineSync && !authProvider.isOfflineMode;
 
         if (status == AuthStatus.initial || status == AuthStatus.loading) {
           // Stay on the login screen during sign-in/sign-up attempts so
@@ -99,33 +93,15 @@ class AppRouter {
           return '/login';
         }
 
-        if (requiresSync && !isOfflineSyncRoute) {
-          return '/tps/offline-download';
-        }
-
         if (isOfflineWorkspaceRoute && !authProvider.isOfflineMode) {
           return '/home';
         }
 
-        if (isOfflineSyncRoute &&
-            !requiresSync &&
-            !isManualOfflineSync) {
-          return '/home';
-        }
-
         if (status == AuthStatus.authenticated && isAuthRoute) {
-          if (requiresSync) {
-            return '/tps/offline-download';
-          }
-
           return authProvider.isOfflineMode ? '/tps/offline' : '/home';
         }
 
         if (state.matchedLocation == '/splash') {
-          if (requiresSync) {
-            return '/tps/offline-download';
-          }
-
           return authProvider.isOfflineMode ? '/tps/offline' : '/home';
         }
 
@@ -173,11 +149,8 @@ class AppRouter {
         ),
         GoRoute(
           path: '/tps/offline-download',
-          builder: (context, state) => TpsOfflineDownloadScreen(
-            key: const ValueKey('tps-offline-download'),
-            isManualSync:
-                state.uri.queryParameters['manual'] == '1' &&
-                !authProvider.requiresTpsOfflineSync,
+          builder: (context, state) => const TpsOfflineDownloadScreen(
+            key: ValueKey('tps-offline-download'),
           ),
         ),
         GoRoute(
@@ -447,16 +420,13 @@ class AppRouter {
                     ),
                     GoRoute(
                       path: 'ticket-reports',
-                      builder: (context, state) =>
-                          const TicketReportsScreen(),
+                      builder: (context, state) => const TicketReportsScreen(),
                       routes: [
                         GoRoute(
                           path: ':id',
                           builder: (context, state) {
-                            final id =
-                                int.parse(state.pathParameters['id']!);
-                            return TicketReportDetailScreen(
-                                reportId: id);
+                            final id = int.parse(state.pathParameters['id']!);
+                            return TicketReportDetailScreen(reportId: id);
                           },
                         ),
                       ],

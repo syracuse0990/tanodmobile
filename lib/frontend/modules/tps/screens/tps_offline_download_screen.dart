@@ -8,10 +8,11 @@ import 'package:tanodmobile/frontend/shared/providers/tps_provider.dart';
 
 enum _OfflineSyncStep { locations, tractors, users }
 
+/// Downloads (or refreshes) the dropdown and reference data used by the TPS
+/// offline forms. This is opened manually from the TPS dashboard — it is no
+/// longer required right after logging in.
 class TpsOfflineDownloadScreen extends StatefulWidget {
-  const TpsOfflineDownloadScreen({super.key, this.isManualSync = false});
-
-  final bool isManualSync;
+  const TpsOfflineDownloadScreen({super.key});
 
   @override
   State<TpsOfflineDownloadScreen> createState() =>
@@ -46,7 +47,6 @@ class _TpsOfflineDownloadScreenState extends State<TpsOfflineDownloadScreen> {
       _usersReady = false;
     });
 
-    final authProvider = context.read<AuthProvider>();
     final tpsProvider = context.read<TpsProvider>();
 
     try {
@@ -68,24 +68,15 @@ class _TpsOfflineDownloadScreenState extends State<TpsOfflineDownloadScreen> {
       await tpsProvider.finalizeOfflineReferenceDataSync();
       if (!mounted) return;
 
-      if (widget.isManualSync) {
-        if (!mounted) {
-          return;
-        }
-
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            const SnackBar(
-              content: Text('Offline TPS data refreshed successfully.'),
-            ),
-          );
-        _closeScreen();
-        return;
-      }
-
-      authProvider.completeTpsOfflineSync();
-      GoRouter.of(context).go('/home');
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Offline TPS data refreshed successfully.'),
+          ),
+        );
+      _closeScreen();
+      return;
     } on AppException catch (error) {
       if (!mounted) {
         return;
@@ -123,22 +114,54 @@ class _TpsOfflineDownloadScreenState extends State<TpsOfflineDownloadScreen> {
     router.go('/tps');
   }
 
-  _SyncStepStatus _statusFor({bool locations = false, bool tractors = false, bool users = false}) {
+  _SyncStepStatus _statusFor({
+    bool locations = false,
+    bool tractors = false,
+    bool users = false,
+  }) {
     if (_errorMessage != null) {
-      if (locations && _activeStep == _OfflineSyncStep.locations) return _SyncStepStatus.error;
-      if (tractors && _activeStep == _OfflineSyncStep.tractors) return _SyncStepStatus.error;
-      if (users && _activeStep == _OfflineSyncStep.users) return _SyncStepStatus.error;
+      if (locations && _activeStep == _OfflineSyncStep.locations) {
+        return _SyncStepStatus.error;
+      }
+      if (tractors && _activeStep == _OfflineSyncStep.tractors) {
+        return _SyncStepStatus.error;
+      }
+      if (users && _activeStep == _OfflineSyncStep.users) {
+        return _SyncStepStatus.error;
+      }
     }
-    if (locations) return _locationsReady ? _SyncStepStatus.completed : _activeStep == _OfflineSyncStep.locations ? _SyncStepStatus.active : _SyncStepStatus.pending;
-    if (tractors) return _tractorsReady ? _SyncStepStatus.completed : _activeStep == _OfflineSyncStep.tractors ? _SyncStepStatus.active : _SyncStepStatus.pending;
-    if (users) return _usersReady ? _SyncStepStatus.completed : _activeStep == _OfflineSyncStep.users ? _SyncStepStatus.active : _SyncStepStatus.pending;
+
+    if (locations) {
+      return _stepStatus(
+        ready: _locationsReady,
+        step: _OfflineSyncStep.locations,
+      );
+    }
+    if (tractors) {
+      return _stepStatus(
+        ready: _tractorsReady,
+        step: _OfflineSyncStep.tractors,
+      );
+    }
+    if (users) {
+      return _stepStatus(ready: _usersReady, step: _OfflineSyncStep.users);
+    }
+    return _SyncStepStatus.pending;
+  }
+
+  _SyncStepStatus _stepStatus({
+    required bool ready,
+    required _OfflineSyncStep step,
+  }) {
+    if (ready) return _SyncStepStatus.completed;
+    if (_activeStep == step) return _SyncStepStatus.active;
     return _SyncStepStatus.pending;
   }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: widget.isManualSync && !_isSyncing,
+      canPop: !_isSyncing,
       child: Scaffold(
         backgroundColor: AppColors.pine,
         body: Container(
@@ -146,31 +169,35 @@ class _TpsOfflineDownloadScreenState extends State<TpsOfflineDownloadScreen> {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0xFF1B5E20), Color(0xFF2E7D32), Color(0xFF388E3C), Color(0xFF43A047)],
+              colors: [
+                Color(0xFF1B5E20),
+                Color(0xFF2E7D32),
+                Color(0xFF388E3C),
+                Color(0xFF43A047),
+              ],
             ),
           ),
           child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 460),
+            child: Center(
+              child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(28),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.ink.withValues(alpha: 0.08),
-                      blurRadius: 24,
-                      offset: const Offset(0, 12),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (widget.isManualSync)
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 460),
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.ink.withValues(alpha: 0.08),
+                        blurRadius: 24,
+                        offset: const Offset(0, 12),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Align(
                         alignment: Alignment.topRight,
                         child: IconButton(
@@ -182,129 +209,129 @@ class _TpsOfflineDownloadScreenState extends State<TpsOfflineDownloadScreen> {
                           ),
                         ),
                       ),
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: AppColors.forest.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Icon(
-                        widget.isManualSync
-                            ? Icons.cloud_sync_rounded
-                            : Icons.cloud_download_rounded,
-                        size: 30,
-                        color: AppColors.forest,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      widget.isManualSync
-                          ? 'Refresh TPS offline data'
-                          : 'Preparing TPS offline data',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.ink,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _errorMessage == null
-                          ? widget.isManualSync
-                                ? 'Download the latest dropdown and reference data needed for offline forms on this device.'
-                                : 'Please wait while this device prepares the dropdown and reference data needed for offline forms.'
-                          : widget.isManualSync
-                          ? 'The refresh did not finish. You can retry now or close this screen.'
-                          : 'The offline download did not finish. You can retry now or continue to the dashboard and download again later.',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: AppColors.mutedInk,
-                        height: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    _StepCard(icon: Icons.map_rounded, label: 'Provinces and cities', sublabel: 'FCA location reference data',
-                      status: _statusFor(locations: true)),
-                    const SizedBox(height: 8),
-                    _StepCard(icon: Icons.agriculture_rounded, label: 'Tractor list', sublabel: 'Tractor models and serials',
-                      status: _statusFor(tractors: true)),
-                    const SizedBox(height: 8),
-                    _StepCard(icon: Icons.people_rounded, label: 'In-charge users', sublabel: 'TPS personnel assignments',
-                      status: _statusFor(users: true)),
-                    if (_errorMessage != null) ...[
-                      const SizedBox(height: 20),
                       Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
+                        width: 64,
+                        height: 64,
                         decoration: BoxDecoration(
-                          color: AppColors.danger.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: AppColors.danger.withValues(alpha: 0.16),
-                          ),
+                          color: AppColors.forest.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                        child: Text(
-                          _errorMessage!,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: AppColors.danger,
-                            fontWeight: FontWeight.w600,
-                            height: 1.45,
-                          ),
+                        child: const Icon(
+                          Icons.cloud_sync_rounded,
+                          size: 30,
+                          color: AppColors.forest,
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 24),
-                    if (_isSyncing)
-                      Row(
-                        children: [
-                          SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.2,
-                              color: AppColors.forest,
+                      const SizedBox(height: 18),
+                      Text(
+                        'Refresh TPS offline data',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _errorMessage == null
+                            ? 'Download the latest dropdown and reference data needed for offline forms on this device.'
+                            : 'The refresh did not finish. You can retry now or close this screen.',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppColors.mutedInk,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      _StepCard(
+                        icon: Icons.map_rounded,
+                        label: 'Provinces and cities',
+                        sublabel: 'FCA location reference data',
+                        status: _statusFor(locations: true),
+                      ),
+                      const SizedBox(height: 8),
+                      _StepCard(
+                        icon: Icons.agriculture_rounded,
+                        label: 'Tractor list',
+                        sublabel: 'Tractor models and serials',
+                        status: _statusFor(tractors: true),
+                      ),
+                      const SizedBox(height: 8),
+                      _StepCard(
+                        icon: Icons.people_rounded,
+                        label: 'In-charge users',
+                        sublabel: 'TPS personnel assignments',
+                        status: _statusFor(users: true),
+                      ),
+                      if (_errorMessage != null) ...[
+                        const SizedBox(height: 20),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppColors.danger.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: AppColors.danger.withValues(alpha: 0.16),
                             ),
                           ),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              widget.isManualSync
-                                  ? 'Refreshing TPS offline data...'
-                                  : 'Preparing TPS offline form data...',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.ink,
+                          child: Text(
+                            _errorMessage!,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: AppColors.danger,
+                              fontWeight: FontWeight.w600,
+                              height: 1.45,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      if (_isSyncing)
+                        Row(
+                          children: [
+                            SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: AppColors.forest,
                               ),
                             ),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Refreshing TPS offline data...',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.ink,
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: _closeScreen,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.forest,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size.fromHeight(50),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            child: const Text('Close'),
                           ),
-                        ],
-                      )
-                    else
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton(
-                          onPressed: () {
-                            if (widget.isManualSync) { _closeScreen(); return; }
-                            context.read<AuthProvider>().completeTpsOfflineSync();
-                            GoRouter.of(context).go('/home');
-                          },
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppColors.forest,
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size.fromHeight(50),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                          child: Text(widget.isManualSync ? 'Close' : 'Continue to dashboard'),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
           ),
         ),
       ),
@@ -315,7 +342,12 @@ class _TpsOfflineDownloadScreenState extends State<TpsOfflineDownloadScreen> {
 enum _SyncStepStatus { pending, active, completed, error }
 
 class _StepCard extends StatelessWidget {
-  const _StepCard({required this.icon, required this.label, required this.sublabel, required this.status});
+  const _StepCard({
+    required this.icon,
+    required this.label,
+    required this.sublabel,
+    required this.status,
+  });
   final IconData icon;
   final String label;
   final String sublabel;
@@ -337,23 +369,67 @@ class _StepCard extends StatelessWidget {
     };
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.12))),
-      child: Row(children: [
-        Container(width: 40, height: 40, decoration: BoxDecoration(color: color.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(12)),
-          child: Icon(status == _SyncStepStatus.active ? Icons.downloading_rounded : icon, size: 20, color: color)),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: color)),
-          const SizedBox(height: 2),
-          Text(sublabel, style: const TextStyle(fontSize: 11, color: AppColors.mutedInk, height: 1.3)),
-        ])),
-        const SizedBox(width: 8),
-        if (status == _SyncStepStatus.active)
-          const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.forest))
-        else
-          Icon(statusIcon, size: 22, color: color),
-      ]),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              status == _SyncStepStatus.active
+                  ? Icons.downloading_rounded
+                  : icon,
+              size: 20,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  sublabel,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.mutedInk,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (status == _SyncStepStatus.active)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.forest,
+              ),
+            )
+          else
+            Icon(statusIcon, size: 22, color: color),
+        ],
+      ),
     );
   }
 }

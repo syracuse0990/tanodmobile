@@ -40,7 +40,6 @@ class AuthProvider extends ChangeNotifier {
   bool _isLoadingRegistrationRoles = false;
   bool _isConnected = true;
   bool _isOfflineMode = false;
-  bool _requiresTpsOfflineSync = false;
   StreamSubscription<bool>? _connectivitySubscription;
   Timer? _tpsOfflineLogoutTimer;
 
@@ -55,7 +54,6 @@ class AuthProvider extends ChangeNotifier {
   bool get isOfflineMode => _isOfflineMode;
   bool get canUseOfflineMode =>
       _offlineTpsSession != null && _isTpsSession(_offlineTpsSession);
-  bool get requiresTpsOfflineSync => _requiresTpsOfflineSync;
 
   Future<void> bootstrap() async {
     _status = AuthStatus.loading;
@@ -67,7 +65,6 @@ class AuthProvider extends ChangeNotifier {
 
     final offlineModeEnabled = await _authRepository.getOfflineModeEnabled();
     _isOfflineMode = offlineModeEnabled && _isTpsSession(_session);
-    _requiresTpsOfflineSync = false;
     if (!_isOfflineMode && offlineModeEnabled) {
       await _authRepository.setOfflineModeEnabled(false);
     }
@@ -102,7 +99,6 @@ class AuthProvider extends ChangeNotifier {
       );
       _session = nextSession;
       _isOfflineMode = false;
-      _requiresTpsOfflineSync = _isTpsSession(nextSession) && _isConnected;
       await _authRepository.setOfflineModeEnabled(false);
       await _syncOfflineTpsSession(nextSession);
       _status = AuthStatus.authenticated;
@@ -149,7 +145,6 @@ class AuthProvider extends ChangeNotifier {
       );
       _session = nextSession;
       _isOfflineMode = false;
-      _requiresTpsOfflineSync = _isTpsSession(nextSession) && _isConnected;
       await _authRepository.setOfflineModeEnabled(false);
       await _syncOfflineTpsSession(nextSession);
       _status = AuthStatus.authenticated;
@@ -296,7 +291,6 @@ class AuthProvider extends ChangeNotifier {
       await _authRepository.setOfflineModeEnabled(true);
       _session = offlineSession;
       _isOfflineMode = true;
-      _requiresTpsOfflineSync = false;
       _status = AuthStatus.authenticated;
       _cancelTpsOfflineLogoutTimer();
       notifyListeners();
@@ -315,7 +309,6 @@ class AuthProvider extends ChangeNotifier {
 
     _cancelTpsOfflineLogoutTimer();
     await _authRepository.setOfflineModeEnabled(false);
-    _requiresTpsOfflineSync = false;
 
     if (preserveOfflineAccess && activeSession != null) {
       await _authRepository.saveOfflineTpsSession(activeSession);
@@ -330,15 +323,6 @@ class AuthProvider extends ChangeNotifier {
     _isOfflineMode = false;
     _errorMessage = null;
     _status = AuthStatus.unauthenticated;
-    notifyListeners();
-  }
-
-  void completeTpsOfflineSync() {
-    if (!_requiresTpsOfflineSync) {
-      return;
-    }
-
-    _requiresTpsOfflineSync = false;
     notifyListeners();
   }
 
@@ -364,10 +348,7 @@ class AuthProvider extends ChangeNotifier {
     required String contact,
     required String otp,
   }) async {
-    return _authRepository.verifyForgotPasswordOtp(
-      contact: contact,
-      otp: otp,
-    );
+    return _authRepository.verifyForgotPasswordOtp(contact: contact, otp: otp);
   }
 
   Future<void> resetForgotPassword({
@@ -452,7 +433,6 @@ class AuthProvider extends ChangeNotifier {
 
     _session = null;
     _isOfflineMode = false;
-    _requiresTpsOfflineSync = false;
     _status = AuthStatus.unauthenticated;
     _errorMessage = _tpsSignalLogoutMessage;
     notifyListeners();

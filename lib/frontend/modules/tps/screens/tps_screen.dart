@@ -68,7 +68,7 @@ class _TpsScreenState extends State<TpsScreen>
       return;
     }
 
-    await context.push('/tps/offline-download?manual=1');
+    await context.push('/tps/offline-download');
   }
 
   @override
@@ -390,7 +390,9 @@ class _TicketsTab extends StatelessWidget {
         const SizedBox(height: 8),
         Expanded(
           child: _PagedSearchList<Ticket>(
-            key: ValueKey('tickets_${provider.tickets.length}_${provider.ticketsLoading}'),
+            key: ValueKey(
+              'tickets_${provider.tickets.length}_${provider.ticketsLoading}',
+            ),
             items: provider.tickets,
             loading: provider.ticketsLoading,
             hasMore: provider.hasMoreTickets,
@@ -514,7 +516,10 @@ class _TicketCard extends StatelessWidget {
           Row(
             children: [
               if (ticket.isPartial)
-                _Badge(label: 'Partially Resolved', color: const Color(0xFFE65100))
+                _Badge(
+                  label: 'Partially Resolved',
+                  color: const Color(0xFFE65100),
+                )
               else
                 _Badge(label: ticket.statusLabel, color: _statusColor),
               const Spacer(),
@@ -1093,7 +1098,9 @@ class _DistributionsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _PagedSearchList<Distribution>(
-      key: ValueKey('dist_${provider.distributions.length}_${provider.distributionsLoading}'),
+      key: ValueKey(
+        'dist_${provider.distributions.length}_${provider.distributionsLoading}',
+      ),
       items: provider.distributions,
       loading: provider.distributionsLoading,
       hasMore: provider.hasMoreDistributions,

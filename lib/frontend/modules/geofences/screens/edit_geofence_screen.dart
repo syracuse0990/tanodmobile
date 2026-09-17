@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
+import 'package:tanodmobile/core/utils/geo_area.dart';
+import 'package:tanodmobile/frontend/modules/geofences/screens/parts/geofence_area_summary.dart';
 import 'package:tanodmobile/frontend/shared/providers/geofence_provider.dart';
 import 'package:tanodmobile/frontend/shared/widgets/app_toast.dart';
 import 'package:tanodmobile/frontend/shared/widgets/primary_button.dart';
@@ -104,12 +106,12 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
         TutorialStep(
           targetKey: _mapKey,
           title: '3. Adjust on Map & Radius',
-              description:
-                  'The current boundary is shown on the map. Circle '
-                  'mode: tap a new spot to move the center, then drag '
-                  'the slider to resize. Polygon mode: tap to add '
-                  'more points or use Undo (↩) to remove the last. '
-                  'The boundary updates live.',
+          description:
+              'The current boundary is shown on the map. Circle '
+              'mode: tap a new spot to move the center, then drag '
+              'the slider to resize. Polygon mode: tap to add '
+              'more points or use Undo (↩) to remove the last. '
+              'The boundary updates live.',
           tooltipPosition: TutorialTooltipPosition.top,
         ),
         TutorialStep(
@@ -143,7 +145,10 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
 
   void _onTutorialComplete() {
     if (!mounted) return;
-    context.read<HiveService>().savePreference('tutorial_edit_geofence', 'true');
+    context.read<HiveService>().savePreference(
+      'tutorial_edit_geofence',
+      'true',
+    );
   }
 
   Future<void> _loadData() async {
@@ -214,14 +219,17 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
     for (int i = 0; i <= segments; i++) {
       final angle = (i * 360 / segments) * (math.pi / 180);
       final latOffset = radiusMeters / earthRadius * (180 / math.pi);
-      final lngOffset = radiusMeters /
+      final lngOffset =
+          radiusMeters /
           (earthRadius * math.cos(center.latitude * math.pi / 180)) *
           (180 / math.pi);
 
-      points.add(LatLng(
-        center.latitude + latOffset * math.sin(angle),
-        center.longitude + lngOffset * math.cos(angle),
-      ));
+      points.add(
+        LatLng(
+          center.latitude + latOffset * math.sin(angle),
+          center.longitude + lngOffset * math.cos(angle),
+        ),
+      );
     }
     return points;
   }
@@ -232,6 +240,43 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
     if (_shape == 'circle' && _circleCenter == null) return false;
     if (_shape == 'polygon' && _polygonPoints.length < 3) return false;
     return true;
+  }
+
+  /// Area currently covered by the shape being edited, in square metres.
+  double? get _shapeAreaSquareMeters {
+    if (_shape == 'circle') {
+      if (_circleCenter == null) return null;
+      return GeoArea.circleArea(_circleRadius);
+    }
+    if (_polygonPoints.length < 3) return null;
+    return GeoArea.polygonArea(_polygonPoints);
+  }
+
+  /// Boundary length of the shape being edited, in metres.
+  double? get _shapeBoundaryMeters {
+    if (_shape == 'circle') {
+      if (_circleCenter == null) return null;
+      return GeoArea.circleCircumference(_circleRadius);
+    }
+    if (_polygonPoints.length < 2) return null;
+    return GeoArea.polygonPerimeter(_polygonPoints);
+  }
+
+  /// Where the live area badge should sit on the map for the current shape.
+  LatLng? get _shapeAreaBadgePoint {
+    if (_shape == 'circle') {
+      if (_circleCenter == null) return null;
+      // Float it above the circle so it does not cover the centre marker.
+      return _offsetNorth(_circleCenter!, _circleRadius);
+    }
+    if (_polygonPoints.length < 3) return null;
+    return GeoArea.polygonCentroid(_polygonPoints);
+  }
+
+  /// [point] shifted [meters] north — used to place labels above a circle.
+  LatLng _offsetNorth(LatLng point, double meters) {
+    final latOffset = meters / GeoArea.earthRadiusMeters * (180 / math.pi);
+    return LatLng(point.latitude + latOffset, point.longitude);
   }
 
   Future<void> _submit() async {
@@ -249,8 +294,10 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
       radius: _shape == 'circle' ? _circleRadius : null,
       coordinates: _shape == 'polygon'
           ? _polygonPoints
-              .map((p) => GeoFenceCoordinate(lat: p.latitude, lng: p.longitude))
-              .toList()
+                .map(
+                  (p) => GeoFenceCoordinate(lat: p.latitude, lng: p.longitude),
+                )
+                .toList()
           : null,
     );
 
@@ -261,8 +308,10 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
       await provider.fetchGeofences();
       if (mounted) context.pop();
     } else {
-      AppToast.show(provider.error ?? 'Failed to update geofence',
-          type: ToastType.error);
+      AppToast.show(
+        provider.error ?? 'Failed to update geofence',
+        type: ToastType.error,
+      );
     }
   }
 
@@ -294,9 +343,13 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
           scrolledUnderElevation: 0,
         ),
         body: const Center(
-            child: CircularProgressIndicator(color: AppColors.forest)),
+          child: CircularProgressIndicator(color: AppColors.forest),
+        ),
       );
     }
+
+    final shapeArea = _shapeAreaSquareMeters;
+    final shapeAreaBadgePoint = _shapeAreaBadgePoint;
 
     return Scaffold(
       backgroundColor: AppColors.canvas,
@@ -331,7 +384,8 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                   decoration: InputDecoration(
                     hintText: 'e.g. Rice Paddy Zone A',
                     hintStyle: TextStyle(
-                        color: AppColors.mutedInk.withValues(alpha: 0.5)),
+                      color: AppColors.mutedInk.withValues(alpha: 0.5),
+                    ),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
@@ -342,8 +396,10 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                       borderRadius: BorderRadius.circular(12),
                       borderSide: const BorderSide(color: AppColors.forest),
                     ),
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 14,
+                    ),
                   ),
                 ),
 
@@ -405,7 +461,11 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                           mapController: _mapController,
                           options: MapOptions(
                             initialCenter: _initialCenter,
-                            initialZoom: _circleCenter != null || _polygonPoints.isNotEmpty ? 14.0 : 5.8,
+                            initialZoom:
+                                _circleCenter != null ||
+                                    _polygonPoints.isNotEmpty
+                                ? 14.0
+                                : 5.8,
                             onTap: _onMapTap,
                           ),
                           children: [
@@ -420,9 +480,12 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                                 polygons: [
                                   Polygon(
                                     points: _circleVisualPoints(
-                                        _circleCenter!, _circleRadius),
-                                    color: AppColors.forest
-                                        .withValues(alpha: 0.15),
+                                      _circleCenter!,
+                                      _circleRadius,
+                                    ),
+                                    color: AppColors.forest.withValues(
+                                      alpha: 0.15,
+                                    ),
                                     borderColor: AppColors.forest,
                                     borderStrokeWidth: 2,
                                   ),
@@ -435,8 +498,9 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                                 polygons: [
                                   Polygon(
                                     points: _polygonPoints,
-                                    color: AppColors.forest
-                                        .withValues(alpha: 0.15),
+                                    color: AppColors.forest.withValues(
+                                      alpha: 0.15,
+                                    ),
                                     borderColor: AppColors.forest,
                                     borderStrokeWidth: 2,
                                   ),
@@ -468,17 +532,18 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                                         shape: BoxShape.circle,
                                         color: AppColors.forest,
                                         border: Border.all(
-                                            color: Colors.white, width: 2),
+                                          color: Colors.white,
+                                          width: 2,
+                                        ),
                                       ),
                                       child: const Icon(
-                                          Icons.center_focus_strong,
-                                          size: 12,
-                                          color: Colors.white),
+                                        Icons.center_focus_strong,
+                                        size: 12,
+                                        color: Colors.white,
+                                      ),
                                     ),
                                   ),
-                                for (int i = 0;
-                                    i < _polygonPoints.length;
-                                    i++)
+                                for (int i = 0; i < _polygonPoints.length; i++)
                                   Marker(
                                     point: _polygonPoints[i],
                                     width: 24,
@@ -488,7 +553,9 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                                         shape: BoxShape.circle,
                                         color: AppColors.forest,
                                         border: Border.all(
-                                            color: Colors.white, width: 2),
+                                          color: Colors.white,
+                                          width: 2,
+                                        ),
                                       ),
                                       child: Center(
                                         child: Text(
@@ -500,6 +567,17 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                                           ),
                                         ),
                                       ),
+                                    ),
+                                  ),
+                                // Live area badge for the drawn shape
+                                if (shapeArea != null &&
+                                    shapeAreaBadgePoint != null)
+                                  Marker(
+                                    point: shapeAreaBadgePoint,
+                                    width: 120,
+                                    height: 34,
+                                    child: MapAreaBadge(
+                                      label: GeoArea.areaLabel(shapeArea),
                                     ),
                                   ),
                               ],
@@ -520,14 +598,18 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                                   borderRadius: BorderRadius.circular(8),
                                   boxShadow: [
                                     BoxShadow(
-                                      color:
-                                          Colors.black.withValues(alpha: 0.1),
+                                      color: Colors.black.withValues(
+                                        alpha: 0.1,
+                                      ),
                                       blurRadius: 4,
                                     ),
                                   ],
                                 ),
-                                child: const Icon(Icons.undo_rounded,
-                                    size: 20, color: AppColors.ink),
+                                child: const Icon(
+                                  Icons.undo_rounded,
+                                  size: 20,
+                                  color: AppColors.ink,
+                                ),
                               ),
                             ),
                           ),
@@ -542,9 +624,13 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                   Row(
                     key: _radiusKey,
                     children: [
-                      const Text('Radius:',
-                          style: TextStyle(
-                              fontSize: 13, color: AppColors.mutedInk)),
+                      const Text(
+                        'Radius:',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.mutedInk,
+                        ),
+                      ),
                       Expanded(
                         child: Slider(
                           value: _circleRadius,
@@ -553,8 +639,7 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                           divisions: 199,
                           activeColor: AppColors.forest,
                           label: '${_circleRadius.toStringAsFixed(0)} m',
-                          onChanged: (v) =>
-                              setState(() => _circleRadius = v),
+                          onChanged: (v) => setState(() => _circleRadius = v),
                         ),
                       ),
                       SizedBox(
@@ -562,9 +647,10 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                         child: Text(
                           '${_circleRadius.toStringAsFixed(0)} m',
                           style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.ink),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.ink,
+                          ),
                         ),
                       ),
                     ],
@@ -577,9 +663,29 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                     '${_polygonPoints.length} point${_polygonPoints.length == 1 ? '' : 's'} placed'
                     '${_polygonPoints.length < 3 ? ' (min 3)' : ''}',
                     style: const TextStyle(
-                        fontSize: 12, color: AppColors.mutedInk),
+                      fontSize: 12,
+                      color: AppColors.mutedInk,
+                    ),
                   ),
                 ],
+
+                // Live measurement of the zone being edited
+                const SizedBox(height: 12),
+                GeofenceAreaSummary(
+                  areaSquareMeters: _shapeAreaSquareMeters,
+                  boundaryMeters: _shapeBoundaryMeters,
+                  areaCaption: _shape == 'circle'
+                      ? 'Total area covered'
+                      : 'Total area of polygon',
+                  boundaryCaption: _shape == 'circle'
+                      ? 'Circumference'
+                      : 'Perimeter',
+                  emptyHint: _shape == 'circle'
+                      ? 'Tap the map to set the center — the area is measured '
+                            'as soon as the zone is placed.'
+                      : 'Place at least 3 points — the area is measured once '
+                            'the polygon closes.',
+                ),
 
                 const SizedBox(height: 18),
 
@@ -619,90 +725,103 @@ class _EditGeofenceScreenState extends State<EditGeofenceScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                if (!_devicesLoaded)
-                  const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Center(
-                        child: CircularProgressIndicator(
-                            color: AppColors.forest, strokeWidth: 2)),
-                  )
-                else if (provider.availableDevices.isEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text('No tractors available',
-                        style: TextStyle(color: AppColors.mutedInk)),
-                  )
-                else
-                  ...provider.availableDevices.map((device) {
-                    final label =
-                        device.tractor?.label ?? 'Device #${device.id}';
-                    final selected = _selectedDeviceIds.contains(device.id);
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          if (selected) {
-                            _selectedDeviceIds.remove(device.id);
-                          } else {
-                            _selectedDeviceIds.add(device.id);
-                          }
-                        });
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? AppColors.forest.withValues(alpha: 0.08)
-                              : Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: selected
-                                ? AppColors.forest
-                                : Colors.transparent,
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              selected
-                                  ? Icons.check_circle_rounded
-                                  : Icons.circle_outlined,
-                              size: 22,
-                              color: selected
-                                  ? AppColors.forest
-                                  : AppColors.mutedInk
-                                      .withValues(alpha: 0.3),
+                      if (!_devicesLoaded)
+                        const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: AppColors.forest,
+                              strokeWidth: 2,
                             ),
-                            const SizedBox(width: 12),
-                            const Icon(Icons.agriculture_rounded,
-                                size: 20, color: AppColors.pine),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                label,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
+                          ),
+                        )
+                      else if (provider.availableDevices.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'No tractors available',
+                            style: TextStyle(color: AppColors.mutedInk),
+                          ),
+                        )
+                      else
+                        ...provider.availableDevices.map((device) {
+                          final label =
+                              device.tractor?.label ?? 'Device #${device.id}';
+                          final selected = _selectedDeviceIds.contains(
+                            device.id,
+                          );
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                if (selected) {
+                                  _selectedDeviceIds.remove(device.id);
+                                } else {
+                                  _selectedDeviceIds.add(device.id);
+                                }
+                              });
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? AppColors.forest.withValues(alpha: 0.08)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
                                   color: selected
-                                      ? AppColors.ink
-                                      : AppColors.mutedInk,
+                                      ? AppColors.forest
+                                      : Colors.transparent,
+                                  width: 1.5,
                                 ),
                               ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    selected
+                                        ? Icons.check_circle_rounded
+                                        : Icons.circle_outlined,
+                                    size: 22,
+                                    color: selected
+                                        ? AppColors.forest
+                                        : AppColors.mutedInk.withValues(
+                                            alpha: 0.3,
+                                          ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Icon(
+                                    Icons.agriculture_rounded,
+                                    size: 20,
+                                    color: AppColors.pine,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      label,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: selected
+                                            ? AppColors.ink
+                                            : AppColors.mutedInk,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
+                          );
+                        }),
+                    ],
+                  ),
+                ),
 
                 const SizedBox(height: 24),
               ],
@@ -774,9 +893,11 @@ class _ToggleChip extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (icon != null) ...[
-              Icon(icon,
-                  size: 18,
-                  color: selected ? AppColors.forest : AppColors.mutedInk),
+              Icon(
+                icon,
+                size: 18,
+                color: selected ? AppColors.forest : AppColors.mutedInk,
+              ),
               const SizedBox(width: 6),
             ],
             Text(

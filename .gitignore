@@ -46,3 +46,7 @@ app.*.map.json
 
 # Environment variables
 .env
+
+# Android signing credentials
+android/key.properties
+android/app/*.jks

@@ -643,6 +643,7 @@ class _HomeScreenState extends State<HomeScreen>
                 onTap: (_, _) => _clearFocus(),
               ),
               children: [
+                // ── Base layer: roadmap or pure satellite imagery ──
                 TileLayer(
                   urlTemplate: _showSatellite
                       ? 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
@@ -650,6 +651,18 @@ class _HomeScreenState extends State<HomeScreen>
                   userAgentPackageName: 'com.tanod.tanodmobile',
                   maxZoom: 20,
                 ),
+                // ── Place-name labels only (no roads) for satellite view ──
+                // Transparent text-only tiles stacked on the imagery so
+                // users can still tell where they are without drawing the
+                // road network on top of the satellite photo.
+                if (_showSatellite)
+                  TileLayer(
+                    urlTemplate:
+                        'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png',
+                    subdomains: const ['a', 'b', 'c', 'd'],
+                    userAgentPackageName: 'com.tanod.tanodmobile',
+                    maxZoom: 20,
+                  ),
                 MarkerLayer(markers: _buildMarkers(visibleTractors)),
               ],
             ),
@@ -895,6 +908,25 @@ class _HomeScreenState extends State<HomeScreen>
               onClearFocus: _clearFocusAndRecenter,
             ),
           ),
+
+          // ─── Map attribution (satellite labels) ───
+          if (_showSatellite)
+            Positioned(
+              left: 10,
+              bottom: 6,
+              child: IgnorePointer(
+                child: Text(
+                  'Labels © OpenStreetMap contributors © CARTO',
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: Colors.white.withValues(alpha: 0.8),
+                    shadows: const [
+                      Shadow(color: Colors.black54, blurRadius: 3),
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
           // ─── Tutorial overlay ───
           if (_showTutorial)

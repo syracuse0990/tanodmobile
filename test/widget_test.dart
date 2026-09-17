@@ -79,7 +79,9 @@ void main() {
       authProvider.dispose();
     });
 
-    await authProvider.bootstrap();
+    // `bootstrap()` waits on a zero-duration timer, which the widget-test
+    // fake clock never fires — run it in the real async zone instead.
+    await tester.runAsync(() => authProvider.bootstrap());
 
     await tester.pumpWidget(
       ChangeNotifierProvider<AuthProvider>.value(

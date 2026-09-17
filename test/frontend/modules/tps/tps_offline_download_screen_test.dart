@@ -20,7 +20,7 @@ import 'package:tanodmobile/services/storage/hive_service.dart';
 
 void main() {
   testWidgets(
-    'shows offline form data as the active sync step while reference sync is running',
+    'shows the location step as active while the reference sync is running',
     (WidgetTester tester) async {
       final referenceDataCompleter = Completer<void>();
       final connectivityService = _FakeConnectivityService(
@@ -51,19 +51,18 @@ void main() {
             ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
             ChangeNotifierProvider<TpsProvider>.value(value: tpsProvider),
           ],
-          child: const MaterialApp(
-            home: TpsOfflineDownloadScreen(isManualSync: true),
-          ),
+          child: const MaterialApp(home: TpsOfflineDownloadScreen()),
         ),
       );
 
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('Offline form data'), findsOneWidget);
+      expect(find.text('Provinces and cities'), findsOneWidget);
       expect(
         find.text(
-          'Prepare the dropdown and reference data used by offline forms.',
+          'Download the latest dropdown and reference data needed for '
+          'offline forms on this device.',
         ),
         findsOneWidget,
       );
@@ -97,8 +96,7 @@ void main() {
             routes: [
               GoRoute(
                 path: 'sync',
-                builder: (_, _) =>
-                    const TpsOfflineDownloadScreen(isManualSync: true),
+                builder: (_, _) => const TpsOfflineDownloadScreen(),
               ),
             ],
           ),
@@ -177,9 +175,7 @@ void main() {
           ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
           ChangeNotifierProvider<TpsProvider>.value(value: tpsProvider),
         ],
-        child: const MaterialApp(
-          home: TpsOfflineDownloadScreen(isManualSync: true),
-        ),
+        child: const MaterialApp(home: TpsOfflineDownloadScreen()),
       ),
     );
 
@@ -203,7 +199,7 @@ void main() {
     );
     expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
     expect(find.byIcon(Icons.downloading_rounded), findsNothing);
-    expect(find.text('Retry refresh'), findsOneWidget);
+    expect(find.text('Close'), findsOneWidget);
     expect(tpsProvider.referenceSyncCalls, 1);
     expect(tester.takeException(), isNull);
   });
@@ -230,10 +226,19 @@ class _FakeSyncingTpsProvider extends TpsProvider {
   int referenceSyncCalls = 0;
 
   @override
-  Future<void> syncOfflineReferenceData() {
+  Future<void> syncOfflineFcaLocationCache() {
     referenceSyncCalls += 1;
     return referenceDataCompleter.future;
   }
+
+  @override
+  Future<void> syncOfflineTractorOptions() async {}
+
+  @override
+  Future<void> syncOfflineUserOptions() async {}
+
+  @override
+  Future<void> finalizeOfflineReferenceDataSync() async {}
 }
 
 class _FakeAuthRepository implements AuthRepository {

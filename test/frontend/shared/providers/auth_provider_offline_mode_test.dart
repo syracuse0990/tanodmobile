@@ -101,33 +101,33 @@ void main() {
     provider.dispose();
   });
 
-  test('TPS online sign in requires offline sync until completed', () async {
-    final connectivityService = _FakeConnectivityService(
-      initialConnected: true,
-    );
-    final repository = _FakeAuthRepository(signInSession: _tpsSession());
-    final provider = AuthProvider(
-      authRepository: repository,
-      connectivityService: connectivityService,
-      bootstrapDelay: Duration.zero,
-      tpsSignalGracePeriod: const Duration(milliseconds: 30),
-    );
+  test(
+    'TPS online sign in authenticates without an offline data download',
+    () async {
+      final connectivityService = _FakeConnectivityService(
+        initialConnected: true,
+      );
+      final repository = _FakeAuthRepository(signInSession: _tpsSession());
+      final provider = AuthProvider(
+        authRepository: repository,
+        connectivityService: connectivityService,
+        bootstrapDelay: Duration.zero,
+        tpsSignalGracePeriod: const Duration(milliseconds: 30),
+      );
 
-    final success = await provider.signIn(
-      login: 'tps@example.com',
-      password: 'password',
-    );
+      final success = await provider.signIn(
+        login: 'tps@example.com',
+        password: 'password',
+      );
 
-    expect(success, isTrue);
-    expect(provider.requiresTpsOfflineSync, isTrue);
+      expect(success, isTrue);
+      expect(provider.status, AuthStatus.authenticated);
+      expect(provider.isOfflineMode, isFalse);
 
-    provider.completeTpsOfflineSync();
-
-    expect(provider.requiresTpsOfflineSync, isFalse);
-
-    await connectivityService.dispose();
-    provider.dispose();
-  });
+      await connectivityService.dispose();
+      provider.dispose();
+    },
+  );
 }
 
 class _FakeAuthRepository implements AuthRepository {

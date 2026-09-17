@@ -103,7 +103,7 @@ class _TpsOfflineDistributionsScreenState
       return;
     }
 
-    await context.push('/tps/offline-download?manual=1');
+    await context.push('/tps/offline-download');
     if (!mounted) {
       return;
     }
