@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:tanodmobile/app/theme/app_colors.dart';
@@ -67,6 +68,12 @@ class _EditProfileScreenState extends State<EditProfileScreen>
   final Map<int, Map<String, bool>> _tractorScanning = {};
   final Map<int, Map<String, bool>> _tractorImageExists = {};
 
+  // ─── SIM number (device) ───
+  final Map<int, TextEditingController> _tractorSimControllers = {};
+  final Map<int, List<Map<String, dynamic>>> _tractorSimHistory = {};
+  final Map<int, bool> _tractorSimChangeable = {};
+  final Set<int> _savingSimIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -130,6 +137,9 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       for (final ctrl in map.values) {
         ctrl.dispose();
       }
+    }
+    for (final ctrl in _tractorSimControllers.values) {
+      ctrl.dispose();
     }
     super.dispose();
   }
@@ -441,6 +451,7 @@ class _EditProfileScreenState extends State<EditProfileScreen>
             );
           }
           _initImplementControllers(id, t);
+          _initSimData(id, t);
         }
       }
     } catch (e) {
@@ -510,6 +521,35 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     }
   }
 
+  void _initSimData(int tractorId, Map<String, dynamic> tractor) {
+    final device = tractor['device'];
+    String sim = '';
+    List<Map<String, dynamic>> history = [];
+    var changeable = true;
+    if (device is Map) {
+      sim = device['sim']?.toString() ?? '';
+      final rawHistory = device['sim_history'];
+      if (rawHistory is List) {
+        history = rawHistory
+            .whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .toList();
+      }
+      final rawChangeable = device['sim_changeable'];
+      if (rawChangeable is bool) {
+        changeable = rawChangeable;
+      } else if (device['sim_overridden'] == true) {
+        changeable = false;
+      }
+    }
+    _tractorSimControllers.putIfAbsent(
+      tractorId,
+      () => TextEditingController(text: sim),
+    );
+    _tractorSimHistory[tractorId] = history;
+    _tractorSimChangeable.putIfAbsent(tractorId, () => changeable);
+  }
+
   Future<void> _saveImplements(int tractorId) async {
     final controllers = _tractorImplementControllers[tractorId];
     if (controllers == null) return;
@@ -532,6 +572,71 @@ class _EditProfileScreenState extends State<EditProfileScreen>
       }
     }
     if (mounted) setState(() => _savingImplementIds.remove(tractorId));
+  }
+
+  /// Saves a new SIM number for the tractor's device. The backend archives the
+  /// previous value so it can still be viewed after the replacement.
+  Future<void> _saveSimNumber(int tractorId, String value) async {
+    final sim = value.trim();
+    if (sim.isEmpty) {
+      AppToast.show('SIM number cannot be empty', type: ToastType.error);
+      return;
+    }
+    if (!RegExp(r'^\d{10,20}$').hasMatch(sim)) {
+      AppToast.show(
+        'SIM number must be 10 to 20 digits',
+        type: ToastType.error,
+      );
+      return;
+    }
+    if (_tractorSimChangeable[tractorId] == false) {
+      AppToast.show(
+        'SIM number can only be changed once',
+        type: ToastType.error,
+      );
+      return;
+    }
+
+    setState(() => _savingSimIds.add(tractorId));
+    try {
+      final response = await _dio.put(
+        '/tractors/$tractorId/sim',
+        data: {'sim': sim},
+      );
+
+      if (mounted) {
+        final payload = response.data;
+        final data = payload is Map ? payload['data'] : null;
+        final device = data is Map ? data['device'] : null;
+        final rawHistory = device is Map ? device['sim_history'] : null;
+        final rawChangeable = device is Map ? device['sim_changeable'] : null;
+        setState(() {
+          if (rawHistory is List) {
+            _tractorSimHistory[tractorId] = rawHistory
+                .whereType<Map>()
+                .map((e) => e.cast<String, dynamic>())
+                .toList();
+          }
+          _tractorSimChangeable[tractorId] = rawChangeable is bool
+              ? rawChangeable
+              : false;
+        });
+        AppToast.success('SIM number updated');
+      }
+    } on DioException catch (e) {
+      debugPrint('_saveSimNumber DioError: ${e.response?.data}');
+      final msg = e.response?.data is Map
+          ? ((e.response!.data as Map)['message']?.toString() ??
+                'Failed to update SIM number')
+          : 'Failed to update SIM number';
+      if (mounted) AppToast.show(msg, type: ToastType.error);
+    } catch (e) {
+      debugPrint('_saveSimNumber error: $e');
+      if (mounted) {
+        AppToast.show('Failed to update SIM number', type: ToastType.error);
+      }
+    }
+    if (mounted) setState(() => _savingSimIds.remove(tractorId));
   }
 
   Future<void> _takeAndProcessImplementPhoto(
@@ -1219,51 +1324,49 @@ class _EditProfileScreenState extends State<EditProfileScreen>
           );
         }),
         // ─── GPS Details ───
-        if (gpsImei.isNotEmpty || simNumber.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: const Row(
-              children: [
-                Icon(
-                  Icons.satellite_alt_rounded,
-                  size: 18,
-                  color: AppColors.pine,
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: const Row(
+            children: [
+              Icon(
+                Icons.satellite_alt_rounded,
+                size: 18,
+                color: AppColors.pine,
+              ),
+              SizedBox(width: 8),
+              Text(
+                'GPS Details',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink,
                 ),
-                SizedBox(width: 8),
-                Text(
-                  'GPS Details',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.ink,
-                  ),
-                ),
-              ],
+              ),
+            ],
+          ),
+        ),
+        if (gpsImei.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _TractorImplementField(
+              label: 'GPS IMEI',
+              icon: Icons.sim_card_rounded,
+              controller: TextEditingController(text: gpsImei),
+              readOnly: true,
             ),
           ),
-          if (gpsImei.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _TractorImplementField(
-                label: 'GPS IMEI',
-                icon: Icons.sim_card_rounded,
-                controller: TextEditingController(text: gpsImei),
-                readOnly: true,
-              ),
-            ),
-          if (simNumber.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _TractorImplementField(
-                label: 'SIM Number',
-                icon: Icons.sim_card_rounded,
-                controller: TextEditingController(text: simNumber),
-                readOnly: true,
-              ),
-            ),
-        ],
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _SimNumberField(
+            controller: _tractorSimControllers[tractorId],
+            isSaving: _savingSimIds.contains(tractorId),
+            canChange: _tractorSimChangeable[tractorId] ?? true,
+            history: _tractorSimHistory[tractorId] ?? const [],
+            onSave: (value) => _saveSimNumber(tractorId, value),
+          ),
+        ),
         const SizedBox(height: 12),
         SizedBox(
           width: double.infinity,
@@ -1642,6 +1745,355 @@ class _TractorImplementField extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─── SIM Number Field ───────────────────────────
+
+class _SimNumberField extends StatefulWidget {
+  const _SimNumberField({
+    required this.controller,
+    required this.isSaving,
+    required this.canChange,
+    required this.history,
+    required this.onSave,
+  });
+
+  final TextEditingController? controller;
+  final bool isSaving;
+  final bool canChange;
+  final List<Map<String, dynamic>> history;
+  final ValueChanged<String> onSave;
+
+  @override
+  State<_SimNumberField> createState() => _SimNumberFieldState();
+}
+
+class _SimNumberFieldState extends State<_SimNumberField> {
+  bool _isEditing = false;
+  String _originalValue = '';
+
+  void _startEditing() {
+    _originalValue = widget.controller?.text ?? '';
+    setState(() => _isEditing = true);
+  }
+
+  void _cancelEditing() {
+    widget.controller?.text = _originalValue;
+    setState(() => _isEditing = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final history = widget.history
+        .where((h) => (h['sim']?.toString() ?? '').isNotEmpty)
+        .toList();
+    final value = widget.controller?.text.trim() ?? '';
+    final canEdit = widget.canChange;
+    final showEditor = canEdit && _isEditing;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6, left: 4),
+          child: Row(
+            children: [
+              const Text(
+                'SIM Number',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.mutedInk,
+                ),
+              ),
+              const Spacer(),
+              if (!widget.canChange)
+                Row(
+                  children: [
+                    Icon(
+                      Icons.lock_rounded,
+                      size: 14,
+                      color: AppColors.mutedInk.withValues(alpha: 0.7),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Locked',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.mutedInk.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+        if (showEditor) _buildEditor() else _buildDisplay(value, canEdit),
+        if (!canEdit)
+          _buildNote(
+            icon: Icons.lock_rounded,
+            text: 'SIM number can only be changed once',
+          )
+        else if (!_isEditing)
+          _buildNote(
+            icon: Icons.info_outline_rounded,
+            text: 'You can change this once when the GPS SIM is replaced.',
+          ),
+        if (history.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Text(
+              'Previous SIM numbers',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.mutedInk.withValues(alpha: 0.8),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: history.map(_buildHistoryChip).toList(),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Read-only view of the stored SIM with an optional Edit button.
+  Widget _buildDisplay(String value, bool canEdit) {
+    return Container(
+      decoration: BoxDecoration(
+        color: canEdit ? Colors.white : AppColors.canvas,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.mutedInk.withValues(alpha: 0.12)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Row(
+        children: [
+          const Icon(Icons.sim_card_rounded, size: 20, color: AppColors.pine),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value.isNotEmpty ? value : 'No SIM number set',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                color: value.isNotEmpty
+                    ? AppColors.ink
+                    : AppColors.mutedInk.withValues(alpha: 0.5),
+              ),
+            ),
+          ),
+          if (canEdit)
+            TextButton.icon(
+              onPressed: widget.isSaving ? null : _startEditing,
+              icon: const Icon(Icons.edit_rounded, size: 16),
+              label: const Text('Edit'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.forest,
+                textStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Icon(
+                Icons.lock_rounded,
+                size: 18,
+                color: AppColors.mutedInk.withValues(alpha: 0.4),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Editable field shown while replacing the SIM number.
+  Widget _buildEditor() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.mutedInk.withValues(alpha: 0.12)),
+      ),
+      child: TextFormField(
+        controller: widget.controller,
+        autofocus: true,
+        readOnly: widget.isSaving,
+        keyboardType: TextInputType.phone,
+        inputFormatters: [
+          FilteringTextInputFormatter.digitsOnly,
+          LengthLimitingTextInputFormatter(20),
+        ],
+        style: const TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w500,
+          color: AppColors.ink,
+        ),
+        decoration: InputDecoration(
+          hintText: 'Enter 10-20 digit SIM number',
+          hintStyle: TextStyle(
+            color: AppColors.mutedInk.withValues(alpha: 0.4),
+            fontWeight: FontWeight.w400,
+          ),
+          prefixIcon: Container(
+            margin: const EdgeInsets.only(left: 4),
+            child: const Icon(
+              Icons.sim_card_rounded,
+              size: 20,
+              color: AppColors.pine,
+            ),
+          ),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 48,
+            minHeight: 0,
+          ),
+          suffixIcon: widget.isSaving
+              ? const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.forest,
+                    ),
+                  ),
+                )
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      onPressed: _cancelEditing,
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: AppColors.mutedInk,
+                      ),
+                      tooltip: 'Cancel',
+                    ),
+                    IconButton(
+                      onPressed: () =>
+                          widget.onSave(widget.controller?.text.trim() ?? ''),
+                      icon: const Icon(
+                        Icons.check_circle_rounded,
+                        color: AppColors.forest,
+                      ),
+                      tooltip: 'Save SIM number',
+                    ),
+                  ],
+                ),
+          suffixIconConstraints: const BoxConstraints(
+            minWidth: 0,
+            minHeight: 0,
+          ),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(
+              color: AppColors.mutedInk.withValues(alpha: 0.12),
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(
+              color: AppColors.mutedInk.withValues(alpha: 0.12),
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: AppColors.forest, width: 1.5),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNote({required IconData icon, required String text}) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, left: 4),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 12,
+            color: AppColors.mutedInk.withValues(alpha: 0.7),
+          ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 11,
+                color: AppColors.mutedInk.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHistoryChip(Map<String, dynamic> entry) {
+    final sim = entry['sim']?.toString() ?? '';
+    final changedAt = entry['changed_at']?.toString();
+    String dateLabel = '';
+    if (changedAt != null && changedAt.isNotEmpty) {
+      final parsed = DateTime.tryParse(changedAt);
+      if (parsed != null) {
+        final local = parsed.toLocal();
+        dateLabel =
+            '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.canvas,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.mutedInk.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.history_rounded,
+            size: 14,
+            color: AppColors.mutedInk,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            sim,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppColors.ink,
+            ),
+          ),
+          if (dateLabel.isNotEmpty) ...[
+            const SizedBox(width: 6),
+            Text(
+              '· $dateLabel',
+              style: const TextStyle(fontSize: 12, color: AppColors.mutedInk),
+            ),
+          ],
+        ],
       ),
     );
   }
